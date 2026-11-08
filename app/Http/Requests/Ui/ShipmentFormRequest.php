@@ -11,7 +11,7 @@ use Illuminate\Validation\Validator;
 /**
  * The Add shipment form. It accepts the API's input shape (so ShipmentCreator takes it unchanged) with the form's
  * differences: the order reference is optional and generated when blank, the shipment is always submitted, and the
- * money fields are derived from the items.
+ * money fields are derived from the Value.
  */
 class ShipmentFormRequest extends FormRequest
 {
@@ -19,10 +19,10 @@ class ShipmentFormRequest extends FormRequest
 
     private const REFERENCE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
-    /** What an item quantity and unit price may look like; resources/js/shipmentForm.js uses the same patterns. */
+    /** What an item quantity and the Value may look like; resources/js/shipmentForm.js uses the same patterns. */
     private const QTY_PATTERN = '/^\d{1,6}$/';
 
-    private const PRICE_PATTERN = '/^\d{1,10}(\.\d{1,2})?$/';
+    private const VALUE_PATTERN = '/^\d{1,10}(\.\d{1,2})?$/';
 
     public function authorize(): bool
     {
@@ -30,8 +30,9 @@ class ShipmentFormRequest extends FormRequest
     }
 
     /**
-     * COD and the declared value are never typed in: COD collects the items total, and Insure declares it (else an
-     * explicit 0, since QuadX insures at the total when the value is missing). Posted amounts are overwritten.
+     * The Value is the one amount the admin types: it is the shipment total, what COD collects and, with Insure, the
+     * declared value (else an explicit 0, since QuadX insures at the total when the value is missing). Items carry no
+     * price. Posted totals, COD, declared values and item prices are overwritten.
      */
     protected function prepareForValidation(): void
     {
@@ -39,10 +40,11 @@ class ShipmentFormRequest extends FormRequest
         $isCod = ($payment['method'] ?? null) === 'cod';
         $insure = $this->boolean('insure');
         $items = self::normaliseItems($this->input('items'));
-        $total = self::itemsTotal(is_array($items) ? $items : []);
+        $value = self::normaliseValue($this->input('value'));
+        $valid = is_string($value) && preg_match(self::VALUE_PATTERN, $value) === 1 && bccomp($value, '0', 2) > 0;
 
-        $payment['cod_amount'] = $isCod && bccomp($total, '0', 2) > 0 ? $total : null;
-        $payment['declared_value'] = $insure ? $total : '0';
+        $payment['cod_amount'] = $isCod && $valid ? $value : null;
+        $payment['declared_value'] = $insure && $valid ? $value : '0';
         $payment['insure'] = $insure;
 
         $account = (string) $this->input('account_id');
@@ -50,6 +52,8 @@ class ShipmentFormRequest extends FormRequest
 
         $this->merge([
             'items' => $items,
+            'value' => $value,
+            'total' => $valid ? $value : null,
             'payment' => $payment,
             'account_id' => $account === '' ? null : $account,
             'client_reference' => $reference === '' ? null : $reference,
@@ -58,10 +62,7 @@ class ShipmentFormRequest extends FormRequest
         ]);
     }
 
-    /**
-     * Prices and quantities in the one shape the total and the rules both read: trimmed, no leading "+", and a price
-     * like ".5" or "5." written out as "0.50" / "5.00". Anything else is left for the rules to refuse.
-     */
+    /** Quantities in the one shape the rules read, and every item price dropped. */
     public static function normaliseItems(mixed $items): mixed
     {
         if (! is_array($items)) {
@@ -71,38 +72,28 @@ class ShipmentFormRequest extends FormRequest
             if (! is_array($item)) {
                 continue;
             }
-            foreach (['quantity', 'price'] as $field) {
-                if (is_string($item[$field] ?? null)) {
-                    $item[$field] = (string) preg_replace('/^\+/', '', trim($item[$field]));
-                }
+            if (is_string($item['quantity'] ?? null)) {
+                $item['quantity'] = (string) preg_replace('/^\+/', '', trim($item['quantity']));
             }
-            if (is_string($item['price'] ?? null) && preg_match('/^(\d*)\.(\d{0,2})$/', $item['price'], $m) && $m[1].$m[2] !== '') {
-                $item['price'] = ($m[1] === '' ? '0' : $m[1]).'.'.str_pad($m[2], 2, '0');
-            }
+            $item['price'] = null;
             $items[$n] = $item;
         }
 
         return $items;
     }
 
-    /**
-     * Σ quantity × price as a 2-decimal string, over normalised items. A row the total cannot read counts as 0, and
-     * the item rules (the same patterns) refuse it.
-     *
-     * @param  array<mixed>  $items
-     */
-    public static function itemsTotal(array $items): string
+    /** The Value trimmed, without a leading "+", and ".5" / "5." written out as "0.50" / "5.00". Anything else is left for the rules. */
+    public static function normaliseValue(mixed $value): mixed
     {
-        $total = '0.00';
-        foreach ($items as $item) {
-            $qty = trim((string) (is_array($item) ? ($item['quantity'] ?? '') : ''));
-            $price = trim((string) (is_array($item) ? ($item['price'] ?? '') : ''));
-            if (preg_match(self::QTY_PATTERN, $qty) && preg_match(self::PRICE_PATTERN, $price)) {
-                $total = bcadd($total, bcmul($qty, $price, 2), 2);
-            }
+        if (! is_string($value)) {
+            return $value;
+        }
+        $value = (string) preg_replace('/^\+/', '', trim($value));
+        if (preg_match('/^(\d*)\.(\d{0,2})$/', $value, $m) && $m[1].$m[2] !== '') {
+            return ($m[1] === '' ? '0' : $m[1]).'.'.str_pad($m[2], 2, '0');
         }
 
-        return $total;
+        return $value;
     }
 
     /** A posted address whose codes do not chain, or whose names are not the codes' names, is refused. */
@@ -122,9 +113,13 @@ class ShipmentFormRequest extends FormRequest
     /** @return array<string, mixed> */
     public function rules(): array
     {
-        $money = ['nullable', ...$this->money(), 'min:0'];
+        $payment = $this->paymentRules();
+        // COD collects the Value, which has its own rule and message.
+        $payment['payment.cod_amount'] = ['nullable', ...$this->money(), 'gt:0'];
 
         return [
+            'value' => ['required', 'string', 'regex:'.self::VALUE_PATTERN, 'numeric', 'gt:0', 'max:9999999999.99'],
+            'total' => ['nullable', ...$this->money(), 'gt:0'],
             'account_id' => ['required', 'string', 'max:30'],
             'client_reference' => ['nullable', 'string', 'max:64', 'regex:/^[^\x00-\x1F\x7F]+$/u'],
             'service' => ['nullable', 'string', 'max:64'],
@@ -134,8 +129,7 @@ class ShipmentFormRequest extends FormRequest
             'items.*' => ['required', 'array'],
             'items.*.name' => ['required', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:100000', 'regex:'.self::QTY_PATTERN],
-            'items.*.price' => [...$money, 'regex:'.self::PRICE_PATTERN],
-        ] + $this->parcelRules() + $this->paymentRules() + $this->pickupRules() + $this->recipientRules()
+        ] + $this->parcelRules() + $payment + $this->pickupRules() + $this->recipientRules()
             + ['parcel.weight_kg' => ['required', 'numeric', 'gt:0', 'max:1000']];
     }
 
@@ -154,8 +148,12 @@ class ShipmentFormRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'payment.cod_amount.required_if' => 'Add item prices.',
-            'items.*.price.regex' => 'Use a price like 120.50.',
+            'value.required' => 'Enter the parcel value.',
+            'value.string' => 'Enter the parcel value.',
+            'value.regex' => 'Enter the parcel value.',
+            'value.numeric' => 'Enter the parcel value.',
+            'value.gt' => 'Enter the parcel value.',
+            'value.max' => 'Enter the parcel value.',
             'items.*.quantity.regex' => 'Whole number.',
             '*.required' => 'Required.',
             '*.required_if' => 'Required.',

@@ -1,5 +1,5 @@
 // Money on the Add shipment form, in whole centavos (BigInt): never a float. The server recomputes all of it, after
-// the same normalisation and with the same patterns (ShipmentFormRequest::normaliseItems / QTY_PATTERN / PRICE_PATTERN).
+// the same normalisation and with the same patterns (ShipmentFormRequest::normaliseValue / QTY_PATTERN / VALUE_PATTERN).
 const QTY = /^\d{1,6}$/;
 const PRICE = /^\d{1,10}(\.\d{1,2})?$/;
 
@@ -22,11 +22,6 @@ export function cents(price) {
     return BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0'));
 }
 
-export function lineCents(row) {
-    const q = normaliseQuantity(row.quantity);
-    return QTY.test(q) ? BigInt(q) * cents(row.price) : 0n;
-}
-
 export function peso(value) {
     const whole = (value / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     return `₱${whole}.${(value % 100n).toString().padStart(2, '0')}`;
@@ -38,6 +33,7 @@ export function shipmentForm(config) {
         service: config.service,
         method: config.method,
         insure: config.insure,
+        value: config.value,
         rows: [],
         seq: 0,
 
@@ -59,7 +55,7 @@ export function shipmentForm(config) {
         },
 
         get totalCents() {
-            return this.rows.reduce((sum, row) => sum + lineCents(row), 0n);
+            return cents(this.value);
         },
 
         get total() {
@@ -73,16 +69,12 @@ export function shipmentForm(config) {
             }, 0);
         },
 
-        line(row) {
-            return peso(lineCents(row));
-        },
-
         make(row, errors = {}) {
-            return { key: ++this.seq, name: row.name, quantity: row.quantity, price: row.price, errors };
+            return { key: ++this.seq, name: row.name, quantity: row.quantity, errors };
         },
 
         add() {
-            this.rows.push(this.make({ name: '', quantity: '1', price: '' }));
+            this.rows.push(this.make({ name: '', quantity: '1' }));
         },
 
         remove(n) {

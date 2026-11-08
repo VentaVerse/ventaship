@@ -232,14 +232,34 @@ class ShipmentsController extends Controller
             'client_reference' => $s->client_reference,
             'insure' => (bool) ($options['insure'] ?? false),
             'recipient' => $recipient,
+            'value' => $this->valueOf($s),
             'items' => array_map(fn ($i) => [
                 'name' => (string) ($i['name'] ?? ''),
                 'quantity' => (string) ($i['quantity'] ?? '1'),
-                'price' => (string) ($i['price'] ?? ''),
             ], array_values((array) $s->items)),
             'parcel' => (array) ($options['parcel'] ?? []),
             'payment' => ['method' => $s->payment_method === 'cod' ? 'cod' : 'prepaid'],
         ];
+    }
+
+    /** The Value an older shipment opens with: its total, else its COD amount, else its item prices added up. */
+    private function valueOf(Shipment $s): string
+    {
+        foreach ([$s->total, $s->cod_amount] as $amount) {
+            if ($amount !== null && bccomp((string) $amount, '0', 2) > 0) {
+                return bcadd((string) $amount, '0', 2);
+            }
+        }
+
+        $sum = '0.00';
+        foreach ((array) $s->items as $item) {
+            $price = $item['price'] ?? null;
+            if (is_numeric($price)) {
+                $sum = bcadd($sum, bcmul((string) (int) ($item['quantity'] ?? 1), bcadd((string) $price, '0', 2), 2), 2);
+            }
+        }
+
+        return bccomp($sum, '0', 2) > 0 ? $sum : '';
     }
 
     private function expired(): RedirectResponse

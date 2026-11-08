@@ -63,7 +63,8 @@ class ShipmentCreateTest extends TestCase
             'client_reference' => '',
             'recipient' => ['first_name' => 'Juan', 'last_name' => 'Dela Cruz', 'phone' => '0917 123 4567', 'email' => '',
                 'address_1' => '1 Rizal St', 'address_2' => '', 'barangay' => 'Poblacion', 'city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1210'],
-            'items' => [['name' => 'Blue Tee', 'quantity' => '2', 'price' => '500.00']],
+            'items' => [['name' => 'Blue Tee', 'quantity' => '2']],
+            'value' => '1000.00',
             'parcel' => ['weight_kg' => '1.2', 'type' => '', 'length_cm' => '', 'width_cm' => '', 'height_cm' => ''],
             'payment' => ['method' => 'prepaid', 'cod_amount' => '', 'declared_value' => '1000'],
             'pickup' => ['contact_name' => 'Venta Warehouse', 'contact_phone' => '09181234567', 'address_1' => '5 Shaw Blvd', 'address_2' => '',
@@ -122,8 +123,8 @@ class ShipmentCreateTest extends TestCase
 
     public function test_cod_amount_required_only_for_cod(): void
     {
-        $this->post('/shipments', $this->form(['payment' => ['method' => 'cod'], 'items' => [['price' => '']]]))
-            ->assertSessionHasErrors(['payment.cod_amount' => 'Add item prices.']);
+        $this->post('/shipments', $this->form(['payment' => ['method' => 'cod'], 'value' => '']))
+            ->assertSessionHasErrors(['value' => 'Enter the parcel value.']);
         $this->assertSame(0, Shipment::query()->count());
 
         $this->post('/shipments', $this->form(['payment' => ['method' => 'cod', 'cod_amount' => '1290.00']]))
@@ -132,7 +133,7 @@ class ShipmentCreateTest extends TestCase
         $this->assertSame('cod', $s->payment_method);
         $this->assertSame('1000.00', $s->cod_amount);
 
-        $this->post('/shipments', $this->form(['payment' => ['method' => 'prepaid'], 'items' => [['price' => '']]]))
+        $this->post('/shipments', $this->form(['payment' => ['method' => 'prepaid']]))
             ->assertSessionHasNoErrors();
     }
 

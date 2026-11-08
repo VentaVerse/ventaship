@@ -29,29 +29,19 @@
     $v = fn (string $key, mixed $default = '') => old($key, data_get($prefill, $key, $default));
     $oldItems = $v('items');
     $rows = is_array($oldItems) && $oldItems !== []
-        ? array_map(fn ($i) => ['name' => (string) ($i['name'] ?? ''), 'quantity' => (string) ($i['quantity'] ?? '1'), 'price' => (string) ($i['price'] ?? '')], array_values($oldItems))
-        : [['name' => '', 'quantity' => '1', 'price' => '']];
+        ? array_map(fn ($i) => ['name' => (string) ($i['name'] ?? ''), 'quantity' => (string) ($i['quantity'] ?? '1')], array_values($oldItems))
+        : [['name' => '', 'quantity' => '1']];
     $itemErrors = [];
     foreach (array_keys($rows) as $n) {
-        foreach (['name', 'quantity', 'price'] as $f) {
+        foreach (['name', 'quantity'] as $f) {
             $itemErrors[$n][$f] = $errors->first("items.{$n}.{$f}");
         }
     }
-    $normal = ShipmentFormRequest::normaliseItems($rows);
-    $totalRaw = ShipmentFormRequest::itemsTotal($normal);
-    $total = Money::peso($totalRaw);
-    $count = array_sum(array_map(fn ($r) => ctype_digit($r['quantity']) ? (int) $r['quantity'] : 0, $normal));
+    $value = ShipmentFormRequest::normaliseValue((string) $v('value'));
+    $valueOk = preg_match('/^\d{1,10}(\.\d{1,2})?$/', $value) === 1;
+    $total = Money::peso($valueOk ? $value : '0');
+    $count = array_sum(array_map(fn ($r) => ctype_digit($r['quantity']) ? (int) $r['quantity'] : 0, $rows));
     $method = $v('payment.method', 'prepaid');
-    // COD collects the items total: when there is none (a refused post, or an older COD shipment saved without item
-    // prices), the first unpriced row says so too.
-    $needsPrices = $errors->first('payment.cod_amount') === 'Add item prices.'
-        || ($editing && ! session()->hasOldInput() && $method === 'cod' && bccomp($totalRaw, '0', 2) <= 0);
-    if ($needsPrices) {
-        $first = collect($normal)->search(fn ($r) => ShipmentFormRequest::itemsTotal([['quantity' => '1', 'price' => $r['price']]]) === '0.00');
-        $first = $first === false ? 0 : $first;
-        $itemErrors[$first]['price'] = $itemErrors[$first]['price'] ?: 'Add item prices.';
-    }
-    $codError = $errors->first('payment.cod_amount') ?: ($needsPrices ? 'Add item prices.' : '');
     $insure = filter_var($v('insure'), FILTER_VALIDATE_BOOLEAN);
     $usable = array_values(array_filter($tiles, fn ($t) => $t['id'] !== null));
     $accountId = $v('account_id', $usable[0]['id'] ?? '');
@@ -65,7 +55,7 @@
     $sizeOpen = collect(['type', 'length_cm', 'width_cm', 'height_cm'])->contains(fn ($k) => (string) $v('parcel.'.$k) !== '' || $errors->has('parcel.'.$k));
     $config = [
         'services' => $services, 'account' => $accountId, 'service' => (string) $v('service'), 'names' => $names,
-        'rows' => $rows, 'errors' => $itemErrors, 'method' => $method, 'insure' => $insure,
+        'rows' => $rows, 'errors' => $itemErrors, 'value' => (string) $v('value'), 'method' => $method, 'insure' => $insure,
     ];
 @endphp
 
@@ -129,7 +119,7 @@
             @error('items')<div class="fm-error">{{ $message }}</div>@enderror
             <div class="sh-items">
                 <div class="sh-items__head" aria-hidden="true">
-                    <span>Name</span><span>Qty</span><span>Unit price</span><span class="sh-num">Line total</span><span></span>
+                    <span>Name</span><span>Qty</span><span></span>
                 </div>
                 <template x-for="(row, n) in rows" :key="row.key">
                     <div class="sh-item">
@@ -143,12 +133,6 @@
                             <input class="x-input" type="number" min="1" step="1" :id="'f-items-' + n + '-quantity'" :name="'items[' + n + '][quantity]'" x-model="row.quantity" required>
                             <div class="fm-error" x-show="row.errors.quantity" x-text="row.errors.quantity"></div>
                         </div>
-                        <div class="fm-field">
-                            <label class="x-sr" :for="'f-items-' + n + '-price'">Unit price</label>
-                            <input class="x-input" type="text" inputmode="decimal" :id="'f-items-' + n + '-price'" :name="'items[' + n + '][price]'" x-model="row.price" autocomplete="off">
-                            <div class="fm-error" x-show="row.errors.price" x-text="row.errors.price"></div>
-                        </div>
-                        <div class="sh-item__line sh-num" x-text="line(row)"></div>
                         <x-ui.button size="sm" class="sh-item__remove" ::disabled="rows.length === 1" @click="remove(n)" aria-label="Remove item">
                             <x-ui.icon name="trash" size="14" />
                         </x-ui.button>
@@ -157,12 +141,16 @@
             </div>
             <div class="sh-items__foot">
                 <x-ui.button size="sm" @click="add()"><x-ui.icon name="plus" size="14" /> Add item</x-ui.button>
-                <div class="sh-total"><span>Total</span> <strong class="sh-num" x-text="total">{{ $total }}</strong></div>
             </div>
         </section>
 
         <section class="x-panel sh-sec" aria-labelledby="sec-payment">
             <h2 class="st-h" id="sec-payment">Payment</h2>
+            <div class="sh-grid">
+                <x-ui.field label="Value (₱)" name="value" :required="true">
+                    <x-ui.input type="text" inputmode="decimal" id="f-value" name="value" value="{{ $v('value') }}" x-model="value" required autocomplete="off" />
+                </x-ui.field>
+            </div>
             <div class="sh-seg" role="radiogroup" aria-labelledby="sec-payment">
                 @foreach(['cod' => 'COD', 'prepaid' => 'Prepaid'] as $value => $label)
                     <label class="sh-seg__opt">
@@ -179,7 +167,6 @@
                     <dd class="sh-num" x-text="total">{{ $total }}</dd>
                 </div>
             </dl>
-            @if($codError !== '')<div class="fm-error">{{ $codError }}</div>@endif
             <label class="sh-check">
                 <input type="hidden" name="insure" value="0">
                 <input type="checkbox" name="insure" value="1" x-model="insure" @checked($insure)>
