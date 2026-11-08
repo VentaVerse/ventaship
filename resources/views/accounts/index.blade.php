@@ -3,7 +3,9 @@
 @section('title', 'Courier accounts')
 
 @section('actions')
-    <x-ui.button variant="primary" :href="route('accounts.create')"><x-ui.icon name="plus" size="14" /> Connect courier</x-ui.button>
+    <div class="ac-actions">
+        <x-ui.button variant="primary" :href="route('accounts.create')"><x-ui.icon name="plus" size="14" /> Connect courier</x-ui.button>
+    </div>
 @endsection
 
 @section('content')
@@ -13,7 +15,7 @@
     $modeWords = ['staging' => 'Staging', 'uat' => 'UAT', 'production' => 'Live'];
 @endphp
 
-<section class="x-panel ac-list">
+<section class="x-panel ac-list ac-page">
     @foreach($accounts as $account)
         @php
             $name = Couriers::name($account->courier);
@@ -29,12 +31,13 @@
             </div>
             <div class="ac-row__badges">
                 <x-ui.badge tone="cool">{{ $modeWords[$account->mode] ?? ucfirst($account->mode) }}</x-ui.badge>
+                @if($account->status === 'inactive')
+                    <x-ui.badge>Inactive</x-ui.badge>
+                @endif
                 <x-ui.badge :tone="$check[1]">{{ $check[0] }}</x-ui.badge>
             </div>
             <div class="ac-row__act">
-                @if(Route::has('accounts.show'))
-                    <x-ui.button size="sm" :href="route('accounts.show', $account)" aria-label="Open {{ $name }} · {{ $account->label }}">Open</x-ui.button>
-                @endif
+                <x-ui.button size="sm" :href="route('accounts.show', $account)" aria-label="Open {{ $name }} · {{ $account->label }}">Open</x-ui.button>
             </div>
         </div>
     @endforeach

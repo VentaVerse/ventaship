@@ -29,6 +29,9 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::get('accounts', [CourierAccountsController::class, 'index'])->name('accounts.index');
     Route::get('accounts/new', [CourierAccountsController::class, 'create'])->name('accounts.create');
     Route::post('accounts', [CourierAccountsController::class, 'store'])->name('accounts.store');
+    Route::get('accounts/{account:public_id}', [CourierAccountsController::class, 'show'])->name('accounts.show');
+    Route::put('accounts/{account:public_id}', [CourierAccountsController::class, 'update'])->name('accounts.update');
+    Route::post('accounts/{account:public_id}/test', [CourierAccountsController::class, 'test'])->name('accounts.test');
     Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');
     Route::put('settings', [SettingsController::class, 'update'])->name('settings.update');
     Route::put('settings/account', [SettingsController::class, 'account'])->name('settings.account');

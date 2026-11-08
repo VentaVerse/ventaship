@@ -10,7 +10,7 @@
     $selected = old('courier', $courier);
 @endphp
 
-<section class="x-panel ac-form">
+<section class="x-panel ac-form ac-page">
     <form method="POST" action="{{ route('accounts.store') }}" novalidate>
         @csrf
         <div class="st-sec">

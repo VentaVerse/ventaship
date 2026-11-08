@@ -45,9 +45,80 @@
     }
 
     @media (max-width: 640px) {
-        .ac-row__act .x-btn {
+        .ac-page .x-btn,
+        .ac-actions .x-btn {
             min-height: 44px;
             min-width: 44px;
+        }
+    }
+
+    .ac-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    .ac-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 10px;
+        margin-bottom: 14px;
+    }
+
+    .ac-seg {
+        display: inline-flex;
+        justify-self: start;
+        border: 1px solid var(--bl-rule-2);
+        border-radius: 11px;
+        overflow: hidden;
+    }
+
+    .ac-seg__opt {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 36px;
+        padding: 0 14px;
+        background: var(--bl-sheet);
+        color: var(--bl-ink-2);
+        font: 600 13px/1 var(--font-sans);
+        cursor: pointer;
+    }
+
+    .ac-seg__opt + .ac-seg__opt {
+        border-left: 1px solid var(--bl-rule-2);
+    }
+
+    .ac-seg__input {
+        position: absolute;
+        inset: 0;
+        margin: 0;
+        opacity: 0;
+        cursor: pointer;
+    }
+
+    .ac-seg__tick {
+        display: none;
+    }
+
+    .ac-seg__input:checked ~ .ac-seg__tick {
+        display: inline-flex;
+    }
+
+    .ac-seg__opt:has(.ac-seg__input:checked) {
+        background: var(--bl-brand-w);
+        color: var(--bl-brand-link);
+    }
+
+    .ac-seg__opt:has(.ac-seg__input:focus-visible) {
+        outline: 2px solid var(--bl-brand);
+        outline-offset: -2px;
+    }
+
+    @media (max-width: 640px) {
+        .ac-seg__opt {
+            min-height: 44px;
         }
     }
 }

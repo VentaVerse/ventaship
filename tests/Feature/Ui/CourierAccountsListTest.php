@@ -6,7 +6,6 @@ use App\Models\Admin;
 use App\Models\AuditEntry;
 use App\Models\CourierAccount;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 class CourierAccountsListTest extends TestCase
@@ -16,12 +15,6 @@ class CourierAccountsListTest extends TestCase
     private function admin(): Admin
     {
         return Admin::query()->create(['name' => 'Ana', 'email' => 'ana@example.com', 'password' => 'correct-horse-battery']);
-    }
-
-    private function stubShow(): void
-    {
-        Route::middleware(['web', 'auth'])->get('/accounts/{account:public_id}', fn () => 'show')->name('accounts.show');
-        Route::getRoutes()->refreshNameLookups();
     }
 
     public function test_list_shows_accounts_and_connect_rows(): void
@@ -54,7 +47,6 @@ class CourierAccountsListTest extends TestCase
 
     public function test_create_form_and_store_redirects_to_show(): void
     {
-        $this->stubShow();
         $admin = $this->admin();
 
         $this->actingAs($admin)->get(route('accounts.create', ['courier' => 'spx']))->assertOk()
@@ -75,7 +67,6 @@ class CourierAccountsListTest extends TestCase
 
     public function test_store_validation_and_unique_default(): void
     {
-        $this->stubShow();
         $admin = $this->admin();
 
         $this->actingAs($admin)->from(route('accounts.create'))
@@ -89,16 +80,6 @@ class CourierAccountsListTest extends TestCase
 
         $this->assertSame(['B'], CourierAccount::query()->where('is_default', true)->pluck('label')->all());
         $this->assertSame(2, CourierAccount::query()->count());
-    }
-
-    public function test_store_without_show_route_goes_back_to_list(): void
-    {
-        if (Route::has('accounts.show')) {
-            $this->markTestSkipped('accounts.show exists.');
-        }
-
-        $this->actingAs($this->admin())->post(route('accounts.store'), ['courier' => 'lbc', 'label' => 'Main', 'mode' => 'staging'])
-            ->assertRedirect(route('accounts.index'))->assertSessionHas('status', 'Connected');
     }
 
     public function test_sidebar_shows_courier_accounts(): void

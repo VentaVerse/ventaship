@@ -172,6 +172,83 @@ class CourierAccounts
         });
     }
 
+    /** @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor */
+    public function rename(CourierAccount $account, string $label, ?array $actor = null): bool
+    {
+        $label = trim($label);
+        if ($label === '' || mb_strlen($label) > 255) {
+            throw new CourierAccountException('The label must be 1 to 255 characters.');
+        }
+        if ($label === $account->label) {
+            return false;
+        }
+        $from = $account->label;
+        $account->forceFill(['label' => $label])->save();
+        $this->audit($actor, 'courier_account.renamed', $account, ['label' => ['from' => $from, 'to' => $label]]);
+
+        return true;
+    }
+
+    /** Makes the account its courier's default (the others lose it), or clears it. @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor */
+    public function setDefault(CourierAccount $account, bool $default, ?array $actor = null): bool
+    {
+        return DB::transaction(function () use ($account, $default, $actor) {
+            $row = CourierAccount::query()->whereKey($account->getKey())->lockForUpdate()->firstOrFail();
+            if ((bool) $row->is_default === $default) {
+                return false;
+            }
+            if ($default) {
+                CourierAccount::withTrashed()
+                    ->where('default_slot', $row->courier)
+                    ->update(['default_slot' => null, 'is_default' => false]);
+            }
+            $row->forceFill(['is_default' => $default, 'default_slot' => $default ? $row->courier : null])->save();
+            $account->setRawAttributes($row->getAttributes(), true);
+            $this->audit($actor, 'courier_account.default_changed', $row, ['is_default' => $default]);
+
+            return true;
+        });
+    }
+
+    /** @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor */
+    public function setActive(CourierAccount $account, bool $active, ?array $actor = null): bool
+    {
+        $status = $active ? 'active' : 'inactive';
+        if ($account->status === $status) {
+            return false;
+        }
+        $from = $account->status;
+        $account->forceFill(['status' => $status])->save();
+        $this->audit($actor, 'courier_account.status_changed', $account, ['status' => ['from' => $from, 'to' => $status]]);
+
+        return true;
+    }
+
+    /** The per-account live-booking latch. LBC and SPX only. @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor */
+    public function setAllowLiveBooking(CourierAccount $account, bool $allow, ?array $actor = null): bool
+    {
+        if (! in_array($account->courier, ['lbc', 'spx'], true)) {
+            throw new CourierAccountException('Live booking is not switched per account for ' . $account->courier . '.');
+        }
+        if ((bool) $account->allow_live_booking === $allow) {
+            return false;
+        }
+        $account->forceFill(['allow_live_booking' => $allow])->save();
+        $this->audit($actor, 'courier_account.live_latch_changed', $account, ['allow_live_booking' => $allow]);
+
+        return true;
+    }
+
+    /** The settings schema for this account's courier. @return array<int, array<string, mixed>> */
+    public function schema(CourierAccount $account): array
+    {
+        if (! CourierRegistry::has((string) $account->courier)) {
+            throw new CourierAccountException('No such account.');
+        }
+
+        return $this->schemas[$account->courier] ??= CourierRegistry::describe($account->courier)->settingsSchema();
+    }
+
     /** @return array{ok: bool, message: string} */
     public function test(CourierAccount $account): array
     {
