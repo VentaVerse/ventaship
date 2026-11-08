@@ -50,7 +50,7 @@ class ShipmentFormRedesignTest extends TestCase
                 'address_1' => '1 Rizal St', 'city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1210'],
             'items' => [['name' => 'Blue Tee', 'quantity' => '2'], ['name' => 'Cap', 'quantity' => '3']],
             'value' => '1300.17',
-            'parcel' => ['weight_kg' => '1.2'],
+            'parcel' => ['type' => 'box'],
             'payment' => ['method' => 'prepaid'],
             'pickup' => ['contact_name' => 'Venta Warehouse', 'contact_phone' => '09181234567', 'address_1' => '5 Shaw Blvd',
                 'city' => 'Mandaluyong', 'state' => 'Metro Manila'],
@@ -219,7 +219,7 @@ class ShipmentFormRedesignTest extends TestCase
                 'address_1' => '1 Rizal St', 'city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1210'],
             'items' => [['name' => 'Blue Tee', 'quantity' => '2'], ['name' => 'Cap', 'quantity' => '3']],
             'value' => '1300.17',
-            'parcel' => ['weight_kg' => '1.2'],
+            'parcel' => ['type' => 'box'],
             'payment' => ['method' => 'cod'],
             'insure' => '1',
         ])->assertSessionHasNoErrors()->assertSessionHas('status', 'Booked · QX-E2E-1');

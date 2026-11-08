@@ -7,6 +7,7 @@ use App\Http\Controllers\Ui\PhAddressController;
 use App\Http\Controllers\Ui\PlatformsController;
 use App\Http\Controllers\Ui\SettingsController;
 use App\Http\Controllers\Ui\ShipmentActionsController;
+use App\Http\Controllers\Ui\ShipmentOptionsController;
 use App\Http\Controllers\Ui\ShipmentsController;
 use App\Http\Controllers\Webhooks\CourierWebhookController;
 use Illuminate\Support\Facades\Route;
@@ -22,6 +23,8 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::get('fulfillment/poll', [FulfillmentController::class, 'poll'])->name('fulfillment.poll');
     Route::get('shipments/new', [ShipmentsController::class, 'create'])->name('shipments.create');
     Route::post('shipments', [ShipmentsController::class, 'store'])->name('shipments.store');
+    Route::get('shipments/options/spx-slots', [ShipmentOptionsController::class, 'spxSlots'])->name('shipments.options.spx-slots');
+    Route::get('shipments/options/lbc-dates', [ShipmentOptionsController::class, 'lbcDates'])->name('shipments.options.lbc-dates');
     Route::get('shipments/{shipment:public_id}', [ShipmentsController::class, 'show'])->name('shipments.show');
     Route::get('shipments/{shipment:public_id}/edit', [ShipmentsController::class, 'edit'])->name('shipments.edit');
     Route::put('shipments/{shipment:public_id}', [ShipmentsController::class, 'update'])->name('shipments.update');

@@ -250,6 +250,121 @@
         accent-color: var(--bl-brand-btn);
     }
 
+    /* Courier-specific groups: a fieldset with no chrome; disabled when its courier is not chosen, so nothing posts. */
+    .sh-fs {
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        border: 0;
+    }
+
+    .sh-fs--group {
+        display: grid;
+        gap: 8px;
+    }
+
+    .sh-fs--group > legend {
+        float: left;
+        width: 100%;
+        margin-bottom: 8px;
+        padding: 0;
+    }
+
+    .sh-fs--group > legend + * {
+        clear: left;
+    }
+
+    .sh-grid--3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    /* Packaging tiles */
+    .sh-pack {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 8px;
+    }
+
+    .sh-fold[open] > .sh-pack {
+        margin-top: 8px;
+    }
+
+    .sh-pack__opt {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 44px;
+        padding: 8px 12px;
+        border: 1px solid var(--bl-rule-2);
+        border-radius: var(--bl-r-ctrl);
+        background: var(--bl-sheet);
+        font-size: 13px;
+        cursor: pointer;
+    }
+
+    .sh-pack__input {
+        position: absolute;
+        inset: 0;
+        margin: 0;
+        opacity: 0;
+        cursor: pointer;
+    }
+
+    .sh-pack__label {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .sh-pack__tick {
+        display: none;
+        flex: none;
+        margin-left: auto;
+        color: var(--bl-brand-link);
+    }
+
+    .sh-pack__opt:has(.sh-pack__input:checked) {
+        border-color: var(--bl-brand-btn);
+        box-shadow: inset 0 0 0 1px var(--bl-brand-btn);
+        background: var(--bl-brand-w);
+        font-weight: 600;
+    }
+
+    .sh-pack__opt:has(.sh-pack__input:checked) .sh-pack__tick {
+        display: inline-flex;
+    }
+
+    .sh-pack__opt:has(.sh-pack__input:focus-visible) {
+        outline: 2px solid var(--bl-brand);
+        outline-offset: 2px;
+    }
+
+    .sh-note {
+        height: auto;
+        min-height: calc(var(--bl-control-h) * 2);
+        padding: 8px 11px;
+        resize: vertical;
+    }
+
+    .sh-slots {
+        display: grid;
+        gap: 10px;
+        margin-top: 4px;
+    }
+
+    .sh-slots__row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .sh-slots__row .fm-error {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
     /* Parcel size fold-out */
     .sh-fold__toggle {
         display: inline-flex;
@@ -398,6 +513,7 @@
         }
 
         .sh-grid,
+        .sh-grid--3,
         .sh-grid--4,
         .sh-couriers {
             grid-template-columns: minmax(0, 1fr);
@@ -407,6 +523,10 @@
         .sh-check,
         .sh-fold__toggle {
             min-height: 44px;
+        }
+
+        .sh-pack {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
         .sh-items__head {

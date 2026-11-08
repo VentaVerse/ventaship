@@ -27,6 +27,49 @@ export function peso(value) {
     return `₱${whole}.${(value % 100n).toString().padStart(2, '0')}`;
 }
 
+// Courier-specific fields; the server keeps the same rules in App\Shipments\CourierFormFields.
+const OWN_PACKAGING = { spx: 'custom', lbc: '16' };
+const LBC_KILOBOX = ['165', '6', '164', '63', '7', '64'];
+const SHIPPING_PAYMENT_DEFAULT = { quadx: 'cash', spx: 'sender_pay' };
+const DEFAULT_CATEGORY = 'General merchandise';
+
+/** Which courier fields show for a courier and its chosen packaging. A hidden field is disabled, so it never posts. */
+export function courierFields(courier, parcel, sizeOpen = false) {
+    const own = OWN_PACKAGING[courier] !== undefined && OWN_PACKAGING[courier] === parcel;
+    const addSize = courier === 'lbc' && LBC_KILOBOX.includes(parcel);
+
+    return {
+        service: courier === 'quadx',
+        weight: courier === 'spx' || courier === 'lbc',
+        size: own || (addSize && sizeOpen),
+        sizeRequired: own,
+        addSize,
+        category: courier === 'spx',
+        shippingPayment: courier === 'quadx' || courier === 'spx',
+        handover: courier === 'spx',
+        pickupDate: courier === 'lbc',
+        note: courier === 'quadx' || courier === 'spx',
+    };
+}
+
+/** The courier choices after switching to another courier: that courier's defaults, nothing carried over. */
+export function courierReset(courier, { parcel, firstDate }) {
+    return {
+        parcel: parcel ?? '',
+        length: '',
+        width: '',
+        height: '',
+        sizeOpen: false,
+        shippingPayment: SHIPPING_PAYMENT_DEFAULT[courier] ?? '',
+        category: DEFAULT_CATEGORY,
+        handover: 'dropoff',
+        slot: '',
+        slots: [],
+        slotState: 'idle',
+        pickupDate: firstDate ?? '',
+    };
+}
+
 export function shipmentForm(config) {
     return {
         account: config.account,
@@ -36,6 +79,8 @@ export function shipmentForm(config) {
         value: config.value,
         rows: [],
         seq: 0,
+        ...config.courier,
+        slotSeq: 0,
 
         init() {
             this.rows = config.rows.map((row, n) => this.make(row, config.errors[n] ?? {}));
@@ -43,7 +88,54 @@ export function shipmentForm(config) {
                 if (!this.serviceOptions.some((o) => o.value === this.service)) {
                     this.service = '';
                 }
+                this.slotSeq++;
+                Object.assign(this, courierReset(this.courier, {
+                    parcel: config.defaultParcels[this.account] ?? null,
+                    firstDate: config.firstDate,
+                }));
             });
+        },
+
+        get courier() {
+            return config.couriers[this.account] ?? '';
+        },
+
+        get show() {
+            return courierFields(this.courier, this.parcel, this.sizeOpen);
+        },
+
+        async loadSlots() {
+            const seq = ++this.slotSeq;
+            this.slotState = 'loading';
+            const params = new URLSearchParams({ account_id: this.account });
+            for (const [key, value] of new FormData(this.$root)) {
+                if (key.startsWith('pickup[') && typeof value === 'string') {
+                    params.append(key, value);
+                }
+            }
+            try {
+                const res = await fetch(`${config.slotsUrl}?${params}`, {
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                });
+                const body = await res.json().catch(() => ({}));
+                if (seq !== this.slotSeq) {
+                    return;
+                }
+                if (!res.ok || !Array.isArray(body.slots) || body.slots.length === 0) {
+                    this.slotState = 'error';
+                    return;
+                }
+                this.slots = body.slots;
+                if (!this.slots.some((o) => o.value === this.slot)) {
+                    this.slot = this.slots[0].value;
+                }
+                this.slotState = 'ready';
+            } catch (e) {
+                if (seq === this.slotSeq) {
+                    this.slotState = 'error';
+                }
+            }
         },
 
         get serviceOptions() {

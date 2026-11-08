@@ -11,6 +11,7 @@ use App\Http\Requests\Ui\ShipmentFormRequest;
 use App\Models\AuditEntry;
 use App\Models\CourierAccount;
 use App\Models\Shipment;
+use App\Shipments\CourierFormFields;
 use App\Shipments\ShipmentCreator;
 use App\Support\Settings;
 use Closure;
@@ -209,15 +210,33 @@ class ShipmentsController extends Controller
             ->withErrors(['shipment' => 'Only unbooked manual shipments can be changed.']);
     }
 
-    /** @param  Collection<int, CourierAccount>  $accounts @return array<string, list<array{value: string, label: string}>> */
+    /** Only QuadX asks for a pickup schedule. @param  Collection<int, CourierAccount>  $accounts @return array<string, list<array{value: string, label: string}>> */
     private function servicesFor(Collection $accounts): array
     {
         $services = [];
         foreach ($accounts as $account) {
-            $services[$account->public_id] = $this->services((string) $account->courier);
+            $services[$account->public_id] = $account->courier === 'quadx' ? $this->services('quadx') : [];
         }
 
         return $services;
+    }
+
+    /**
+     * Per account: its courier, packaging tiles and default packaging.
+     *
+     * @param  Collection<int, CourierAccount>  $accounts
+     * @return array{couriers: array<string, string>, parcels: array<string, list<array{value: string, label: string, more: bool}>>, defaultParcels: array<string, ?string>}
+     */
+    private function courierFieldsFor(Collection $accounts): array
+    {
+        $out = ['couriers' => [], 'parcels' => [], 'defaultParcels' => []];
+        foreach ($accounts as $account) {
+            $out['couriers'][$account->public_id] = (string) $account->courier;
+            $out['parcels'][$account->public_id] = CourierFormFields::parcelOptions($account);
+            $out['defaultParcels'][$account->public_id] = CourierFormFields::defaultParcel($account);
+        }
+
+        return $out;
     }
 
     /** @return array<string, mixed> the form's field values for a stored shipment */
@@ -238,7 +257,14 @@ class ShipmentsController extends Controller
                 'quantity' => (string) ($i['quantity'] ?? '1'),
             ], array_values((array) $s->items)),
             'parcel' => (array) ($options['parcel'] ?? []),
-            'payment' => ['method' => $s->payment_method === 'cod' ? 'cod' : 'prepaid'],
+            'payment' => [
+                'method' => $s->payment_method === 'cod' ? 'cod' : 'prepaid',
+                'shipping_payment' => $options['shipping_payment'] ?? null,
+            ],
+            'handover' => ($options['pickup_slot'] ?? null) !== null && $s->courier === 'spx' ? 'pickup' : 'dropoff',
+            'pickup_slot' => $options['pickup_slot'] ?? null,
+            'pickup_date' => $options['pickup_date'] ?? null,
+            'note' => $s->courier_note,
         ];
     }
 
@@ -357,6 +383,8 @@ class ShipmentsController extends Controller
         return view('shipments.form', [
             'tiles' => $tiles,
             'services' => $this->servicesFor($usable),
+            'fields' => $this->courierFieldsFor($usable),
+            'lbcDates' => CourierFormFields::lbcDates(),
             'sender' => $editing === null ? $settings->pickup() : ((array) $editing->pickup ?: null),
             'token' => $token,
             'editing' => $editing !== null,

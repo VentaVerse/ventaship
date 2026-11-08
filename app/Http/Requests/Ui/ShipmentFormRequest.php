@@ -3,9 +3,12 @@
 namespace App\Http\Requests\Ui;
 
 use App\Http\Requests\Api\V1\Concerns\ValidatesShipmentParts;
+use App\Models\CourierAccount;
 use App\Models\Shipment;
+use App\Shipments\CourierFormFields;
 use App\Support\PhAddress;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 /**
@@ -23,6 +26,11 @@ class ShipmentFormRequest extends FormRequest
     private const QTY_PATTERN = '/^\d{1,6}$/';
 
     private const VALUE_PATTERN = '/^\d{1,10}(\.\d{1,2})?$/';
+
+    private const SIZE_KEYS = ['length_cm', 'width_cm', 'height_cm'];
+
+    /** The chosen account, looked up once; its courier decides which courier fields are kept. */
+    private ?CourierAccount $courierAccount = null;
 
     public function authorize(): bool
     {
@@ -50,7 +58,9 @@ class ShipmentFormRequest extends FormRequest
         $account = (string) $this->input('account_id');
         $reference = trim((string) $this->input('client_reference'));
 
-        $this->merge([
+        $this->courierAccount = $account === '' ? null : CourierAccount::query()->where('public_id', $account)->first();
+
+        $this->replace($this->courierInput(array_merge($this->all(), [
             'items' => $items,
             'value' => $value,
             'total' => $valid ? $value : null,
@@ -59,7 +69,123 @@ class ShipmentFormRequest extends FormRequest
             'client_reference' => $reference === '' ? null : $reference,
             'insure' => $insure,
             'submit' => true,
-        ]);
+        ])));
+    }
+
+    private function courier(): string
+    {
+        return (string) $this->courierAccount?->courier;
+    }
+
+    /**
+     * Only the chosen courier's fields are kept; the others are dropped before validation, so they are neither
+     * validated nor stored. Who pays shipping, the SPX item category and the SPX handover fall back to their defaults.
+     *
+     * @param  array<string, mixed>  $input
+     * @return array<string, mixed>
+     */
+    private function courierInput(array $input): array
+    {
+        $courier = $this->courier();
+        $parcel = is_array($input['parcel'] ?? null) ? $input['parcel'] : [];
+        $type = is_string($parcel['type'] ?? null) ? trim($parcel['type']) : ($parcel['type'] ?? null);
+        $parcel['type'] = $type === '' ? null : $type;
+
+        $keep = ['type'];
+        if (in_array($courier, ['spx', 'lbc'], true)) {
+            $keep[] = 'weight_kg';
+        }
+        $size = CourierFormFields::sizeRule($courier, is_string($parcel['type']) ? $parcel['type'] : null);
+        if ($size !== null) {
+            array_push($keep, ...self::SIZE_KEYS);
+        }
+        if ($courier === 'spx') {
+            $keep[] = 'category';
+            $parcel['category'] = self::blank($parcel['category'] ?? null) ? CourierFormFields::DEFAULT_CATEGORY : $parcel['category'];
+        }
+        $parcel = array_intersect_key($parcel, array_flip($keep));
+        // An optional size left blank is no size.
+        if ($size === 'optional' && collect(self::SIZE_KEYS)->every(fn ($k) => self::blank($parcel[$k] ?? null))) {
+            $parcel = array_diff_key($parcel, array_flip(self::SIZE_KEYS));
+        }
+        $input['parcel'] = $parcel;
+
+        $payment = is_array($input['payment'] ?? null) ? $input['payment'] : [];
+        $paysDefault = CourierFormFields::defaultShippingPayment($courier);
+        if ($paysDefault === null) {
+            unset($payment['shipping_payment']);
+        } elseif (self::blank($payment['shipping_payment'] ?? null)) {
+            $payment['shipping_payment'] = $paysDefault;
+        }
+        $input['payment'] = $payment;
+
+        if ($courier !== 'quadx') {
+            unset($input['service']);
+        }
+        if (! in_array($courier, ['quadx', 'spx'], true)) {
+            unset($input['note']);
+        } elseif (self::blank($input['note'] ?? null)) {
+            $input['note'] = null;
+        }
+        if ($courier === 'spx') {
+            $input['handover'] = self::blank($input['handover'] ?? null) ? 'dropoff' : $input['handover'];
+        } else {
+            unset($input['handover']);
+        }
+        if ($courier !== 'spx' || ($input['handover'] ?? null) !== 'pickup') {
+            unset($input['pickup_slot']);
+        }
+        if ($courier !== 'lbc') {
+            unset($input['pickup_date']);
+        }
+
+        return $input;
+    }
+
+    private static function blank(mixed $value): bool
+    {
+        return $value === null || (is_string($value) && trim($value) === '');
+    }
+
+    /** @return array<string, mixed> the rules for the chosen courier's own fields */
+    private function courierRules(): array
+    {
+        $courier = $this->courier();
+        if ($this->courierAccount === null) {
+            return [];
+        }
+
+        $number = ['numeric', 'gt:0', 'max:1000'];
+        $rules = ['parcel.type' => ['required', 'string', Rule::in(CourierFormFields::parcelValues($this->courierAccount))]];
+        if (in_array($courier, ['spx', 'lbc'], true)) {
+            $rules['parcel.weight_kg'] = ['required', ...$number];
+        }
+        $type = $this->input('parcel.type');
+        $size = CourierFormFields::sizeRule($courier, is_string($type) ? $type : null);
+        foreach (self::SIZE_KEYS as $key) {
+            $others = implode(',', array_map(fn ($k) => "parcel.{$k}", array_diff(self::SIZE_KEYS, [$key])));
+            if ($size === 'required') {
+                $rules["parcel.{$key}"] = ['required', ...$number];
+            } elseif ($size === 'optional') {
+                $rules["parcel.{$key}"] = ['nullable', "required_with:{$others}", ...$number];
+            }
+        }
+        if (isset(CourierFormFields::SHIPPING_PAYMENT[$courier])) {
+            $rules['payment.shipping_payment'] = ['required', 'string', Rule::in(array_keys(CourierFormFields::SHIPPING_PAYMENT[$courier]))];
+        }
+        if (in_array($courier, ['quadx', 'spx'], true)) {
+            $rules['note'] = ['nullable', 'string', 'max:'.CourierFormFields::NOTE_MAX];
+        }
+        if ($courier === 'spx') {
+            $rules['parcel.category'] = ['required', 'string', Rule::in(CourierFormFields::categories())];
+            $rules['handover'] = ['required', 'string', Rule::in(array_keys(CourierFormFields::HANDOVER))];
+            $rules['pickup_slot'] = ['required_if:handover,pickup', 'nullable', 'string', 'max:255'];
+        }
+        if ($courier === 'lbc') {
+            $rules['pickup_date'] = ['required', 'string', Rule::in(array_column(CourierFormFields::lbcDates(), 'value'))];
+        }
+
+        return $rules;
     }
 
     /** Quantities in the one shape the rules read, and every item price dropped. */
@@ -117,7 +243,7 @@ class ShipmentFormRequest extends FormRequest
         // COD collects the Value, which has its own rule and message.
         $payment['payment.cod_amount'] = ['nullable', ...$this->money(), 'gt:0'];
 
-        return [
+        return $this->courierRules() + [
             'value' => ['required', 'string', 'regex:'.self::VALUE_PATTERN, 'numeric', 'gt:0', 'max:9999999999.99'],
             'total' => ['nullable', ...$this->money(), 'gt:0'],
             'account_id' => ['required', 'string', 'max:30'],
@@ -129,8 +255,7 @@ class ShipmentFormRequest extends FormRequest
             'items.*' => ['required', 'array'],
             'items.*.name' => ['required', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:100000', 'regex:'.self::QTY_PATTERN],
-        ] + $this->parcelRules() + $payment + $this->pickupRules() + $this->recipientRules()
-            + ['parcel.weight_kg' => ['required', 'numeric', 'gt:0', 'max:1000']];
+        ] + $this->parcelRules() + $payment + $this->pickupRules() + $this->recipientRules();
     }
 
     /** The validated input, with the order reference generated when it was left blank (unless an edit keeps its own). @return array<string, mixed> */
@@ -155,6 +280,12 @@ class ShipmentFormRequest extends FormRequest
             'value.gt' => 'Enter the parcel value.',
             'value.max' => 'Enter the parcel value.',
             'items.*.quantity.regex' => 'Whole number.',
+            'parcel.type.required' => 'Choose the packaging.',
+            'parcel.type.in' => 'Choose the packaging.',
+            'pickup_slot.required_if' => 'Choose a time.',
+            'pickup_date.required' => 'Choose a date.',
+            'pickup_date.in' => 'Choose a date.',
+            '*.required_with' => 'Required.',
             '*.required' => 'Required.',
             '*.required_if' => 'Required.',
             '*.max' => 'Too long.',

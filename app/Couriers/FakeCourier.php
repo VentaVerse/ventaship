@@ -46,12 +46,18 @@ class FakeCourier implements Courier
     /** @var array<string, mixed> extra keys merged into a successful createShipment() answer */
     private array $bookingExtra = [];
 
+    /** @var list<array{value: string, label: string}> */
+    private array $parcelOptions = [['value' => 'box', 'label' => 'Box']];
+
+    /** @var list<array{value: string, label: string}> */
+    private array $pickupSlots = [];
+
     /** The registry signature, so the fake can stand in wherever a real courier is built. */
     public function __construct(?CourierAccount $account = null, ?AccountSettings $settings = null) {}
 
     public static function make(string $key = 'quadx'): static
     {
-        $fake = new static();
+        $fake = new static;
         $fake->key = $key;
 
         return $fake;
@@ -168,7 +174,23 @@ class FakeCourier implements Courier
 
     public function getParcelOptions(): array
     {
-        return [['value' => 'box', 'label' => 'Box']];
+        return $this->parcelOptions;
+    }
+
+    /** @param  list<array{value: string, label: string}>  $options  what getParcelOptions() answers */
+    public function offersParcels(array $options): self
+    {
+        $this->parcelOptions = array_values($options);
+
+        return $this;
+    }
+
+    /** @param  list<array{value: string, label: string}>  $slots  what getPickupSlots() answers */
+    public function slots(array $slots): self
+    {
+        $this->pickupSlots = array_values($slots);
+
+        return $this;
     }
 
     public function getShippingPaymentOptions(): array
@@ -266,7 +288,7 @@ class FakeCourier implements Courier
     {
         $this->record(__FUNCTION__, [$order]);
 
-        return [];
+        return $this->pickupSlots;
     }
 
     /** With label() scripted: `content` carries the PDF bytes and `url` a placeholder that is never fetched. */
@@ -286,7 +308,7 @@ class FakeCourier implements Courier
 
         return [
             'success' => true,
-            'url' => 'https://fake-courier.invalid/labels/' . rawurlencode($trackingNumber) . '.pdf',
+            'url' => 'https://fake-courier.invalid/labels/'.rawurlencode($trackingNumber).'.pdf',
             'content' => $this->pdf,
         ];
     }
