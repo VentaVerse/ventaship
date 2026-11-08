@@ -36,6 +36,9 @@ class CourierAccounts
     /** The longest setting value accepted. Providers issue keys and tokens of very different shapes. */
     public const MAX_VALUE_LENGTH = 2048;
 
+    /** @var array<string, array<int, array<string, mixed>>> settings schema per courier */
+    private array $schemas = [];
+
     public function __construct(private readonly TrackingNumberSeriesService $series) {}
 
     /** @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor */
@@ -138,16 +141,29 @@ class CourierAccounts
         return DB::transaction(function () use ($account, $mode, $actor) {
             $row = CourierAccount::query()->whereKey($account->getKey())->lockForUpdate()->firstOrFail();
             $from = (string) $row->mode;
-            if ($from === $mode) {
-                return null;
+            $changed = $from !== $mode;
+            if ($changed) {
+                $row->forceFill(['mode' => $mode])->save();
+                $account->setRawAttributes($row->getAttributes(), true);
             }
 
-            $row->forceFill(['mode' => $mode])->save();
-            $account->setRawAttributes($row->getAttributes(), true);
-
             if ($row->courier === 'lbc') {
-                // The key set follows the mode; the other mode's keys stay stored.
-                AccountSettings::for($row)->write('lbc_mode', $mode === 'production' ? 'live' : 'test');
+                // The key set follows the mode (also when the mode is unchanged but the key set drifted);
+                // the other mode's keys stay stored.
+                $keySet = $mode === 'production' ? 'live' : 'test';
+                $settings = AccountSettings::for($row);
+                if ($settings->read('lbc_mode') !== $keySet) {
+                    $settings->write('lbc_mode', $keySet);
+                    $this->attribute($actor, AuditEntry::query()
+                        ->where('action', 'courier_account.setting_changed')
+                        ->where('subject_id', $row->public_id)
+                        ->where('changes->key', 'lbc_mode')
+                        ->latest('id')->first());
+                }
+            }
+
+            if (! $changed) {
+                return null;
             }
 
             $this->audit($actor, 'courier_account.mode_changed', $row, ['mode' => ['from' => $from, 'to' => $mode]]);
@@ -244,7 +260,8 @@ class CourierAccounts
         if (! CourierRegistry::has((string) $account->courier)) {
             throw new CourierAccountException('No such account.');
         }
-        $field = collect(CourierRegistry::describe($account->courier)->settingsSchema())->firstWhere('key', $key);
+        $this->schemas[$account->courier] ??= CourierRegistry::describe($account->courier)->settingsSchema();
+        $field = collect($this->schemas[$account->courier])->firstWhere('key', $key);
         if ($field === null) {
             throw new CourierAccountException("Unknown setting for {$account->courier}.");
         }

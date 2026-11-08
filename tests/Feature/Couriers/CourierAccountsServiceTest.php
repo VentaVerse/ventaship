@@ -110,11 +110,25 @@ class CourierAccountsServiceTest extends TestCase
         $this->assertSame('keep-me-1234', AccountSettings::for($account)->secret('lbc_test_api_key'));
         $this->assertSame(1, AuditEntry::query()->where('action', 'courier_account.mode_changed')->where('actor_id', '7')->count());
 
+        $keyRow = AuditEntry::query()->where('action', 'courier_account.setting_changed')->where('changes->key', 'lbc_mode')->latest('id')->first();
+        $this->assertSame(['admin', '7', '10.0.0.9'], [$keyRow->actor_type, $keyRow->actor_id, $keyRow->ip]);
+
         $this->service()->setMode($account->fresh(), 'staging');
         $this->assertSame('test', AccountSettings::for($account)->read('lbc_mode'));
 
         $this->expectException(CourierAccountException::class);
         $this->service()->setMode($account->fresh(), 'uat');
+    }
+
+    public function test_set_mode_unchanged_resyncs_drifted_lbc_key_set(): void
+    {
+        $account = CourierAccount::factory()->create(['courier' => 'lbc', 'mode' => 'production']);
+        AccountSettings::for($account)->write('lbc_mode', 'test');
+
+        $this->assertNull($this->service()->setMode($account, 'production', self::ACTOR));
+
+        $this->assertSame('live', AccountSettings::for($account)->read('lbc_mode'));
+        $this->assertSame(0, AuditEntry::query()->where('action', 'courier_account.mode_changed')->count());
     }
 
     public function test_test_connection_timeout_is_failure_not_exception(): void
