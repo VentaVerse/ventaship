@@ -27,14 +27,15 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::post('shipments/book', [ShipmentActionsController::class, 'book'])->name('shipments.book');
     Route::post('shipments/cancel', [ShipmentActionsController::class, 'cancel'])->name('shipments.cancel');
     Route::get('accounts', [CourierAccountsController::class, 'index'])->name('accounts.index');
-    Route::get('accounts/new', [CourierAccountsController::class, 'create'])->name('accounts.create');
-    Route::post('accounts', [CourierAccountsController::class, 'store'])->name('accounts.store');
-    Route::get('accounts/{account:public_id}', [CourierAccountsController::class, 'show'])->name('accounts.show');
-    Route::put('accounts/{account:public_id}', [CourierAccountsController::class, 'update'])->name('accounts.update');
-    Route::post('accounts/{account:public_id}/test', [CourierAccountsController::class, 'test'])->name('accounts.test');
-    Route::post('accounts/{account:public_id}/series', [CourierAccountsController::class, 'series'])->name('accounts.series');
-    Route::post('accounts/{account:public_id}/secrets/{key}/reveal', [CourierAccountsController::class, 'reveal'])
-        ->where('key', '[a-z0-9_]+')->middleware('throttle:secret-reveals')->name('accounts.reveal');
+    Route::prefix('accounts/{courier}')->where(['courier' => 'quadx|spx|lbc'])->group(function () {
+        Route::get('/', [CourierAccountsController::class, 'show'])->name('accounts.show');
+        Route::put('/', [CourierAccountsController::class, 'update'])->name('accounts.update');
+        Route::post('setup', [CourierAccountsController::class, 'setup'])->name('accounts.setup');
+        Route::post('test', [CourierAccountsController::class, 'test'])->name('accounts.test');
+        Route::post('series', [CourierAccountsController::class, 'series'])->name('accounts.series');
+        Route::post('secrets/{key}/reveal', [CourierAccountsController::class, 'reveal'])
+            ->where('key', '[a-z0-9_]+')->middleware('throttle:secret-reveals')->name('accounts.reveal');
+    });
     Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');
     Route::put('settings', [SettingsController::class, 'update'])->name('settings.update');
     Route::put('settings/account', [SettingsController::class, 'account'])->name('settings.account');

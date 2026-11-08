@@ -31,12 +31,12 @@
         <div class="fl-card__off">
             @if($card['inactive'])
                 <span class="fl-card__none">Inactive</span>
-                <x-ui.button size="sm" :href="route('accounts.show', $card['inactive'])">Open</x-ui.button>
+                <x-ui.button size="sm" :href="route('accounts.show', $card['courier'])">Open</x-ui.button>
             @else
                 <span class="fl-card__none">No account</span>
             @endif
-            @if(! $card['inactive'] && Route::has('accounts.create'))
-                <x-ui.button size="sm" :href="route('accounts.create', ['courier' => $card['courier']])">Connect {{ $card['name'] }}</x-ui.button>
+            @if(! $card['inactive'])
+                <x-ui.button size="sm" :href="route('accounts.show', $card['courier'])">Connect {{ $card['name'] }}</x-ui.button>
             @endif
         </div>
     </article>

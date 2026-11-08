@@ -4,14 +4,16 @@
     use App\Fulfillment\Couriers;
 
     $modeWords = ['staging' => 'Staging', 'uat' => 'UAT', 'production' => 'Live'];
-    $check = $account->last_check_ok === null ? ['Not checked', 'mute'] : ($account->last_check_ok ? ['Connected', 'good'] : ['Check failed', 'bad']);
+    $name = Couriers::name($courier);
+    $check = $account && $account->last_check_ok !== null ? ($account->last_check_ok ? ['Connected', 'good'] : ['Check failed', 'bad']) : ['Not checked', 'mute'];
 @endphp
 
 @section('width', 'form')
-@section('title', Couriers::name($account->courier) . ' · ' . $account->label)
+@section('title', $name)
 
-@section('title_lead')<x-courier-tile :courier="$account->courier" class="ac-title-tile" />@endsection
+@section('title_lead')<x-courier-tile :courier="$courier" class="ac-title-tile" />@endsection
 
+@if($account)
 @section('title_after')
     <span class="ac-title-badges">
         <x-ui.badge tone="cool">{{ $modeWords[$account->mode] ?? ucfirst($account->mode) }}</x-ui.badge>
@@ -21,37 +23,61 @@
         @endif
     </span>
 @endsection
+@endif
 
 @section('crumb')<a href="{{ route('accounts.index') }}">Courier accounts</a>@endsection
 
+@if($account)
 @section('actions')
-    <form method="POST" action="{{ route('accounts.test', $account) }}" class="ac-actions">
+    <form method="POST" action="{{ route('accounts.test', $courier) }}" class="ac-actions">
         @csrf
         <x-ui.button type="submit">Test connection</x-ui.button>
     </form>
 @endsection
+@endif
 
 @section('content')
+@if(! $account)
+<section class="x-panel ac-form ac-page">
+    <form method="POST" action="{{ route('accounts.setup', $courier) }}" novalidate>
+        @csrf
+        <div class="st-sec">
+            <div class="st-row">
+                <div class="fm-field">
+                    <span class="fm-label" id="account-mode-label">Mode</span>
+                    <div class="ac-seg" id="account-mode" role="radiogroup" aria-labelledby="account-mode-label">
+                        @foreach($modes as $m)
+                            <label class="ac-seg__opt">
+                                <input type="radio" class="ac-seg__input" name="mode" value="{{ $m }}" @checked(old('mode', 'staging') === $m)>
+                                <span class="ac-seg__tick" aria-hidden="true"><x-ui.icon name="check" size="14" /></span>
+                                <span>{{ $modeWords[$m] ?? ucfirst($m) }}</span>
+                            </label>
+                        @endforeach
+                    </div>
+                    @error('mode')<div class="fm-error">{{ $message }}</div>@enderror
+                </div>
+            </div>
+        </div>
+        <div class="st-bar">
+            <x-ui.button variant="primary" type="submit">Set up</x-ui.button>
+        </div>
+    </form>
+</section>
+@else
 @php
-    $name = Couriers::name($account->courier);
     $mode = old('mode', $account->mode);
     $isOn = fn (string $key, bool $current) => old($key, $current ? '1' : '0') === '1';
 @endphp
 
 
 <section class="x-panel ac-page">
-    <form method="POST" action="{{ route('accounts.update', $account) }}" novalidate
+    <form method="POST" action="{{ route('accounts.update', $courier) }}" novalidate
           x-data="{ mode: @js($mode), modeWords: @js($modeWords), status: '' }"
           x-on:credential-status="status = ''; $nextTick(() => status = $event.detail)">
         @csrf
         @method('PUT')
         <div class="st-sec">
             <h2 class="st-h">Account</h2>
-            <div class="st-row">
-                <x-ui.field label="Name" name="label">
-                    <x-ui.input id="f-label" name="label" class="st-ctl" value="{{ old('label', $account->label) }}" maxlength="255" autocomplete="off" />
-                </x-ui.field>
-            </div>
             <div class="st-row">
                 <div class="fm-field">
                     <span class="fm-label" id="account-mode-label">Mode</span>
@@ -113,7 +139,7 @@
                                     :account="$account"
                                     :key="$k['key']"
                                     :masked="$k['masked']"
-                                    :revealUrl="route('accounts.reveal', [$account, $k['key']])"
+                                    :revealUrl="route('accounts.reveal', [$courier, $k['key']])"
                                     :context="$groupMode === null ? null : ($modeWords[$groupMode] ?? ucfirst($groupMode))"
                                     :id="'f-key-' . $k['key']" />
                             </div>
@@ -151,7 +177,7 @@
                 <h2 class="st-h">Webhook</h2>
                 <div class="st-row">
                     @if($webhook['masked'])
-                        <x-ui.webhook-url :label="'Address for ' . $name" :masked="$webhook['masked']" :revealUrl="route('accounts.reveal', [$account, 'webhook_url'])" />
+                        <x-ui.webhook-url :label="'Address for ' . $name" :masked="$webhook['masked']" :revealUrl="route('accounts.reveal', [$courier, 'webhook_url'])" />
                     @else
                         <div class="fm-field">
                             <span class="fm-label">Address for {{ $name }}</span>
@@ -212,12 +238,13 @@
         <p class="x-sr" aria-live="polite" x-text="status"></p>
 
         <div class="st-bar">
-            <x-ui.button :href="route('accounts.show', $account)">Discard</x-ui.button>
+            <x-ui.button :href="route('accounts.show', $courier)">Discard</x-ui.button>
             <x-ui.button variant="primary" type="submit">Save</x-ui.button>
         </div>
     </form>
     @if($blocks !== null)
-        <form id="series-form" method="POST" action="{{ route('accounts.series', $account) }}" novalidate>@csrf</form>
+        <form id="series-form" method="POST" action="{{ route('accounts.series', $courier) }}" novalidate>@csrf</form>
     @endif
 </section>
+@endif
 @endsection

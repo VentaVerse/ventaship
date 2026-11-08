@@ -7,7 +7,7 @@
 --}}
 @php
     $id ??= 'cred-' . str_replace('_', '-', $key);
-    $revealUrl ??= $account ? route('accounts.reveal', [$account, $key]) : null;
+    $revealUrl ??= $account ? route('accounts.reveal', [$account->courier, $key]) : null;
     $isSet = $masked !== null;
     $length = (int) ($masked['length'] ?? 0);
     // A short value would be mostly given away by its last 4 characters: dots only.

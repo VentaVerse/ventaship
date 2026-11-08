@@ -59,7 +59,7 @@ class LayoutWidthTest extends TestCase
 
         $urls = [
             '/settings',
-            route('accounts.show', $account),
+            route('accounts.show', $account->courier),
             route('shipments.create'),
             route('shipments.show', $shipment),
         ];

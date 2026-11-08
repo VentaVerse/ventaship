@@ -57,7 +57,7 @@ class CourierAccountKeysTest extends TestCase
     /** @return array<string, mixed> */
     private function form(CourierAccount $account, array $extra = []): array
     {
-        return ['label' => $account->label, 'mode' => $account->mode, 'default' => '0', 'active' => '1', ...$extra];
+        return ['mode' => $account->mode, 'default' => '0', 'active' => '1', ...$extra];
     }
 
     private function auditText(): string
@@ -70,7 +70,7 @@ class CourierAccountKeysTest extends TestCase
         $a = $this->withKeys($this->account());
         $cipher = CourierAccountSetting::query()->where('courier_account_id', $a->id)->where('key', 'quadx_staging_api_key')->value('value');
 
-        $html = $this->actingAs($this->admin())->get(route('accounts.show', $a))->assertOk()
+        $html = $this->actingAs($this->admin())->get(route('accounts.show', $a->courier))->assertOk()
             ->assertDontSee(self::STAGING_KEY)->assertDontSee(self::LIVE_KEY)
             ->assertDontSee($cipher)
             ->assertSee('7c1f')->assertSee('9d2e')
@@ -86,7 +86,7 @@ class CourierAccountKeysTest extends TestCase
         $a = $this->withKeys($this->account());
         $admin = $this->admin();
 
-        $res = $this->actingAs($admin)->postJson(route('accounts.reveal', [$a, 'quadx_staging_api_key']))
+        $res = $this->actingAs($admin)->postJson(route('accounts.reveal', [$a->courier, 'quadx_staging_api_key']))
             ->assertOk()->assertExactJson(['value' => self::STAGING_KEY]);
         $this->assertStringContainsString('no-store', (string) $res->headers->get('Cache-Control'));
         $this->assertSame('no-cache', $res->headers->get('Pragma'));
@@ -101,13 +101,13 @@ class CourierAccountKeysTest extends TestCase
 
         // Guests never reach it.
         auth()->logout();
-        $this->postJson(route('accounts.reveal', [$a, 'quadx_staging_api_key']))->assertUnauthorized();
+        $this->postJson(route('accounts.reveal', [$a->courier, 'quadx_staging_api_key']))->assertUnauthorized();
     }
 
     public function test_reveal_throttled(): void
     {
         $a = $this->withKeys($this->account());
-        $url = route('accounts.reveal', [$a, 'quadx_staging_api_key']);
+        $url = route('accounts.reveal', [$a->courier, 'quadx_staging_api_key']);
 
         for ($i = 0; $i < 10; $i++) {
             $this->actingAs($this->admin())->postJson($url)->assertOk();
@@ -130,12 +130,12 @@ class CourierAccountKeysTest extends TestCase
         $svc->setSetting($a, 'quadx_default_service', $svc->schema($a)[4]['options'][0]['value']);
         $this->actingAs($this->admin());
 
-        $this->postJson(route('accounts.reveal', [$a, 'quadx_default_service']))->assertNotFound()->assertJsonMissing(['value']);
-        $this->postJson(route('accounts.reveal', [$a, 'nope']))->assertNotFound();
-        $this->postJson(route('accounts.reveal', [$a, 'spx_secret_key']))->assertNotFound();
-        $this->postJson(route('accounts.reveal', [$a, 'quadx_staging_secret_key']))->assertNotFound(); // not set
+        $this->postJson(route('accounts.reveal', [$a->courier, 'quadx_default_service']))->assertNotFound()->assertJsonMissing(['value']);
+        $this->postJson(route('accounts.reveal', [$a->courier, 'nope']))->assertNotFound();
+        $this->postJson(route('accounts.reveal', [$a->courier, 'spx_secret_key']))->assertNotFound();
+        $this->postJson(route('accounts.reveal', [$a->courier, 'quadx_staging_secret_key']))->assertNotFound(); // not set
         $this->post(route('accounts.reveal', ['missing', 'quadx_staging_api_key']))->assertNotFound();
-        $this->get('/accounts/' . $a->public_id . '/secrets/quadx_staging_api_key/reveal')->assertStatus(405);
+        $this->get('/accounts/' . $a->courier . '/secrets/quadx_staging_api_key/reveal')->assertStatus(405);
 
         $this->assertSame(0, AuditEntry::query()->where('action', 'courier_account.secret_viewed')->count());
     }
@@ -146,10 +146,9 @@ class CourierAccountKeysTest extends TestCase
         $before = CourierAccountSetting::query()->where('courier_account_id', $a->id)->pluck('value', 'key')->all();
         $audits = AuditEntry::query()->count();
 
-        $this->actingAs($this->admin())->put(route('accounts.update', $a), $this->form($a, [
-            'label' => 'Renamed',
+        $this->actingAs($this->admin())->put(route('accounts.update', $a->courier), $this->form($a, [
             'secrets' => ['quadx_staging_api_key' => '', 'quadx_production_api_key' => null],
-        ]))->assertRedirect(route('accounts.show', $a))->assertSessionHas('status', 'Saved');
+        ]))->assertRedirect(route('accounts.show', $a->courier))->assertSessionHas('status', 'Saved');
 
         $after = CourierAccountSetting::query()->where('courier_account_id', $a->id)->pluck('value', 'key')->all();
         $this->assertSame($before, $after);
@@ -165,14 +164,14 @@ class CourierAccountKeysTest extends TestCase
         $admin = $this->admin();
         $new = 'new_live_secret_Q9w8E7r6T5y4';
 
-        $this->actingAs($admin)->put(route('accounts.update', $a), $this->form($a, [
+        $this->actingAs($admin)->put(route('accounts.update', $a->courier), $this->form($a, [
             'secrets' => [
                 'quadx_production_secret_key' => $new,
                 'quadx_default_service' => 'injected',
                 'spx_secret_key' => 'other-courier',
                 'nope' => 'unknown',
             ],
-        ]))->assertRedirect(route('accounts.show', $a))->assertSessionHas('status', 'Saved');
+        ]))->assertRedirect(route('accounts.show', $a->courier))->assertSessionHas('status', 'Saved');
 
         $row = CourierAccountSetting::query()->where('courier_account_id', $a->id)->where('key', 'quadx_production_secret_key')->value('value');
         $this->assertNotNull($row);
@@ -190,7 +189,7 @@ class CourierAccountKeysTest extends TestCase
         $this->assertStringNotContainsString($new, $this->auditText());
 
         // The new value is masked on the page, never printed.
-        $this->get(route('accounts.show', $a))->assertDontSee($new)->assertSee('T5y4');
+        $this->get(route('accounts.show', $a->courier))->assertDontSee($new)->assertSee('T5y4');
     }
 
     public function test_validation_error_does_not_echo_secret(): void
@@ -199,32 +198,32 @@ class CourierAccountKeysTest extends TestCase
         $secret = 'brand_new_secret_Kp3Lm9Zz1234';
         $this->actingAs($this->admin());
 
-        // A request validation error (empty name).
-        $this->from(route('accounts.show', $a))->put(route('accounts.update', $a), $this->form($a, [
-            'label' => '',
+        // A request validation error (bad mode).
+        $this->from(route('accounts.show', $a->courier))->put(route('accounts.update', $a->courier), $this->form($a, [
+            'mode' => 'bogus',
             'secrets' => ['quadx_staging_secret_key' => $secret],
-        ]))->assertRedirect(route('accounts.show', $a))->assertSessionHasErrors('label');
+        ]))->assertRedirect(route('accounts.show', $a->courier))->assertSessionHasErrors('mode');
         $this->assertFalse(session()->hasOldInput('secrets'));
         $this->assertStringNotContainsString($secret, json_encode(session()->all()));
-        $this->get(route('accounts.show', $a))->assertOk()->assertDontSee($secret)->assertDontSee('1234');
+        $this->get(route('accounts.show', $a->courier))->assertOk()->assertDontSee($secret)->assertDontSee('1234');
 
         // A refusal from the service (a bad booking default) rolls back the edited secret too.
-        $this->from(route('accounts.show', $a))->put(route('accounts.update', $a), $this->form($a, [
+        $this->from(route('accounts.show', $a->courier))->put(route('accounts.update', $a->courier), $this->form($a, [
             'settings' => ['quadx_default_service' => 'bogus'],
             'secrets' => ['quadx_staging_secret_key' => $secret],
-        ]))->assertRedirect(route('accounts.show', $a))->assertSessionHasErrors('settings.quadx_default_service');
+        ]))->assertRedirect(route('accounts.show', $a->courier))->assertSessionHasErrors('settings.quadx_default_service');
         $this->assertFalse(session()->hasOldInput('secrets'));
         $this->assertStringNotContainsString($secret, json_encode(session()->all()));
-        $this->get(route('accounts.show', $a))->assertOk()->assertDontSee($secret);
+        $this->get(route('accounts.show', $a->courier))->assertOk()->assertDontSee($secret);
         $this->assertNull(AccountSettings::for($a->fresh())->read('quadx_staging_secret_key'));
 
         // A secret over the length limit is refused without being echoed.
         $long = str_repeat('x', CourierAccounts::MAX_VALUE_LENGTH) . 'TAIL';
-        $this->from(route('accounts.show', $a))->put(route('accounts.update', $a), $this->form($a, [
+        $this->from(route('accounts.show', $a->courier))->put(route('accounts.update', $a->courier), $this->form($a, [
             'secrets' => ['quadx_staging_secret_key' => $long],
-        ]))->assertRedirect(route('accounts.show', $a))->assertSessionHasErrors('secrets.quadx_staging_secret_key');
+        ]))->assertRedirect(route('accounts.show', $a->courier))->assertSessionHasErrors('secrets.quadx_staging_secret_key');
         $this->assertStringNotContainsString($long, json_encode(session()->all()));
-        $this->get(route('accounts.show', $a))->assertOk()->assertDontSee($long);
+        $this->get(route('accounts.show', $a->courier))->assertOk()->assertDontSee($long);
     }
 
     public function test_only_selected_mode_keys_visible_and_toggle_markup_present(): void
@@ -232,7 +231,7 @@ class CourierAccountKeysTest extends TestCase
         $admin = $this->admin();
 
         $qx = $this->withKeys($this->account());
-        $html = $this->actingAs($admin)->get(route('accounts.show', $qx))->assertOk()
+        $html = $this->actingAs($admin)->get(route('accounts.show', $qx->courier))->assertOk()
             ->assertSee('Keys')->assertSee('Not set')
             ->getContent();
         $this->assertDoesNotMatchRegularExpression('/data-keys="staging"[^>]*\shidden[\s>]/', $html);
@@ -245,13 +244,13 @@ class CourierAccountKeysTest extends TestCase
         }
         $this->assertStringNotContainsString('aria-label="View Live Secret Key"', $html); // not set: Edit only
         $this->assertSame(1, substr_count($html, 'aria-live="polite"'));
-        $this->assertStringContainsString(route('accounts.reveal', [$qx, 'quadx_staging_api_key']), stripslashes(stripslashes($html)));
+        $this->assertStringContainsString(route('accounts.reveal', [$qx->courier, 'quadx_staging_api_key']), stripslashes(stripslashes($html)));
         // Untouched fields post nothing: no secrets[] name is rendered by the server.
         $this->assertStringNotContainsString('name="secrets[', $html);
         $this->assertStringNotContainsString('name="settings[quadx_staging_api_key]"', $html);
 
         $lbc = $this->account('lbc', ['mode' => 'production']);
-        $html = $this->get(route('accounts.show', $lbc))->assertOk()->assertSee('Common API key')->assertSee('Track and Trace key')->getContent();
+        $html = $this->get(route('accounts.show', $lbc->courier))->assertOk()->assertSee('Common API key')->assertSee('Track and Trace key')->getContent();
         $this->assertDoesNotMatchRegularExpression('/data-keys="live"[^>]*\shidden[\s>]/', $html);
         $this->assertMatchesRegularExpression('/data-keys="test"[^>]*\shidden[\s>]/', $html);
         $this->assertMatchesRegularExpression('/data-keys-badge[^>]*>.*?Live/s', $html);
@@ -259,7 +258,7 @@ class CourierAccountKeysTest extends TestCase
         $this->assertStringContainsString('aria-label="Edit Staging Common API key"', $html);
 
         $spx = $this->account('spx', ['mode' => 'uat']);
-        $html = $this->get(route('accounts.show', $spx))->assertOk()->assertSee('App Secret')->assertSee('User Secret')->getContent();
+        $html = $this->get(route('accounts.show', $spx->courier))->assertOk()->assertSee('App Secret')->assertSee('User Secret')->getContent();
         $this->assertDoesNotMatchRegularExpression('/data-keys="[^"]*"[^>]*\shidden[\s>]/', $html);
         $this->assertStringContainsString('aria-label="Edit App Secret"', $html);
         $this->assertSame(3, substr_count($html, 'x-model="mode"'));

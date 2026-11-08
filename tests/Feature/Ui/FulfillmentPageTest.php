@@ -57,10 +57,9 @@ class FulfillmentPageTest extends TestCase
         $html = $this->get('/')->assertOk()
             ->assertSeeText(['Inactive', 'Old LBC'])
             ->assertDontSeeText('Connect LBC')
-            ->assertSee(route('accounts.show', $lbc), false)
+            ->assertSee(route('accounts.show', $lbc->courier), false)
             ->getContent();
 
-        $this->assertStringNotContainsString(route('accounts.create', ['courier' => 'lbc']).'"', $html);
     }
 
     public function test_purged_row_renders_removed(): void

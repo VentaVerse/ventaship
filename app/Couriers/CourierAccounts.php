@@ -83,6 +83,42 @@ class CourierAccounts
         });
     }
 
+    /** The account the UI shows for a courier: the default, else the first active, else the first. Null when none. */
+    public function forCourier(string $courier): ?CourierAccount
+    {
+        $all = CourierAccount::query()->where('courier', $courier)->orderBy('id')->get();
+
+        return $all->firstWhere('is_default', true)
+            ?? $all->firstWhere('status', 'active')
+            ?? $all->first();
+    }
+
+    /**
+     * The one account for a courier, named after it and default. Refuses when the courier already has one.
+     *
+     * @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor
+     */
+    public function setUp(string $courier, string $mode, ?array $actor = null): CourierAccount
+    {
+        if (! CourierRegistry::has($courier)) {
+            throw new CourierAccountException('Unknown courier. Available: ' . implode(', ', CourierRegistry::keys()) . '.');
+        }
+        if (! in_array($mode, self::MODES[$courier] ?? [], true)) {
+            throw new CourierAccountException("The mode for {$courier} must be one of: " . implode(', ', self::MODES[$courier] ?? []) . '.');
+        }
+        if (CourierAccount::query()->where('courier', $courier)->exists()) {
+            throw new CourierAccountException('This courier already has an account.');
+        }
+
+        // create() starts in staging or production; SPX's UAT is set right after.
+        $account = $this->create($courier, Couriers::name($courier), $mode === 'uat' ? 'staging' : $mode, true, $actor);
+        if ($mode === 'uat') {
+            $this->setMode($account, 'uat', $actor);
+        }
+
+        return $account;
+    }
+
     /** Whether the key is a secret for this account's courier. */
     public function isSecret(CourierAccount $account, string $key): bool
     {

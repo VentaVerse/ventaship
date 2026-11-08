@@ -19,55 +19,40 @@ use Illuminate\View\View;
 
 class CourierAccountsController extends Controller
 {
-    public function index(): View
-    {
-        $accounts = CourierAccount::query()->orderBy('courier')->orderByDesc('is_default')->orderBy('label')->get();
-        $connected = $accounts->pluck('courier')->unique()->all();
+    private const ORDER = ['quadx', 'spx', 'lbc'];
 
+    public function index(CourierAccounts $accounts): View
+    {
         return view('accounts.index', [
-            'accounts' => $accounts,
-            'unconnected' => array_values(array_diff(CourierRegistry::keys(), $connected)),
+            'rows' => array_map(fn (string $c) => ['courier' => $c, 'account' => $accounts->forCourier($c)], self::ORDER),
         ]);
     }
 
-    public function create(Request $request): View
+    public function setup(Request $request, string $courier, CourierAccounts $accounts): RedirectResponse
     {
-        $courier = (string) $request->query('courier');
-
-        return view('accounts.create', [
-            'couriers' => CourierRegistry::keys(),
-            'courier' => CourierRegistry::has($courier) ? $courier : null,
-            'modes' => CourierAccounts::CREATE_MODES,
-        ]);
-    }
-
-    public function store(Request $request, CourierAccounts $accounts): RedirectResponse
-    {
-        $data = $request->validate([
-            'courier' => ['required', 'string', Rule::in(CourierRegistry::keys())],
-            'label' => ['required', 'string', 'max:255'],
-            'mode' => ['required', 'string', Rule::in(CourierAccounts::CREATE_MODES)],
-            'default' => ['nullable', 'boolean'],
-        ]);
+        $data = $request->validate(['mode' => ['required', 'string', Rule::in(CourierAccounts::MODES[$courier] ?? [])]]);
 
         try {
-            $account = $accounts->create(
-                $data['courier'], $data['label'], $data['mode'], (bool) ($data['default'] ?? false),
-                ['type' => 'admin', 'id' => $request->user()->getAuthIdentifier(), 'ip' => $request->ip()],
-            );
+            $accounts->setUp($courier, $data['mode'], ['type' => 'admin', 'id' => $request->user()->getAuthIdentifier(), 'ip' => $request->ip()]);
         } catch (CourierAccountException $e) {
-            return back()->withInput()->withErrors(['label' => $e->getMessage()]);
+            return back()->withErrors(['mode' => $e->getMessage()]);
         }
 
-        return redirect(route('accounts.show', $account))->with('status', 'Connected');
+        return redirect(route('accounts.show', $courier))->with('status', 'Ready');
     }
 
-    public function show(CourierAccount $account, CourierAccounts $accounts): View
+    public function show(string $courier, CourierAccounts $accounts): View
     {
+        $account = $accounts->forCourier($courier);
+        if ($account === null) {
+            return view('accounts.show', ['courier' => $courier, 'account' => null, 'modes' => CourierAccounts::MODES[$courier] ?? []]);
+        }
+
         $settings = AccountSettings::for($account);
         $fields = array_map(fn (array $f) => $f + ['value' => $settings->read($f['key'])], $accounts->plainFields($account));
 
         return view('accounts.show', [
+            'courier' => $courier,
             'account' => $account,
             'modes' => CourierAccounts::MODES[$account->courier] ?? [],
             'fields' => $fields,
@@ -81,10 +66,15 @@ class CourierAccountsController extends Controller
         ]);
     }
 
-    public function update(Request $request, CourierAccount $account, CourierAccounts $accounts): RedirectResponse
+    private function account(string $courier, CourierAccounts $accounts): CourierAccount
     {
+        return $accounts->forCourier($courier) ?? abort(404);
+    }
+
+    public function update(Request $request, string $courier, CourierAccounts $accounts): RedirectResponse
+    {
+        $account = $this->account($courier, $accounts);
         $data = $request->validate([
-            'label' => ['required', 'string', 'max:255'],
             'mode' => ['required', 'string', Rule::in(CourierAccounts::MODES[$account->courier] ?? [])],
             'default' => ['nullable', 'boolean'],
             'active' => ['nullable', 'boolean'],
@@ -107,7 +97,6 @@ class CourierAccountsController extends Controller
 
         DB::beginTransaction();
         try {
-            $attempt('label', fn () => $accounts->rename($account, $data['label'], $actor));
             $attempt('mode', fn () => $accounts->setMode($account, $data['mode'], $actor));
             if (array_key_exists('default', $data) && $data['default'] !== null) {
                 $attempt('default', fn () => $accounts->setDefault($account, (bool) $data['default'], $actor));
@@ -160,12 +149,13 @@ class CourierAccountsController extends Controller
 
         DB::commit();
 
-        return redirect(route('accounts.show', $account))->with('status', 'Saved');
+        return redirect(route('accounts.show', $courier))->with('status', 'Saved');
     }
 
     /** One stored secret, for the View button. Throttled per admin by the route; audited with the key name only. */
-    public function reveal(Request $request, CourierAccount $account, string $key, CourierAccounts $accounts): JsonResponse
+    public function reveal(Request $request, string $courier, string $key, CourierAccounts $accounts): JsonResponse
     {
+        $account = $this->account($courier, $accounts);
         $actor = ['type' => 'admin', 'id' => $request->user()->getAuthIdentifier(), 'ip' => $request->ip()];
         $webhook = $key === CourierAccounts::WEBHOOK_KEY;
         abort_unless($webhook || in_array($key, array_column($this->secretFields($account, $accounts), 'key'), true), 404);
@@ -179,8 +169,9 @@ class CourierAccountsController extends Controller
         return response()->json(['value' => $value])->withHeaders(['Cache-Control' => 'no-store', 'Pragma' => 'no-cache']);
     }
 
-    public function series(Request $request, CourierAccount $account, CourierAccounts $accounts): RedirectResponse
+    public function series(Request $request, string $courier, CourierAccounts $accounts): RedirectResponse
     {
+        $account = $this->account($courier, $accounts);
         abort_unless($account->courier === 'lbc', 404);
         $data = $request->validate(['first' => ['required', 'string', 'max:20'], 'last' => ['required', 'string', 'max:20']]);
 
@@ -190,13 +181,14 @@ class CourierAccountsController extends Controller
             return back()->withInput()->withErrors(['first' => $e->getMessage()]);
         }
 
-        return redirect(route('accounts.show', $account))->with('status', 'Added');
+        return redirect(route('accounts.show', $courier))->with('status', 'Added');
     }
 
-    public function test(CourierAccount $account, CourierAccounts $accounts): RedirectResponse
+    public function test(string $courier, CourierAccounts $accounts): RedirectResponse
     {
+        $account = $this->account($courier, $accounts);
         $result = $accounts->test($account);
-        $back = redirect(route('accounts.show', $account));
+        $back = redirect(route('accounts.show', $courier));
 
         return $result['ok']
             ? $back->with('status', 'Connected')
