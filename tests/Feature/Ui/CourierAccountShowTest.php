@@ -109,8 +109,9 @@ class CourierAccountShowTest extends TestCase
         $a->refresh();
         $this->assertSame('Renamed', $b->label);
         $this->assertSame('production', $b->mode);
-        $this->assertTrue($b->is_default);
-        $this->assertSame('quadx', $b->default_slot);
+        // Deactivating in the same save drops the default it was just given.
+        $this->assertFalse($b->is_default);
+        $this->assertNull($b->default_slot);
         $this->assertSame('inactive', $b->status);
         $this->assertFalse($a->is_default);
         $this->assertNull($a->default_slot);
