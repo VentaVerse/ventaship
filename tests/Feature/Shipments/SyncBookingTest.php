@@ -200,4 +200,29 @@ class SyncBookingTest extends TestCase
         $this->assertSame('requested', $row->cancel_state);
         $this->assertSame([], $this->fake->callsTo('cancelShipment'));
     }
+
+    public function test_now_inside_an_open_transaction_is_a_programming_error(): void
+    {
+        $draft = $this->draft();
+        $this->fake->booksAs('QX-T1');
+        $booked = $this->creator()->submit($this->draft('T2'), now: true);
+
+        foreach ([
+            fn () => $this->creator()->submit($draft, now: true),
+            fn () => $this->creator()->create($this->client, $this->shipmentBody(['client_reference' => 'T3']), 'manual', now: true),
+            fn () => app(Canceller::class)->request($booked, now: true),
+        ] as $i => $call) {
+            try {
+                DB::transaction($call);
+                $this->fail("call {$i} must refuse an open transaction");
+            } catch (\LogicException) {
+            }
+        }
+
+        $this->assertSame('draft', $draft->fresh()->state);
+        $this->assertNull($booked->fresh()->cancel_state);
+        $this->assertSame(0, Shipment::query()->where('client_reference', 'T3')->count());
+        $this->assertCount(1, $this->fake->callsTo('createShipment'));
+        $this->assertSame([], $this->fake->callsTo('cancelShipment'));
+    }
 }

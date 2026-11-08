@@ -15,6 +15,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use LogicException;
 use Throwable;
 
 /**
@@ -38,12 +39,19 @@ final class ShipmentCreator
     public function __construct(private readonly Settings $settings) {}
 
     /**
+     * `now: true` books in this request; its callers must not hold a transaction.
+     *
      * @param  array<string, mixed>  $data  CreateShipmentRequest::validated()
      *
      * @throws ApiError 422 account_not_found / account_misconfigured, 409 active_shipment_exists
+     * @throws LogicException `now: true` inside an open transaction
      */
     public function create(?ClientApp $app, array $data, string $source = 'api', bool $now = false): Shipment
     {
+        if ($now) {
+            self::assertNoTransaction();
+        }
+
         $account = AccountResolver::resolve($data['account_id'] ?? null, $data['courier'] ?? null);
         AccountResolver::assertBookable($account);
 
@@ -75,12 +83,17 @@ final class ShipmentCreator
     /**
      * Moves a draft to queued and books it. Anything but a draft is refused: submitting twice must not book twice.
      * With $now (dashboard requests: no queue worker runs) the booking runs in this request and the shipment comes
-     * back with its outcome: booked, failed, or unknown with attention.
+     * back with its outcome: booked, failed, or unknown with attention. `now: true` callers must not hold a transaction.
      *
      * @throws ApiError 409 not_draft, 422 account_misconfigured
+     * @throws LogicException `now: true` inside an open transaction
      */
     public function submit(Shipment $draft, bool $now = false): Shipment
     {
+        if ($now) {
+            self::assertNoTransaction();
+        }
+
         $shipment = DB::transaction(function () use ($draft) {
             $s = Shipment::query()->whereKey($draft->getKey())->lockForUpdate()->firstOrFail();
             if ($s->state !== 'draft') {
@@ -108,20 +121,30 @@ final class ShipmentCreator
      * Runs BookShipment in this request, so its lock and state guards are the only double-booking protection. The
      * sync queue calls the job's failed() before rethrowing, exactly as a worker would, so an exception that escapes
      * the job has already ended in `unknown` (or left a never-started booking `queued`); it is logged here and never
-     * reaches the caller.
+     * reaches the caller. Only reached outside any transaction (assertNoTransaction), so the read below sees the outcome.
      */
     private function bookNow(int $shipmentId): Shipment
     {
-        // Runs at once outside a transaction; inside a caller's, only after it commits (the row is then still queued).
-        DB::afterCommit(function () use ($shipmentId) {
-            try {
-                BookShipment::dispatchSync($shipmentId);
-            } catch (Throwable $e) {
-                Log::error('Synchronous booking threw', ['shipment_id' => $shipmentId, 'exception' => $e::class]);
-            }
-        });
+        try {
+            BookShipment::dispatchSync($shipmentId);
+        } catch (Throwable $e) {
+            Log::error('Synchronous booking threw', ['shipment_id' => $shipmentId, 'exception' => $e::class]);
+        }
 
         return Shipment::query()->with('courierAccount')->findOrFail($shipmentId);
+    }
+
+    /**
+     * A synchronous courier call must not run inside a transaction, and its outcome must be committed before it is read.
+     * Uses the transactions the after-commit machinery counts, so a test's RefreshDatabase wrapper is not one.
+     *
+     * @throws LogicException
+     */
+    public static function assertNoTransaction(): void
+    {
+        if (app('db.transactions')->callbackApplicableTransactions()->isNotEmpty()) {
+            throw new LogicException('A synchronous courier call cannot run inside an open transaction.');
+        }
     }
 
     /**

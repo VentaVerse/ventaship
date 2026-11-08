@@ -13,9 +13,13 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class ShipmentActionsController extends Controller
 {
+    private const ROW_ERROR = 'Something went wrong';
+
     public function book(Request $request, ShipmentCreator $creator): RedirectResponse
     {
         [$shipments, $unknown] = $this->requested($request);
@@ -38,6 +42,11 @@ class ShipmentActionsController extends Controller
                 } else {
                     $errors[] = "{$name}: {$e->getMessage()}";
                 }
+
+                continue;
+            } catch (Throwable $e) {
+                $this->logRowError('Book', $s, $e);
+                $errors[] = "{$name}: ".self::ROW_ERROR;
 
                 continue;
             }
@@ -65,6 +74,7 @@ class ShipmentActionsController extends Controller
         [$shipments, $unknown] = $this->requested($request);
         $done = 0;
         $refused = $unknown;
+        $errors = [];
 
         foreach ($shipments as $s) {
             $before = $s->cancel_state;
@@ -74,6 +84,12 @@ class ShipmentActionsController extends Controller
                 $refused++;
 
                 continue;
+            } catch (Throwable $e) {
+                $this->logRowError('Cancel', $s, $e);
+                $refused++;
+                $errors[] = ($s->courier_ref ?: $s->public_id).': '.self::ROW_ERROR;
+
+                continue;
             }
             if ($row->cancel_state !== $before || $row->state !== $s->state) {
                 $this->audit($request, 'shipment.cancel_requested', $s);
@@ -81,7 +97,7 @@ class ShipmentActionsController extends Controller
             $row->cancel_state === 'cancelled' ? $done++ : $refused++;
         }
 
-        return back()->with('status', "{$done} cancelled".($refused > 0 ? " · {$refused} not cancellable" : ''));
+        return back()->with('status', "{$done} cancelled".($refused > 0 ? " · {$refused} not cancellable" : ''))->withErrors($errors);
     }
 
     public function labels(Request $request, LabelBundle $bundles): Response|RedirectResponse
@@ -124,6 +140,14 @@ class ShipmentActionsController extends Controller
         $shipments = collect($ids)->map(fn ($id) => $found->get($id))->filter()->values();
 
         return [$shipments, count($ids) - $shipments->count()];
+    }
+
+    /** Class and message only (DB/runtime errors); the shipment row itself, with its recipient, is never logged. */
+    private function logRowError(string $action, Shipment $s, Throwable $e): void
+    {
+        Log::error("{$action} failed for one shipment", [
+            'shipment' => $s->public_id, 'exception' => $e::class, 'message' => mb_substr($e->getMessage(), 0, 500),
+        ]);
     }
 
     private function audit(Request $request, string $action, Shipment $s): void

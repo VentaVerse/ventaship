@@ -265,4 +265,29 @@ class ShipmentActionsTest extends TestCase
             ->assertSee(route('shipments.cancel'), false)
             ->assertSee('Print waybills');
     }
+
+    public function test_a_row_that_throws_is_reported_and_the_rest_still_run(): void
+    {
+        $boom = $this->ship('draft', 'draft', ['courier_ref' => 'VS-BOOM']);
+        $good = $this->ship('draft', 'draft');
+        Shipment::updating(function (Shipment $s) use ($boom) {
+            if ($s->id === $boom->id) {
+                throw new \RuntimeException('database went away');
+            }
+        });
+
+        $this->post('/shipments/book', $this->ids($boom, $good))
+            ->assertRedirect()
+            ->assertSessionHas('status', '1 booked · 1 failed');
+        $this->assertSame(['VS-BOOM: Something went wrong'], session('errors')->getBag('default')->all());
+        $this->assertSame('draft', $boom->fresh()->state);
+        $this->assertSame('booked', $good->fresh()->state);
+
+        $other = $this->ship('draft', 'draft');
+        $this->post('/shipments/cancel', $this->ids($boom, $other))
+            ->assertRedirect()
+            ->assertSessionHas('status', '1 cancelled · 1 not cancellable');
+        $this->assertSame(['VS-BOOM: Something went wrong'], session('errors')->getBag('default')->all());
+        $this->assertSame('cancelled', $other->fresh()->state);
+    }
 }

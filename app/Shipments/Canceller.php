@@ -34,10 +34,16 @@ final class Canceller
      * The client asks to cancel. Idempotent by state: a shipment that is already cancelled, or already has a cancel
      * in progress or settled (`cancel_state` set), is returned unchanged with no second event. A `failed` shipment
      * has nothing to cancel and is returned unchanged too. With $now (dashboard requests) the courier is called in this
-     * request and the shipment comes back with the cancel's outcome.
+     * request and the shipment comes back with the cancel's outcome. `now: true` callers must not hold a transaction.
+     *
+     * @throws \LogicException `now: true` inside an open transaction
      */
     public function request(Shipment $s, bool $now = false): Shipment
     {
+        if ($now) {
+            ShipmentCreator::assertNoTransaction();
+        }
+
         $dispatch = false;
 
         $row = DB::transaction(function () use ($s, &$dispatch) {
@@ -77,15 +83,12 @@ final class Canceller
         });
 
         if ($dispatch && $now) {
-            // Never inside a transaction: deferred until a caller's commits. The sync queue calls failed()
-            // (cancel_state failed + attention) before rethrowing, as a worker would.
-            DB::afterCommit(function () use ($row) {
-                try {
-                    CancelAtCourier::dispatchSync($row->id);
-                } catch (Throwable $e) {
-                    Log::error('Synchronous cancel threw', ['shipment' => $row->public_id, 'exception' => $e::class]);
-                }
-            });
+            try {
+                // The sync queue calls failed() (cancel_state failed + attention) before rethrowing, as a worker would.
+                CancelAtCourier::dispatchSync($row->id);
+            } catch (Throwable $e) {
+                Log::error('Synchronous cancel threw', ['shipment' => $row->public_id, 'exception' => $e::class]);
+            }
 
             return Shipment::query()->with('courierAccount')->findOrFail($row->id);
         }
