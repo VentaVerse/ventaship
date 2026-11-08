@@ -50,6 +50,19 @@ class FulfillmentPageTest extends TestCase
             ->assertSeeText(['VS-24-00182', 'Maria Santos', 'Pasig City', '2 items', '₱1,240.00', 'COD · Unpaid', 'Booked', 'VentaCart Pro', 'Connect LBC']);
     }
 
+    public function test_courier_with_only_inactive_accounts_shows_inactive_card_with_open_link(): void
+    {
+        $lbc = \App\Models\CourierAccount::factory()->create(['courier' => 'lbc', 'label' => 'Old LBC', 'status' => 'inactive']);
+
+        $html = $this->get('/')->assertOk()
+            ->assertSeeText(['Inactive', 'Old LBC'])
+            ->assertDontSeeText('Connect LBC')
+            ->assertSee(route('accounts.show', $lbc), false)
+            ->getContent();
+
+        $this->assertStringNotContainsString(route('accounts.create', ['courier' => 'lbc']).'"', $html);
+    }
+
     public function test_purged_row_renders_removed(): void
     {
         $this->ship('delivered', ['recipient' => null, 'pii_purged_at' => now()]);

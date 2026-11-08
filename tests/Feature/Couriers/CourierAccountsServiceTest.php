@@ -131,6 +131,24 @@ class CourierAccountsServiceTest extends TestCase
         $this->assertSame(0, AuditEntry::query()->where('action', 'courier_account.mode_changed')->count());
     }
 
+    public function test_deactivating_clears_the_default_slot_and_activating_does_not_restore_it(): void
+    {
+        $account = $this->service()->create('quadx', 'Main', 'staging', true);
+
+        $this->assertTrue($this->service()->setActive($account, false, self::ACTOR));
+
+        $fresh = $account->fresh();
+        $this->assertFalse((bool) $fresh->is_default);
+        $this->assertNull($fresh->default_slot);
+        $audit = AuditEntry::query()->where('action', 'courier_account.default_changed')->firstOrFail();
+        $this->assertSame(['is_default' => false], $audit->changes);
+        $this->assertSame('admin', $audit->actor_type);
+
+        $this->service()->setActive($account, true, self::ACTOR);
+        $this->assertFalse((bool) $account->fresh()->is_default);
+        $this->assertNull($account->fresh()->default_slot);
+    }
+
     public function test_real_adapter_timeouts_show_the_short_no_answer_message(): void
     {
         Http::fake(fn () => throw new ConnectionException('cURL error 28: Operation timed out after 40001 milliseconds for https://api.staging.quadx.xyz/v2/orders/statuses'));

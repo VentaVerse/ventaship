@@ -258,10 +258,18 @@ class CourierAccounts
             return false;
         }
         $from = $account->status;
-        $account->forceFill(['status' => $status])->save();
-        $this->audit($actor, 'courier_account.status_changed', $account, ['status' => ['from' => $from, 'to' => $status]]);
 
-        return true;
+        return DB::transaction(function () use ($account, $status, $from, $actor) {
+            $dropsDefault = $status === 'inactive' && ($account->is_default || $account->default_slot !== null);
+            $account->forceFill(['status' => $status] + ($dropsDefault ? ['is_default' => false, 'default_slot' => null] : []))->save();
+            $this->audit($actor, 'courier_account.status_changed', $account, ['status' => ['from' => $from, 'to' => $status]]);
+            if ($dropsDefault) {
+                // An inactive account must not hold the courier's default slot.
+                $this->audit($actor, 'courier_account.default_changed', $account, ['is_default' => false]);
+            }
+
+            return true;
+        });
     }
 
     /** The per-account live-booking latch. LBC and SPX only. @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor */

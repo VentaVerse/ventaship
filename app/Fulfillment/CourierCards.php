@@ -9,7 +9,7 @@ class CourierCards
 {
     private const COURIERS = ['quadx' => 'QuadX', 'spx' => 'SPX', 'lbc' => 'LBC'];
 
-    /** @return array<int, array{courier:string, name:string, account:?CourierAccount, active:int, delivered:int, cod_unpaid:string}> */
+    /** @return array<int, array{courier:string, name:string, account:?CourierAccount, inactive:?CourierAccount, active:int, delivered:int, cod_unpaid:string}> */
     public static function all(): array
     {
         $accounts = CourierAccount::query()->where('status', 'active')->get()
@@ -36,6 +36,7 @@ class CourierCards
                 'courier' => $a->courier,
                 'name' => $a->label,
                 'account' => $a,
+                'inactive' => null,
                 'active' => (int) ($row->active ?? 0),
                 'delivered' => (int) ($row->delivered ?? 0),
                 'cod_unpaid' => self::money((int) ($cod[$a->id] ?? 0)),
@@ -43,9 +44,10 @@ class CourierCards
         }
 
         $have = $accounts->pluck('courier')->all();
+        $inactive = CourierAccount::query()->where('status', '<>', 'active')->orderBy('label')->get()->groupBy('courier');
         foreach (self::COURIERS as $key => $label) {
             if (! in_array($key, $have, true)) {
-                $cards[] = ['courier' => $key, 'name' => $label, 'account' => null, 'active' => 0, 'delivered' => 0, 'cod_unpaid' => '0.00'];
+                $cards[] = ['courier' => $key, 'name' => $label, 'account' => null, 'inactive' => $inactive[$key][0] ?? null, 'active' => 0, 'delivered' => 0, 'cod_unpaid' => '0.00'];
             }
         }
 
