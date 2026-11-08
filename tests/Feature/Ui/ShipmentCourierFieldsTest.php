@@ -180,7 +180,7 @@ class ShipmentCourierFieldsTest extends TestCase
     public function test_spx_category_and_shipping_payment_posted(): void
     {
         $this->accounts();
-        $slot = '{"pickup_time":1794000000,"pickup_time_range_id":0,"pickup_time_range":"Now"}';
+        $slot = $this->slot(now()->addDay()->timestamp);
 
         $this->post('/shipments', $this->form('spx', [
             'parcel' => ['category' => 'Electronics'], 'payment' => ['shipping_payment' => 'receiver_pay'],
@@ -253,10 +253,10 @@ class ShipmentCourierFieldsTest extends TestCase
             'contact_name' => 'Venta Warehouse', 'contact_phone' => '09181234567', 'address_1' => '5 Shaw Blvd',
             'city' => 'Mandaluyong', 'state' => 'Metro Manila', 'postcode' => '1550',
         ]]);
-        $this->fakes['spx']->slots([['value' => '{"pickup_time":1}', 'label' => 'Tue, Nov 10'], ['value' => '{"pickup_time":2}', 'label' => 'Wed, Nov 11']]);
+        $slots = [['value' => $this->slot(now()->addDay()->timestamp), 'label' => 'Tue, Nov 10'], ['value' => $this->slot(now()->addDays(2)->timestamp, 1), 'label' => 'Wed, Nov 11']];
+        $this->fakes['spx']->slots($slots);
 
-        $this->getJson('/shipments/options/spx-slots?'.$query)->assertOk()
-            ->assertExactJson(['slots' => [['value' => '{"pickup_time":1}', 'label' => 'Tue, Nov 10'], ['value' => '{"pickup_time":2}', 'label' => 'Wed, Nov 11']]]);
+        $this->getJson('/shipments/options/spx-slots?'.$query)->assertOk()->assertExactJson(['slots' => $slots]);
         $this->assertCount(1, $this->fakes['spx']->callsTo('getPickupSlots'));
 
         $this->fakes['spx']->slots([]);
@@ -272,6 +272,75 @@ class ShipmentCourierFieldsTest extends TestCase
         $before = count($this->fakes['spx']->callsTo('getPickupSlots'));
         $this->get('/shipments/new')->assertOk();
         $this->assertCount($before, $this->fakes['spx']->callsTo('getPickupSlots'));
+    }
+
+    /** An SPX pickup slot in the shape getPickupSlots() hands out. */
+    private function slot(int $time, int $range = 0): string
+    {
+        return json_encode(['pickup_time' => $time, 'pickup_time_range_id' => $range, 'pickup_time_range' => $range === 0 ? 'Now' : '09:00-12:00']);
+    }
+
+    public function test_spx_pickup_slot_must_be_a_future_courier_slot(): void
+    {
+        $this->accounts();
+        $pickup = fn (string $slot) => $this->form('spx', ['handover' => 'pickup', 'pickup_slot' => $slot]);
+
+        foreach ([
+            'x',
+            '"2026-11-20"',
+            json_encode(['pickup_time' => now()->addDay()->timestamp]),
+            json_encode(['pickup_time' => 'soon', 'pickup_time_range_id' => 0, 'pickup_time_range' => 'Now']),
+            $this->slot(now()->subHour()->timestamp),
+        ] as $bad) {
+            $this->post('/shipments', $pickup($bad))->assertSessionHasErrors(['pickup_slot' => 'Choose a time.']);
+        }
+        $this->assertSame(0, Shipment::query()->count());
+
+        $this->post('/shipments', $pickup($this->slot(now()->addHour()->timestamp)))->assertSessionHasNoErrors();
+    }
+
+    /** A manual shipment the courier refused, so it can be edited. */
+    private function failed(string $courier, array $form = []): Shipment
+    {
+        $this->fakes[$courier]->refusesWith('No');
+        $this->post('/shipments', $this->form($courier, $form))->assertSessionHasNoErrors();
+        $s = $this->latest();
+        $this->assertSame('failed', $s->state);
+
+        return $s;
+    }
+
+    public function test_edit_with_past_spx_slot_shows_load_times(): void
+    {
+        $this->accounts();
+        $future = $this->slot(now()->addDay()->timestamp);
+        $s = $this->failed('spx', ['handover' => 'pickup', 'pickup_slot' => $future]);
+        $idle = '/class="sh-slots__row" x-show="slotState !== \'ready\'"\s*>/';
+
+        $html = $this->get(route('shipments.edit', $s->public_id))->assertOk()->getContent();
+        $this->assertDoesNotMatchRegularExpression($idle, $html);
+
+        $s->forceFill(['options' => ['pickup_slot' => $this->slot(now()->subDay()->timestamp)] + $s->options])->save();
+        $html = $this->get(route('shipments.edit', $s->public_id))->assertOk()->getContent();
+        $this->assertMatchesRegularExpression($idle, $html);
+        $this->assertStringNotContainsString('pickup_time_range_id', $html);
+    }
+
+    public function test_legacy_quadx_shipment_without_parcel_type_edits(): void
+    {
+        $this->accounts();
+        $s = $this->failed('quadx');
+        $s->forceFill(['options' => ['insure' => false]])->save();
+
+        $html = $this->get(route('shipments.edit', $s->public_id))->assertOk()->getContent();
+        $this->assertDoesNotMatchRegularExpression('/name="parcel\[type\]"[^>]*checked/', $html);
+
+        $this->put(route('shipments.update', $s->public_id), $this->form('quadx', ['parcel' => ['type' => '']]))
+            ->assertSessionHasErrors(['parcel.type' => 'Choose the packaging.']);
+        $this->assertArrayNotHasKey('parcel', $s->refresh()->options);
+
+        $this->put(route('shipments.update', $s->public_id), $this->form('quadx'))->assertSessionHasNoErrors();
+        $this->assertSame('box', $s->refresh()->options['parcel']['type']);
     }
 
     public function test_lbc_dates_are_next_business_days(): void

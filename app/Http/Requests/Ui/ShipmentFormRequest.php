@@ -179,7 +179,12 @@ class ShipmentFormRequest extends FormRequest
         if ($courier === 'spx') {
             $rules['parcel.category'] = ['required', 'string', Rule::in(CourierFormFields::categories())];
             $rules['handover'] = ['required', 'string', Rule::in(array_keys(CourierFormFields::HANDOVER))];
-            $rules['pickup_slot'] = ['required_if:handover,pickup', 'nullable', 'string', 'max:255'];
+            $rules['pickup_slot'] = ['required_if:handover,pickup', 'nullable', 'string', 'max:255',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    if (CourierFormFields::spxSlotTime($value) === null) {
+                        $fail('Choose a time.');
+                    }
+                }];
         }
         if ($courier === 'lbc') {
             $rules['pickup_date'] = ['required', 'string', Rule::in(array_column(CourierFormFields::lbcDates(), 'value'))];

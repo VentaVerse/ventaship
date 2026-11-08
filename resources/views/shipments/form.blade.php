@@ -61,8 +61,8 @@
     $dims = ['length' => $str('parcel.length_cm'), 'width' => $str('parcel.width_cm'), 'height' => $str('parcel.height_cm')];
     $sizeOpen = collect($dims)->contains(fn ($d) => $d !== '') || collect(['length_cm', 'width_cm', 'height_cm'])->contains(fn ($k) => $errors->has('parcel.'.$k));
     $show = CourierFormFields::show($courier, $parcel, $sizeOpen);
-    $slot = $str('pickup_slot');
-    $slotTime = json_decode($slot, true)['pickup_time'] ?? null;
+    $slotTime = CourierFormFields::spxSlotTime($str('pickup_slot'));
+    $slot = $slotTime === null ? '' : $str('pickup_slot');
     $pickupDate = in_array($str('pickup_date'), $dateValues, true) ? $str('pickup_date') : ($dateValues[0] ?? '');
     $courierState = $dims + [
         'parcel' => $parcel,

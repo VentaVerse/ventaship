@@ -115,6 +115,25 @@ final class CourierFormFields
     }
 
     /**
+     * The pickup time of an SPX slot as getPickupSlots() hands it out (JSON with pickup_time, pickup_time_range_id and
+     * pickup_time_range), or null when it is not that shape or its time has passed.
+     */
+    public static function spxSlotTime(mixed $slot): ?int
+    {
+        $decoded = is_string($slot) ? json_decode($slot, true) : null;
+        if (! is_array($decoded) || ! array_key_exists('pickup_time_range', $decoded) || ! is_string($decoded['pickup_time_range'])) {
+            return null;
+        }
+        foreach (['pickup_time', 'pickup_time_range_id'] as $key) {
+            if (! is_int($decoded[$key] ?? null)) {
+                return null;
+            }
+        }
+
+        return $decoded['pickup_time'] >= now()->getTimestamp() ? $decoded['pickup_time'] : null;
+    }
+
+    /**
      * Which courier fields show for a courier and its chosen packaging; the same as courierFields() in
      * resources/js/shipmentForm.js, used for the form's first render.
      *
