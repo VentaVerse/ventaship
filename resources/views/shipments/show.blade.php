@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Shipment')
+@section('title', ($shipment->courier_ref ?: $shipment->public_id).' · Shipment')
 
 @section('crumb')
     <a href="{{ route('fulfillment') }}">Shipments</a>
@@ -56,19 +56,19 @@
         </div>
         <div class="sd-actions">
             @if($canPrint)
-                <x-ui.button size="sm" type="submit" form="sd-labels">Print waybill</x-ui.button>
+                <x-ui.button size="sm" type="submit" class="sd-print" form="sd-labels">Print waybill</x-ui.button>
             @endif
             @if($canEdit)
-                <x-ui.button size="sm" :href="route('shipments.edit', $shipment->public_id)">Edit</x-ui.button>
+                <x-ui.button size="sm" class="sd-edit" :href="route('shipments.edit', $shipment->public_id)">Edit</x-ui.button>
             @endif
             @if($canBook)
-                <x-ui.button size="sm" variant="primary" type="submit" form="sd-book">Book</x-ui.button>
+                <x-ui.button size="sm" variant="primary" type="submit" class="sd-book" form="sd-book">Book</x-ui.button>
             @endif
             @if($canCancel)
-                <x-ui.button size="sm" @click="$dispatch('confirm', {{ Js::from(['title' => 'Cancel shipment '.$shipment->courier_ref.'?', 'confirm' => 'Cancel shipment', 'dismiss' => 'Keep shipment', 'form' => 'sd-cancel']) }})">Cancel</x-ui.button>
+                <x-ui.button size="sm" class="sd-cancel" @click="$dispatch('confirm', {{ Js::from(['title' => 'Cancel shipment '.$shipment->courier_ref.'?', 'confirm' => 'Cancel shipment', 'dismiss' => 'Keep shipment', 'form' => 'sd-cancel']) }})">Cancel</x-ui.button>
             @endif
             @if($canDelete)
-                <x-ui.button size="sm" @click="$dispatch('confirm', {{ Js::from(['title' => 'Delete shipment '.$shipment->courier_ref.'?', 'confirm' => 'Delete shipment', 'dismiss' => 'Keep shipment', 'form' => 'sd-delete']) }})">Delete</x-ui.button>
+                <x-ui.button size="sm" class="sd-delete" @click="$dispatch('confirm', {{ Js::from(['title' => 'Delete shipment '.$shipment->courier_ref.'?', 'confirm' => 'Delete shipment', 'dismiss' => 'Keep shipment', 'form' => 'sd-delete']) }})">Delete</x-ui.button>
             @endif
         </div>
     </div>
@@ -95,15 +95,12 @@
 
     <div class="st-sec">
         <h2 class="st-h">Items and parcel</h2>
-        <div class="sd-items">
+        <dl class="sd-list sd-items">
             @foreach((array) $shipment->items as $item)
-                <div class="sd-item">
-                    <span>{{ $item['name'] ?? '' }}</span>
-                    <span class="x-num">×{{ $item['quantity'] ?? 1 }}</span>
-                    <span class="x-num">{{ isset($item['price']) ? Money::peso((string) $item['price']) : '—' }}</span>
-                </div>
+                <dt>{{ $item['name'] ?? '' }}</dt>
+                <dd class="x-num">×{{ $item['quantity'] ?? 1 }} · {{ isset($item['price']) ? Money::peso((string) $item['price']) : '—' }}</dd>
             @endforeach
-        </div>
+        </dl>
         <dl class="sd-list">
             <dt>Weight</dt><dd class="x-num">{{ $dim('weight_kg', 'kg') ?? '—' }}</dd>
             <dt>Size</dt><dd class="x-num">{{ $size !== '' ? $size.' cm' : '—' }}</dd>

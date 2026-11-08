@@ -118,16 +118,7 @@
     }
 
     .sd-items {
-        display: grid;
-        gap: 6px;
         margin-bottom: 12px;
-        font-size: 13px;
-    }
-
-    .sd-item {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 60px 110px;
-        gap: 8px;
     }
 
     .sd-timeline {

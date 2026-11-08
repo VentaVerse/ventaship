@@ -75,7 +75,9 @@ class ShipmentShowTest extends TestCase
     {
         $s = $this->ship('cancelled', ['recipient' => null, 'pii_purged_at' => now()]);
         $res = $this->get(route('shipments.show', $s->public_id))->assertOk();
-        $this->assertSame(2, substr_count($res->getContent(), 'Removed'));
+        $html = $res->getContent();
+        $this->assertMatchesRegularExpression('#<h2 class="sd-name is-removed">Removed</h2>#', $html);
+        $this->assertMatchesRegularExpression('#<dt>Name</dt><dd class="is-removed">Removed</dd>#', $html);
     }
 
     public function test_actions_visibility_by_state_and_source(): void
@@ -86,17 +88,49 @@ class ShipmentShowTest extends TestCase
         });
         app('router')->getRoutes()->refreshNameLookups();
 
-        $booked = $this->get(route('shipments.show', $this->ship('booked')->public_id));
-        $booked->assertSee('Print waybill')->assertSee('Cancel shipment')->assertDontSee('Edit')->assertDontSee('>Book<', false)->assertDontSee('Delete');
+        $has = fn ($res, string $cls) => str_contains($res->getContent(), $cls);
+
+        $s = $this->ship('booked');
+        $booked = $this->get(route('shipments.show', $s->public_id));
+        $this->assertTrue($has($booked, 'sd-print') && $has($booked, 'sd-cancel'));
+        $this->assertFalse($has($booked, 'sd-edit') || $has($booked, 'sd-delete') || $has($booked, 'sd-book'));
+        $booked->assertSee('Cancel shipment');
+        $this->assertMatchesRegularExpression('#<form id="sd-cancel"[^>]*'.preg_quote(route('shipments.cancel'), '#').'.*?name="ids\[\]" value="'.$s->public_id.'"#s', $booked->getContent());
+        $this->assertMatchesRegularExpression('#<form id="sd-labels"[^>]*'.preg_quote(route('shipments.labels'), '#').'.*?name="ids\[\]" value="'.$s->public_id.'"#s', $booked->getContent());
 
         $failed = $this->get(route('shipments.show', $this->ship('failed', ['source' => 'manual'])->public_id));
-        $failed->assertSee('Edit')->assertSee('Delete')->assertDontSee('Print waybill')->assertDontSee('>Book<', false);
+        $this->assertTrue($has($failed, 'sd-edit') && $has($failed, 'sd-delete'));
+        $this->assertFalse($has($failed, 'sd-print') || $has($failed, 'sd-book') || $has($failed, 'sd-cancel'));
 
-        $draft = $this->get(route('shipments.show', $this->ship('draft', ['source' => 'api'])->public_id));
-        $draft->assertSee('>Book<', false)->assertDontSee('Edit')->assertDontSee('Delete')->assertDontSee('Print waybill');
+        $d = $this->ship('draft', ['source' => 'api']);
+        $draft = $this->get(route('shipments.show', $d->public_id));
+        $this->assertTrue($has($draft, 'sd-book'));
+        $this->assertFalse($has($draft, 'sd-edit') || $has($draft, 'sd-delete') || $has($draft, 'sd-print') || $has($draft, 'sd-cancel'));
+        $this->assertMatchesRegularExpression('#<form id="sd-book"[^>]*'.preg_quote(route('shipments.book'), '#').'.*?name="ids\[\]" value="'.$d->public_id.'"#s', $draft->getContent());
 
         $manualDraft = $this->get(route('shipments.show', $this->ship('draft', ['source' => 'manual'])->public_id));
-        $manualDraft->assertSee('>Book<', false)->assertSee('Edit')->assertSee('Delete');
+        $this->assertTrue($has($manualDraft, 'sd-book') && $has($manualDraft, 'sd-edit') && $has($manualDraft, 'sd-delete'));
+    }
+
+    public function test_non_http_tracking_url_renders_as_plain_text(): void
+    {
+        CourierRegistry::fake('zzz', new class extends FakeCourier
+        {
+            public function trackingLinks(\App\Couriers\CourierOrder $order): array
+            {
+                return [['url' => 'javascript:alert(1)']];
+            }
+        });
+        $s = $this->ship('booked', ['tracking_number' => 'QX-PLAIN', 'courier' => 'zzz']);
+        $html = $this->get(route('shipments.show', $s->public_id))->assertSee('QX-PLAIN')->getContent();
+        $this->assertStringNotContainsString('javascript:', $html);
+        $this->assertStringNotContainsString('class="sd-link"', $html);
+    }
+
+    public function test_title_uses_courier_ref(): void
+    {
+        $s = $this->ship('draft', ['courier_ref' => 'VS-TITLE']);
+        $this->get(route('shipments.show', $s->public_id))->assertSee('<title>VS-TITLE · Shipment', false);
     }
 
     public function test_unknown_id_404(): void
