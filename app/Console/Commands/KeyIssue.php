@@ -11,7 +11,7 @@ class KeyIssue extends Command
 {
     protected $signature = 'ventaship:key-issue {app} {--name=}';
 
-    protected $description = 'Issue an API token for a client app and print it';
+    protected $description = 'Issue an API key for a client app and print it';
 
     public function handle(PlatformApps $apps): int
     {

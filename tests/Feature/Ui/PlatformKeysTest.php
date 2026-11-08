@@ -125,7 +125,7 @@ class PlatformKeysTest extends TestCase
         $webhookSecret = app(PlatformApps::class)->revealWebhookSecret($app, self::ACTOR);
 
         $html = $this->actingAs($this->admin())->get(route('apps.show', $app))->assertOk()
-            ->assertSeeInOrder(['Keys', 'Storefront', $issued['key']->prefix, 'API token', 'Webhook', 'Secret', 'Send test'])
+            ->assertSeeInOrder(['Keys', 'Storefront', $issued['key']->prefix, 'API key', 'Webhook', 'Secret', 'Send test'])
             ->assertSee('Issue key')
             ->assertSee(substr($issued['plaintext_key'], -4))
             ->assertDontSee('Signing secret')
@@ -161,7 +161,7 @@ class PlatformKeysTest extends TestCase
 
         $html = $this->actingAs($this->admin())->get(route('apps.show', $app))->assertOk()
             ->assertSee('Issued before keys were viewable')
-            ->assertDontSee('API token')
+            ->assertDontSee('API key')
             ->getContent();
         $this->assertStringContainsString('Revoke key '.$old->prefix.'?', html_entity_decode($html));
         $this->assertStringNotContainsString($this->inJs(route('apps.reveal', [$app, 'token:'.$old->id])), $html);

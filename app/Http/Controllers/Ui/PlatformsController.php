@@ -166,7 +166,7 @@ class PlatformsController extends Controller
 
     public function resendEvent(Request $request, ClientApp $app, OutgoingEvent $event, PlatformApps $platforms): RedirectResponse
     {
-        abort_unless($event->client_app_id === $app->id, 404);
+        abort_unless($event->clientApp()->is($app), 404);
 
         $result = $platforms->resend($event, $this->actor($request));
         $back = redirect(route('apps.show', $app).'#activity');

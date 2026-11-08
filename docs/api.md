@@ -96,13 +96,13 @@ Keys that are not in this table are dropped.
 
 ## 2. Authentication
 
-Every API request carries an API token in the `Authorization` header. Nothing else is needed: no signature, no timestamp.
+Every API request carries an API key (a Sanctum token) in the `Authorization` header. Nothing else is needed: no signature, no timestamp.
 
 ```
 Authorization: Bearer 12|vsk_…
 ```
 
-- The Ventaship owner issues tokens, on the platform's page in the dashboard or with `ventaship:key-issue`. A client app may hold several tokens. Send the token exactly as given, including the number and `|` in front.
+- The Ventaship owner issues keys, on the platform's page in the dashboard or with `ventaship:key-issue`. A client app may hold several keys. Send the token exactly as given, including the number and `|` in front.
 - Older tokens look like `vsk_…`, without a number in front. They keep working; send them as they are.
 - A missing, unknown, revoked or expired token is answered `401` with code `unauthorized`. The reason is not disclosed.
 - A valid token of a disabled client app is answered `403 app_disabled`.
@@ -283,7 +283,7 @@ Every code the API can answer:
 
 | HTTP | `code` | `retryable` | When | `errors` |
 |---|---|---|---|---|
-| 401 | `unauthorized` | false | Missing, unknown, revoked or expired API token | `{}` |
+| 401 | `unauthorized` | false | Missing, unknown, revoked or expired API key | `{}` |
 | 403 | `app_disabled` | false | The client app is disabled by the owner | `{}` |
 | 404 | `not_found` | false | Unknown route, or a shipment or courier account that does not exist. Another app's shipment is also a 404 | `{}` |
 | 405 | `method_not_allowed` | false | Wrong HTTP method for the route (see the `Allow` header) | `{}` |
@@ -307,7 +307,7 @@ Booking outcomes are **not** API errors: `POST /shipments` answers 202 and the c
 
 ## 5. Rate limits
 
-Limits are per API token, per minute. Each response carries `X-RateLimit-Limit` and `X-RateLimit-Remaining`; a `429 rate_limited` carries `Retry-After` (seconds).
+Limits are per API key, per minute. Each response carries `X-RateLimit-Limit` and `X-RateLimit-Remaining`; a `429 rate_limited` carries `Retry-After` (seconds).
 
 | Bucket | Limit | Applies to |
 |---|---|---|
@@ -1950,7 +1950,7 @@ php artisan ventaship:key-issue app_… --name=production
 #   12|vsk_…
 ```
 
-and give you the app id, webhook secret and API token. Store the secrets as secrets.
+and give you the app id, webhook secret and API key. Store the secrets as secrets.
 
 **2. Ping.**
 

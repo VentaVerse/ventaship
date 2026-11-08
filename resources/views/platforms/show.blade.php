@@ -75,7 +75,7 @@
                                 <td colspan="5">
                                     @if($row['viewable'])
                                         <div class="st-row">
-                                            <x-ui.secret label="API token" :context="$k->prefix" :masked="$row['masked']"
+                                            <x-ui.secret label="API key" :context="$k->prefix" :masked="$row['masked']"
                                                 :revealUrl="route('apps.reveal', [$app, 'token:' . $k->id])"
                                                 :id="'f-token-' . $k->id" :autoView="$row['auto']" />
                                         </div>
@@ -158,7 +158,7 @@
                                 </td>
                                 <td><x-ui.badge :tone="$row['badge'][1]">{{ $row['badge'][0] }}</x-ui.badge></td>
                                 <td data-label="Attempts">{{ $e->attempts }}</td>
-                                <td data-label="Error" class="pf-act__err">{{ $row['error'] }}</td>
+                                <td @if($row['error']) data-label="Last error" @endif class="pf-act__err">{{ $row['error'] }}</td>
                                 <td class="pf-act__act">
                                     @if($row['resendable'])
                                         <x-ui.button size="sm" type="submit" :form="'resend-' . $e->public_id" :aria-label="'Resend ' . $e->type">Resend</x-ui.button>

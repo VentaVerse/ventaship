@@ -48,12 +48,12 @@ It asks for the password twice (at least 12 characters). Then open `http://<pi>:
 ## 3. Create a client app, a key and a QuadX staging account
 
 ```bash
-# The client app and where its webhooks go. The webhook secret is shown once.
+# The client app and where its webhooks go.
 php artisan ventaship:app-create "VentaCart Pro" --webhook-url=http://127.0.0.1:8000/ventaship/webhooks
 #   App:            app_…
 #   Webhook secret: whsec_…
 
-# An API token for it (also viewable later on the platform's page).
+# An API key for it (also viewable later on the platform's page).
 php artisan ventaship:key-issue app_… --name=staging
 #   12|vsk_…
 

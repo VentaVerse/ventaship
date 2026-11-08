@@ -10,7 +10,7 @@ class AppCreate extends Command
 {
     protected $signature = 'ventaship:app-create {name} {--webhook-url=}';
 
-    protected $description = 'Create a client app and print its webhook secret (shown once)';
+    protected $description = 'Create a client app and print its webhook secret';
 
     public function handle(PlatformApps $apps): int
     {
@@ -26,7 +26,7 @@ class AppCreate extends Command
 
         $this->line("App:            {$app->public_id}");
         $this->line("Webhook secret: {$secret}");
-        $this->warn('The webhook secret is shown once. Store it now.');
+        $this->warn('Store the webhook secret in the platform.');
 
         return self::SUCCESS;
     }

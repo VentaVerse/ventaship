@@ -59,9 +59,21 @@ class ClientCommandsTest extends TestCase
         $this->artisan('ventaship:key-issue', ['app' => $app->public_id])->assertSuccessful();
         $key = ApiToken::query()->sole();
 
-        $this->artisan('ventaship:key-revoke', ['prefix' => $key->prefix])->assertSuccessful();
+        $this->artisan('ventaship:key-revoke', ['key' => $key->prefix])->assertSuccessful();
 
         $this->assertNull($key->fresh());
-        $this->artisan('ventaship:key-revoke', ['prefix' => 'vsk_zzzz'])->assertFailed();
+        $this->artisan('ventaship:key-revoke', ['key' => 'vsk_zzzz'])->assertFailed();
+    }
+
+    public function test_key_revoke_accepts_numeric_id(): void
+    {
+        $app = ClientApp::factory()->create();
+        $this->artisan('ventaship:key-issue', ['app' => $app->public_id])->assertSuccessful();
+        $key = ApiToken::query()->sole();
+
+        $this->artisan('ventaship:key-revoke', ['key' => (string) $key->id])->assertSuccessful();
+
+        $this->assertNull($key->fresh());
+        $this->artisan('ventaship:key-revoke', ['key' => '999999'])->assertFailed();
     }
 }

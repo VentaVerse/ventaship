@@ -29,7 +29,6 @@ class BaselineTest extends TestCase
     public function test_vault_and_signature_config(): void
     {
         $this->assertNotEmpty(config('ventaship.vault_key'));
-        $this->assertSame(300, config('ventaship.signature_window'));
         $this->assertSame(72, config('ventaship.outbox_give_up_hours'));
     }
 
