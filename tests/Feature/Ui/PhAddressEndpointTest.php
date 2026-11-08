@@ -33,6 +33,7 @@ class PhAddressEndpointTest extends TestCase
         $this->actingAs($admin)->getJson('/ph/barangays?parent='.$districts[0]['code'])->assertOk();
         $this->actingAs($admin)->getJson('/ph/barangays?parent=bogus')->assertOk()->assertExactJson([]);
         $this->actingAs($admin)->getJson('/ph/cities')->assertOk()->assertExactJson([]);
+        $this->actingAs($admin)->getJson('/ph/cities?parent[]=130000000')->assertOk()->assertExactJson([]);
         $this->actingAs($admin)->getJson('/ph/regions')->assertNotFound();
     }
 

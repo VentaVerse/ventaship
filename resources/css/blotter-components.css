@@ -490,6 +490,13 @@
         gap: 14px;
     }
 
+    .ph-addr__error {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        grid-column: 1 / -1;
+    }
+
     .ph-addr__free {
         display: flex;
         flex-wrap: wrap;

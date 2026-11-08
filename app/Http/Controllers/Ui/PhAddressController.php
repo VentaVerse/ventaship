@@ -11,7 +11,8 @@ class PhAddressController extends Controller
 {
     public function __invoke(Request $request, PhAddress $ph, string $level): JsonResponse
     {
-        $parent = (string) $request->query('parent', '');
+        $parent = $request->query('parent', '');
+        $parent = is_string($parent) ? $parent : '';
 
         return response()->json(match ($level) {
             'provinces' => $ph->provinces(),

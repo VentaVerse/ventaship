@@ -103,9 +103,14 @@
     @endforeach
 
     <x-ui.field label="Postcode" :for="'ph-'.$slug.'-postcode'" :error-key="$dot.'.postcode'" class="ph-addr__postcode">
-        <x-ui.input :id="'ph-'.$slug.'-postcode'" :name="$prefix.'[postcode]'" :value="$config['postcode']" x-model="postcode"
+        <x-ui.input :id="'ph-'.$slug.'-postcode'" :name="$prefix.'[postcode]'" :value="$config['postcode']" x-model="postcode" x-on:input="postcodeEdited = true"
                     maxlength="16" inputmode="numeric" autocomplete="postal-code" />
     </x-ui.field>
+
+    <div class="fm-error ph-addr__error" role="status" aria-live="polite" x-show="error" x-cloak>
+        <span>Couldn't load.</span>
+        <x-ui.button size="sm" x-on:click="retry()">Retry</x-ui.button>
+    </div>
 
     <input type="hidden" name="{{ $prefix }}[state]" x-bind:value="name('state')" value="{{ $text('state') }}">
     <input type="hidden" name="{{ $prefix }}[city]" x-bind:value="name('city')" value="{{ $text('city') }}">

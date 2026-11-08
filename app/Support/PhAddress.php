@@ -53,12 +53,12 @@ class PhAddress
     /** The child of a parent with this name (case-insensitive), for rows saved before codes existed. */
     public function matchName(string $level, string $parent, string $name): ?array
     {
-        $name = mb_strtolower(trim($name));
+        $name = mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', $name)));
         if ($name === '') {
             return null;
         }
         foreach ($this->children($level, $parent) as $row) {
-            if (mb_strtolower($row['name']) === $name) {
+            if (mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', $row['name']))) === $name) {
                 return $row;
             }
         }
@@ -101,8 +101,8 @@ class PhAddress
     }
 
     /**
-     * Whether a posted address block is honest: its codes form a chain and its names are the codes' names.
-     * Without codes there is nothing to check (free text is still allowed).
+     * Whether a posted address block is honest. Codes are optional per level: every level that has a code must be
+     * a valid chain and carry that code's name; a level without a code is accepted as free text (legacy data).
      *
      * @param  array<string, mixed>  $address
      */
@@ -112,41 +112,55 @@ class PhAddress
         $state = (string) ($codes['state'] ?? '');
         $city = (string) ($codes['city'] ?? '');
         $barangay = (string) ($codes['barangay'] ?? '');
-        if ($state === '' && $city === '' && $barangay === '') {
-            return true;
-        }
+        $name = fn (string $f): string => trim((string) preg_replace('/\s+/u', ' ', (string) ($address[$f] ?? '')));
 
-        $districtName = trim((string) ($address['district'] ?? ''));
-        $district = null;
-        if ($barangay !== '') {
-            $parent = $this->find('barangays', $barangay)['parent'] ?? null;
-            if ($parent !== null && $parent !== $city) {
-                $district = $parent;
-            }
-        } elseif ($districtName !== '') {
-            $district = $this->matchName('districts', $city, $districtName)['code'] ?? null;
-            if ($district === null) {
-                return false;
-            }
-        }
-
-        if (! $this->validChain($state, $city, $district, $barangay)) {
+        $stateRow = $state !== '' ? $this->find('provinces', $state) : null;
+        $cityRow = $city !== '' ? $this->find('cities', $city) : null;
+        $brgyRow = $barangay !== '' ? $this->find('barangays', $barangay) : null;
+        if (($state !== '' && ! $stateRow) || ($city !== '' && ! $cityRow) || ($barangay !== '' && ! $brgyRow)) {
             return false;
         }
 
-        $expected = [
-            'state' => $state !== '' ? $this->find('provinces', $state)['name'] : '',
-            'city' => $city !== '' ? $this->find('cities', $city)['name'] : '',
-            'district' => $district !== null ? $this->find('districts', $district)['name'] : '',
-            'barangay' => $barangay !== '' ? $this->find('barangays', $barangay)['name'] : '',
-        ];
-        foreach ($expected as $field => $name) {
-            if (trim((string) ($address[$field] ?? '')) !== $name) {
-                return false;
+        // A city's parent must be the posted province, a barangay's the posted city (or one of its districts).
+        if ($cityRow && $state !== '' && $cityRow['parent'] !== $state) {
+            return false;
+        }
+        $district = null;
+        if ($brgyRow) {
+            $parent = $brgyRow['parent'];
+            if ($city !== '' && $parent !== $city) {
+                $district = $this->find('districts', $parent);
+                if (! $district || $district['parent'] !== $city) {
+                    return false;
+                }
+            } elseif ($city === '') {
+                // No city code to anchor it: the barangay's own ancestry must still be a real chain.
+                $district = $this->find('districts', $parent);
+                $cityCode = $district['parent'] ?? $parent;
+                if ($this->find('cities', $cityCode) === null) {
+                    return false;
+                }
             }
         }
 
-        return true;
+        if ($stateRow && $name('state') !== $stateRow['name']) {
+            return false;
+        }
+        if ($cityRow && $name('city') !== $cityRow['name']) {
+            return false;
+        }
+        if ($brgyRow && $name('barangay') !== $brgyRow['name']) {
+            return false;
+        }
+        if ($district) {
+            return $name('district') === $district['name'];
+        }
+        if ($cityRow && $this->districts($city) !== []) {
+            // Districted city: the posted district, if any, must be one of its districts.
+            return $name('district') === '' || $this->matchName('districts', $city, $name('district')) !== null;
+        }
+
+        return $cityRow === null || $name('district') === '';
     }
 
     /** @return list<array<string, string>> */

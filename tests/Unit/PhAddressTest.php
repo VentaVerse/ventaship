@@ -83,4 +83,24 @@ class PhAddressTest extends TestCase
         $this->assertFalse($ph->matchesPosted(['district' => ''] + $ok));
         $this->assertFalse($ph->matchesPosted(['codes' => ['barangay' => '000'] + $ok['codes']] + $ok));
     }
+
+    public function test_codes_are_optional_per_level_but_checked_where_present(): void
+    {
+        $ph = app(PhAddress::class);
+        // Legacy: coded province, free-text city.
+        $this->assertTrue($ph->matchesPosted(['state' => 'Metro Manila', 'city' => 'Atlantis', 'codes' => ['state' => '130000000']]));
+        // Coded level with a wrong name fails.
+        $this->assertFalse($ph->matchesPosted(['state' => 'Cebu', 'city' => 'Atlantis', 'codes' => ['state' => '130000000']]));
+        // Coded city under the wrong coded province fails.
+        $this->assertFalse($ph->matchesPosted(['state' => 'Palawan', 'city' => 'Manila', 'codes' => ['state' => '175300000', 'city' => '133900000']]));
+        // Unknown code fails; no codes at all is free text.
+        $this->assertFalse($ph->matchesPosted(['state' => 'x', 'codes' => ['state' => 'bogus']]));
+        $this->assertTrue($ph->matchesPosted(['state' => 'Anywhere', 'city' => 'Else']));
+    }
+
+    public function test_name_matching_collapses_whitespace(): void
+    {
+        $this->assertSame('133900000', app(PhAddress::class)->matchName('cities', '130000000', "  mANILA ")['code']);
+        $this->assertSame('137404000', app(PhAddress::class)->matchName('cities', '130000000', "quezon   \t city")['code']);
+    }
 }
