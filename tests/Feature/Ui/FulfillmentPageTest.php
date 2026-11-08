@@ -129,6 +129,24 @@ class FulfillmentPageTest extends TestCase
             ->assertSeeText('QuadX · Delivered (0)');
     }
 
+    public function test_status_key_is_checked_once_per_request(): void
+    {
+        $this->ship('in_transit', ['courier' => 'quadx', 'courier_status' => 'out_for_delivery']);
+
+        $checks = 0;
+        \Illuminate\Support\Facades\DB::listen(function ($q) use (&$checks) {
+            if (str_contains($q->sql, 'exists') && str_contains($q->sql, '"courier_status" = ?')) {
+                $checks++;
+            }
+        });
+
+        $this->get('/?status=quadx:out_for_delivery')->assertOk()->assertSeeText('QuadX · Out for delivery (1)');
+        $this->assertSame(1, $checks);
+
+        $this->get('/?status=quadx:out_for_delivery')->assertOk();
+        $this->assertSame(2, $checks);
+    }
+
     public function test_poll_returns_status_keys_without_nulls(): void
     {
         $a = $this->ship('draft', ['state' => 'draft', 'courier_status' => null]);

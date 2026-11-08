@@ -95,7 +95,10 @@ final class ShipmentCreator
     public function update(Shipment $shipment, array $data): Shipment
     {
         $account = AccountResolver::resolve($data['account_id'] ?? null, $data['courier'] ?? null);
-        AccountResolver::assertBookable($account);
+        // Keeping its own account is always allowed (submit() refuses to book on one that cannot); a new one must be bookable.
+        if ((string) $account->getKey() !== (string) $shipment->courier_account_id) {
+            AccountResolver::assertBookable($account);
+        }
 
         $reference = ($data['client_reference'] ?? null) ?: $shipment->client_reference;
 

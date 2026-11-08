@@ -12,6 +12,7 @@
     use App\Fulfillment\ShipmentBadges;
     use App\Fulfillment\ShipmentList;
     use App\Fulfillment\StatusFilter;
+    use App\Shipments\Canceller;
     use App\Shipments\TrackingLink;
     use App\Support\Money;
     use Illuminate\Support\Facades\Route;
@@ -33,13 +34,12 @@
     $account = $shipment->courierAccount;
     $accountLabel = $account ? collect([Couriers::name((string) $account->courier), $account->label])->filter()->implode(' · ') : null;
 
-    $purged = $shipment->pii_purged_at !== null;
-    $manualUnbooked = $shipment->source === 'manual' && in_array($shipment->state, ['draft', 'failed'], true) && ! $purged;
-    $canEdit = $manualUnbooked && Route::has('shipments.edit');
-    $canDelete = $manualUnbooked && Route::has('shipments.destroy');
+    $canEdit = $shipment->isEditable() && Route::has('shipments.edit');
+    $canDelete = $shipment->isEditable() && Route::has('shipments.destroy');
     $canBook = $shipment->state === 'draft' && Route::has('shipments.book');
     $canPrint = $shipment->state === 'booked' && Route::has('shipments.labels');
-    $canCancel = $shipment->state === 'booked' && $shipment->cancel_state === null && Route::has('shipments.cancel');
+    // What the bulk Cancel acts on; a draft is booked or deleted from here instead.
+    $canCancel = Canceller::accepts($shipment) && $shipment->state !== 'draft' && Route::has('shipments.cancel');
 
     $dim = fn ($k, $unit) => isset($parcel[$k]) ? $parcel[$k].' '.$unit : null;
     $size = collect([$parcel['length_cm'] ?? null, $parcel['width_cm'] ?? null, $parcel['height_cm'] ?? null])->filter()->implode(' × ');

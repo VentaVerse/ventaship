@@ -36,25 +36,7 @@ class ShipmentsController extends Controller
 
     public function create(Request $request, Settings $settings): View
     {
-        $accounts = CourierAccount::query()->where('status', 'active')->orderBy('courier')->orderBy('label')->get();
-
-        $token = (string) Str::uuid();
-        if ($accounts->isNotEmpty()) {
-            $this->rememberToken($request, $token, null);
-        }
-
-        return view('shipments.form', [
-            'accounts' => $accounts->map(fn (CourierAccount $a) => [
-                'id' => $a->public_id,
-                'label' => Couriers::name((string) $a->courier).' · '.$a->label,
-            ])->all(),
-            'services' => $this->servicesFor($accounts),
-            'sender' => $settings->pickup() ?? [],
-            'token' => $token,
-            'editing' => false,
-            'shipment' => null,
-            'prefill' => [],
-        ]);
+        return $this->form($request, $settings, null);
     }
 
     public function edit(Request $request, Shipment $shipment, Settings $settings): View|RedirectResponse
@@ -63,11 +45,7 @@ class ShipmentsController extends Controller
             return $this->refused($shipment);
         }
 
-        return $this->create($request, $settings)->with([
-            'editing' => true,
-            'shipment' => $shipment->loadMissing('courierAccount'),
-            'prefill' => $this->prefill($shipment->loadMissing('courierAccount')),
-        ]);
+        return $this->form($request, $settings, $shipment->loadMissing('courierAccount'));
     }
 
     public function update(ShipmentFormRequest $form, Shipment $shipment, ShipmentCreator $creator): RedirectResponse
@@ -80,7 +58,7 @@ class ShipmentsController extends Controller
 
         try {
             if (! $form->boolean('book')) {
-                $creator->update($shipment, $data);
+                $this->auditUpdate($form, $creator->update($shipment, $data));
 
                 return redirect()->route('shipments.show', $shipment->public_id)->with('status', 'Saved');
             }
@@ -88,10 +66,12 @@ class ShipmentsController extends Controller
             return $this->failed($e, $shipment);
         }
 
-        return $this->once($form, function () use ($creator, $shipment, $data) {
-            $creator->update($shipment, $data);
+        return $this->once($form, function () use ($form, $creator, $shipment, $data) {
+            $this->auditUpdate($form, $creator->update($shipment, $data));
+            $booked = $creator->submit($shipment->refresh(), now: true);
+            $this->audit($form, 'shipment.book_requested', $shipment);
 
-            return $creator->submit($shipment->refresh(), now: true);
+            return $booked;
         }, $shipment);
     }
 
@@ -149,7 +129,11 @@ class ShipmentsController extends Controller
     {
         return $this->once($form, function () use ($form, $creator) {
             $shipment = $creator->create(null, $form->shipmentData(), 'manual', now: true);
-            $this->audit($form, $shipment);
+            $this->audit($form, 'shipment.created', $shipment, [
+                'courier' => $shipment->courier,
+                'source' => 'manual',
+                'payment_method' => $shipment->payment_method,
+            ]);
 
             return $shipment;
         });
@@ -179,7 +163,7 @@ class ShipmentsController extends Controller
         // A second request for the same render, while the first still waits on the courier, must not book again.
         $lock = Cache::lock('shipment-form:'.$token, self::LOCK_SECONDS);
         if (! $lock->get()) {
-            return back()->withInput()->withErrors(['form_token' => 'Already submitting. Check the shipment list before trying again.']);
+            return back()->withInput()->withErrors(['form_token' => 'Already submitting.']);
         }
 
         try {
@@ -206,6 +190,10 @@ class ShipmentsController extends Controller
     {
         if ($e->errorCode === 'not_editable' && $editing !== null) {
             return $this->refused($editing);
+        }
+        // Another tab booked it between this request's save and its submit.
+        if ($e->errorCode === 'not_draft' && $editing !== null) {
+            return redirect()->route('shipments.show', $editing->public_id)->with('status', 'Already booked');
         }
 
         return back()->withInput()->withErrors($this->apiErrors($e));
@@ -258,7 +246,7 @@ class ShipmentsController extends Controller
 
     private function expired(): RedirectResponse
     {
-        return back()->withInput()->withErrors(['form_token' => 'This form expired. Check the shipment list before trying again.']);
+        return back()->withInput()->withErrors(['form_token' => 'Form expired.']);
     }
 
     private function toShipment(string $publicId, ?string $status): RedirectResponse
@@ -299,21 +287,51 @@ class ShipmentsController extends Controller
         $request->session()->put(self::TOKENS_KEY, array_slice($tokens, -self::TOKENS_MAX, null, true));
     }
 
-    private function audit(Request $request, Shipment $shipment): void
+    /** @param  array<mixed>|null  $changes  never recipient or pickup data */
+    private function audit(Request $request, string $action, Shipment $shipment, ?array $changes = null): void
     {
         AuditEntry::query()->create([
             'actor_type' => 'admin',
             'actor_id' => (string) $request->user()->getAuthIdentifier(),
             'ip' => $request->ip(),
-            'action' => 'shipment.created',
+            'action' => $action,
             'subject_type' => 'shipment',
             'subject_id' => $shipment->public_id,
-            'changes' => [
-                'courier' => $shipment->courier,
-                'source' => 'manual',
-                'payment_method' => $shipment->payment_method,
-            ],
+            'changes' => $changes,
             'created_at' => now(),
+        ]);
+    }
+
+    /** The names of the fields the edit changed, never their values. */
+    private function auditUpdate(Request $request, Shipment $saved): void
+    {
+        $this->audit($request, 'shipment.updated', $saved, array_values(array_diff(array_keys($saved->getChanges()), ['updated_at'])));
+    }
+
+    /** The add form, or the edit form for $editing: its own account stays listed (marked inactive) even when not active. */
+    private function form(Request $request, Settings $settings, ?Shipment $editing): View
+    {
+        $own = $editing?->courier_account_id;
+        $accounts = CourierAccount::query()
+            ->where(fn ($q) => $q->where('status', 'active')->when($own !== null, fn ($q) => $q->orWhere('id', $own)))
+            ->orderBy('courier')->orderBy('label')->get();
+
+        $token = (string) Str::uuid();
+        if ($accounts->isNotEmpty()) {
+            $this->rememberToken($request, $token, null);
+        }
+
+        return view('shipments.form', [
+            'accounts' => $accounts->map(fn (CourierAccount $a) => [
+                'id' => $a->public_id,
+                'label' => Couriers::name((string) $a->courier).' · '.$a->label.($a->status === 'active' ? '' : ' (inactive)'),
+            ])->all(),
+            'services' => $this->servicesFor($accounts),
+            'sender' => $settings->pickup() ?? [],
+            'token' => $token,
+            'editing' => $editing !== null,
+            'shipment' => $editing,
+            'prefill' => $editing === null ? [] : $this->prefill($editing),
         ]);
     }
 

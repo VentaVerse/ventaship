@@ -11,11 +11,12 @@ use App\Models\Shipment;
 use App\Models\ShipmentEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
+use Tests\Concerns\BuildsShipments;
 use Tests\TestCase;
 
 class ShipmentShowTest extends TestCase
 {
-    use RefreshDatabase;
+    use BuildsShipments, RefreshDatabase;
 
     private CourierAccount $account;
 
@@ -142,5 +143,31 @@ class ShipmentShowTest extends TestCase
     {
         $s = $this->ship('draft');
         $this->get(route('fulfillment'))->assertSee('href="'.route('shipments.show', $s->public_id).'"', false);
+    }
+
+    /** Detail-page Cancel appears exactly when the bulk Cancel (Canceller::request) would act on the shipment. */
+    public function test_cancel_shows_for_unknown_and_spx_booking_like_the_bulk_cancel(): void
+    {
+        $quadx = FakeCourier::make('quadx')->throws(new \RuntimeException('timeout'));
+        CourierRegistry::fake('quadx', $quadx);
+        $spxAccount = CourierAccount::factory()->create(['courier' => 'spx', 'status' => 'active', 'label' => 'SPX main']);
+        CourierRegistry::fake('spx', FakeCourier::make('spx')->booksAs('SPX-1', 'creating'));
+        $creator = app(\App\Shipments\ShipmentCreator::class);
+
+        $unknown = $creator->create($this->client, $this->shipmentBody(['client_reference' => 'U-1', 'account_id' => $this->account->public_id, 'courier' => null]), now: true);
+        $booking = $creator->create($this->client, $this->shipmentBody(['client_reference' => 'B-1', 'account_id' => $spxAccount->public_id, 'courier' => null]), now: true);
+        $this->assertSame('unknown', $unknown->state);
+        $this->assertSame('booking', $booking->state);
+
+        foreach ([$unknown, $booking] as $s) {
+            $html = $this->get(route('shipments.show', $s->public_id))->assertOk()->getContent();
+            $this->assertStringContainsString('sd-cancel', $html, $s->state);
+            $this->assertMatchesRegularExpression('#<form id="sd-cancel"[^>]*>.*?name="ids\[\]" value="'.$s->public_id.'"#s', $html);
+
+            // The server accepts it, and then the button is gone.
+            $this->post(route('shipments.cancel'), ['ids' => [$s->public_id]]);
+            $this->assertSame('requested', $s->refresh()->cancel_state);
+            $this->assertStringNotContainsString('sd-cancel', $this->get(route('shipments.show', $s->public_id))->getContent());
+        }
     }
 }

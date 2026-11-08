@@ -327,4 +327,96 @@ class ShipmentEditDeleteTest extends TestCase
         }
         $this->assertSame('REF-1', $s->refresh()->client_reference);
     }
+
+    public function test_save_is_audited_with_field_names_only(): void
+    {
+        $s = $this->failedManual();
+
+        $this->put(route('shipments.update', $s->public_id), $this->form(['recipient' => ['first_name' => 'Pedro'], 'client_reference' => 'REF-1']))
+            ->assertSessionHas('status', 'Saved');
+
+        $audit = AuditEntry::query()->where('action', 'shipment.updated')->sole();
+        $this->assertSame('admin', $audit->actor_type);
+        $this->assertSame((string) auth()->id(), $audit->actor_id);
+        $this->assertSame('127.0.0.1', $audit->ip);
+        $this->assertSame('shipment', $audit->subject_type);
+        $this->assertSame($s->public_id, $audit->subject_id);
+        $this->assertContains('recipient', $audit->changes);
+        $this->assertContains('state', $audit->changes);
+        $this->assertTrue(array_is_list($audit->changes));
+        $json = json_encode($audit->toArray());
+        foreach (['Pedro', 'Juan', 'Dela Cruz', '0917', 'Rizal'] as $pii) {
+            $this->assertStringNotContainsString($pii, $json);
+        }
+        $this->assertSame(0, AuditEntry::query()->where('action', 'shipment.book_requested')->count());
+    }
+
+    public function test_save_and_book_is_audited(): void
+    {
+        $s = $this->failedManual();
+        $this->fake->booksAs('QX-EDIT-2');
+
+        $this->put(route('shipments.update', $s->public_id), $this->form(['book' => '1', 'client_reference' => 'REF-1', 'recipient' => ['first_name' => 'Pedro']], $this->editToken($s)))
+            ->assertSessionHas('status', 'Booked · QX-EDIT-2');
+
+        $this->assertSame(['shipment.created', 'shipment.updated', 'shipment.book_requested'], AuditEntry::query()->where('subject_id', $s->public_id)->orderBy('id')->pluck('action')->all());
+        $booked = AuditEntry::query()->where('action', 'shipment.book_requested')->sole();
+        $this->assertSame('admin', $booked->actor_type);
+        $this->assertSame((string) auth()->id(), $booked->actor_id);
+        $this->assertSame('shipment', $booked->subject_type);
+        $json = json_encode(AuditEntry::query()->get()->toArray());
+        $this->assertStringNotContainsString('Pedro', $json);
+        $this->assertStringNotContainsString('Juan', $json);
+    }
+
+    public function test_save_and_book_after_another_tab_booked_it_says_already_booked(): void
+    {
+        $s = $this->failedManual();
+        $token = $this->editToken($s);
+        // Another tab books it between this request's save and its submit.
+        Shipment::updated(function (Shipment $m) use ($s) {
+            static $done = false;
+            if (! $done && $m->id === $s->id && $m->state === 'draft') {
+                $done = true;
+                Shipment::query()->whereKey($s->id)->toBase()->update(['state' => 'booked']);
+            }
+        });
+
+        $this->put(route('shipments.update', $s->public_id), $this->form(['book' => '1', 'client_reference' => 'REF-1'], $token))
+            ->assertRedirect(route('shipments.show', $s->public_id))
+            ->assertSessionHas('status', 'Already booked')
+            ->assertSessionHasNoErrors();
+        $this->assertSame([], $this->fake->callsTo('createShipment'));
+    }
+
+    public function test_inactive_account_stays_selected_and_is_never_switched(): void
+    {
+        $s = $this->failedManual();
+        $other = CourierAccount::factory()->create(['courier' => 'quadx', 'label' => 'Aaa backup', 'status' => 'active']);
+        $this->account->forceFill(['status' => 'disabled'])->save();
+
+        $html = $this->get(route('shipments.edit', $s->public_id))->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('#<option value="'.$this->account->public_id.'"\s+selected[^>]*>QuadX · Main QUADX \(inactive\)</option>#', $html);
+        $this->assertStringContainsString('value="'.$other->public_id.'"', $html);
+        $this->assertDoesNotMatchRegularExpression('#value="'.$other->public_id.'"\s+selected#', $html);
+
+        // Save keeps the account.
+        $this->put(route('shipments.update', $s->public_id), $this->form(['client_reference' => 'REF-1', 'recipient' => ['first_name' => 'Pedro']]))
+            ->assertSessionHasNoErrors()->assertSessionHas('status', 'Saved');
+        $s->refresh();
+        $this->assertSame($this->account->id, $s->courier_account_id);
+        $this->assertSame('Pedro', $s->recipient['first_name']);
+
+        // Save and book shows the server's refusal and books nothing.
+        $this->from(route('shipments.edit', $s->public_id))
+            ->put(route('shipments.update', $s->public_id), $this->form(['book' => '1', 'client_reference' => 'REF-1'], $this->editToken($s)))
+            ->assertRedirect(route('shipments.edit', $s->public_id))
+            ->assertSessionHasErrors(['account_id' => 'Not ready to book.']);
+        $this->assertSame('draft', $s->refresh()->state);
+        $this->assertSame($this->account->id, $s->courier_account_id);
+        $this->assertSame([], $this->fake->callsTo('createShipment'));
+
+        // A new shipment cannot pick the inactive account.
+        $this->assertStringNotContainsString('value="'.$this->account->public_id.'"', $this->get('/shipments/new')->getContent());
+    }
 }

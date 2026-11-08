@@ -30,6 +30,15 @@ final class Canceller
 
     private const REASON_MAX = 255;
 
+    /** The states request() acts on: draft and queued are cancelled at once, booking, unknown and booked are requested. */
+    public const CANCELABLE_STATES = ['draft', 'queued', 'booking', 'unknown', 'booked'];
+
+    /** Whether request() would act on the shipment (it is otherwise returned unchanged). */
+    public static function accepts(Shipment $s): bool
+    {
+        return $s->cancel_state === null && in_array($s->state, self::CANCELABLE_STATES, true);
+    }
+
     /**
      * The client asks to cancel. Idempotent by state: a shipment that is already cancelled, or already has a cancel
      * in progress or settled (`cancel_state` set), is returned unchanged with no second event. A `failed` shipment

@@ -182,10 +182,10 @@ class ShipmentCreateTest extends TestCase
     {
         $this->from('/shipments/new')->post('/shipments', $this->form([], '11111111-1111-4111-8111-111111111111'))
             ->assertRedirect('/shipments/new')
-            ->assertSessionHasErrors(['form_token' => 'This form expired. Check the shipment list before trying again.']);
+            ->assertSessionHasErrors(['form_token' => 'Form expired.']);
 
         $this->assertSame(0, Shipment::query()->count());
-        $this->get('/shipments/new')->assertSee('Blue Tee')->assertSee('This form expired.');
+        $this->get('/shipments/new')->assertSee('Blue Tee')->assertSee('Form expired.');
     }
 
     public function test_courier_refusal_saves_failed_and_shows_message(): void
@@ -266,7 +266,7 @@ class ShipmentCreateTest extends TestCase
         $lock = \Illuminate\Support\Facades\Cache::lock('shipment-form:'.$token, 60);
         $this->assertTrue($lock->get());
 
-        $this->post('/shipments', $this->form([], $token))->assertSessionHasErrors('form_token');
+        $this->post('/shipments', $this->form([], $token))->assertSessionHasErrors(['form_token' => 'Already submitting.']);
 
         $this->assertSame(0, Shipment::query()->count());
         $this->assertSame([], $this->fake->callsTo('createShipment'));

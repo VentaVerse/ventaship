@@ -83,6 +83,17 @@ class ShipmentListTest extends TestCase
         $this->assertCount(Shipment::count(), $this->ids(['view' => 'nope']));
     }
 
+    public function test_purged_failed_shipment_is_finished(): void
+    {
+        $failed = $this->make(null, $this->quadx, ['state' => 'failed']);
+        Shipment::query()->whereKey($failed->id)->toBase()->update(['updated_at' => now()->subDays(400)]);
+        $this->artisan('ventaship:pii-purge')->assertSuccessful();
+        $this->assertNotNull($failed->refresh()->pii_purged_at);
+
+        $this->assertContains($failed->id, $this->ids(['view' => 'finished']));
+        $this->assertNotContains($failed->id, $this->ids(['view' => 'active']));
+    }
+
     public function test_status_options_are_built_from_data_with_counts_and_labels(): void
     {
         Shipment::query()->delete();

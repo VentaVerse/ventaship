@@ -14,10 +14,13 @@ final class Views
         return is_string($view) && isset(self::LABELS[$view]) ? $view : 'all';
     }
 
-    /** Portable SQL: delivered, cancelled or otherwise terminal. Null-safe, so NOT of it is the active set. */
+    /**
+     * Portable SQL: delivered, cancelled or otherwise terminal, or purged (it can no longer be changed). Null-safe, so
+     * NOT of it is the active set.
+     */
     public static function finishedSql(string $table = 'shipments'): string
     {
-        return "({$table}.terminal_at IS NOT NULL OR {$table}.state = 'cancelled' OR COALESCE({$table}.phase, '') IN ('delivered', 'cancelled'))";
+        return "({$table}.terminal_at IS NOT NULL OR {$table}.pii_purged_at IS NOT NULL OR {$table}.state = 'cancelled' OR COALESCE({$table}.phase, '') IN ('delivered', 'cancelled'))";
     }
 
     public static function apply(Builder $q, mixed $view): Builder
