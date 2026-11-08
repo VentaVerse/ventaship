@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\ApiKey;
+use App\Platforms\PlatformApps;
 use Illuminate\Console\Command;
 
 class KeyRevoke extends Command
@@ -11,7 +12,7 @@ class KeyRevoke extends Command
 
     protected $description = 'Revoke an API key by its 8-character prefix';
 
-    public function handle(): int
+    public function handle(PlatformApps $apps): int
     {
         $keys = ApiKey::query()->where('key_prefix', $this->argument('prefix'))->get();
         if ($keys->count() !== 1) {
@@ -21,13 +22,12 @@ class KeyRevoke extends Command
         }
 
         $key = $keys->first();
-        if ($key->revoked_at !== null) {
+        if (! $apps->revokeKey($key)) {
             $this->warn('That key was already revoked.');
 
             return self::SUCCESS;
         }
 
-        $key->forceFill(['revoked_at' => now()])->save();
         $this->info("Revoked {$key->key_prefix}.");
 
         return self::SUCCESS;

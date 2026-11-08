@@ -10,11 +10,12 @@ class ApiKey extends Model
 {
     protected $guarded = ['id'];
 
-    protected $hidden = ['key_hash', 'signing_secret'];
+    protected $hidden = ['key_hash', 'key_encrypted', 'signing_secret'];
 
     protected function casts(): array
     {
         return [
+            'key_encrypted' => VaultEncrypted::class,
             'signing_secret' => VaultEncrypted::class,
             'scopes' => 'array',
             'last_used_at' => 'datetime',

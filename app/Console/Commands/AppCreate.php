@@ -2,10 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\Models\ClientApp;
-use App\Webhooks\Outbound\WebhookUrl;
+use App\Platforms\PlatformAppException;
+use App\Platforms\PlatformApps;
 use Illuminate\Console\Command;
-use Illuminate\Support\Str;
 
 class AppCreate extends Command
 {
@@ -13,22 +12,17 @@ class AppCreate extends Command
 
     protected $description = 'Create a client app and print its webhook secret (shown once)';
 
-    public function handle(): int
+    public function handle(PlatformApps $apps): int
     {
-        $url = $this->option('webhook-url') ?: null;
-        if ($url !== null && ! WebhookUrl::isValid($url)) {
-            $this->error('The webhook URL must be an http:// or https:// URL with a host.');
+        try {
+            $app = $apps->create((string) $this->argument('name'), $this->option('webhook-url') ?: null);
+        } catch (PlatformAppException $e) {
+            $this->error($e->getMessage());
 
             return self::FAILURE;
         }
 
-        $secret = 'whsec_' . Str::random(40);
-        $app = ClientApp::query()->create([
-            'name' => $this->argument('name'),
-            'status' => 'active',
-            'webhook_url' => $url,
-            'webhook_secret' => $secret,
-        ]);
+        $secret = $app->webhook_secret;
 
         $this->line("App:            {$app->public_id}");
         $this->line("Webhook secret: {$secret}");
