@@ -19,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Throwable;
@@ -101,15 +102,28 @@ class ShipmentsController extends Controller
         }
 
         $courierRef = $shipment->courier_ref;
-        $deleted = DB::transaction(function () use ($shipment) {
+        $paths = [];
+        $deleted = DB::transaction(function () use ($shipment, $request, $courierRef, &$paths) {
             $s = Shipment::query()->whereKey($shipment->getKey())->lockForUpdate()->first();
             if ($s === null || ! $s->isEditable()) {
                 return false;
             }
 
+            $paths = $s->labels()->pluck('path')->all();
             $s->events()->delete();
             $s->labels()->delete();
             $s->delete();
+
+            AuditEntry::query()->create([
+                'actor_type' => 'admin',
+                'actor_id' => (string) $request->user()->getAuthIdentifier(),
+                'ip' => $request->ip(),
+                'action' => 'shipment.deleted',
+                'subject_type' => 'shipment',
+                'subject_id' => $shipment->public_id,
+                'changes' => ['courier_ref' => $courierRef],
+                'created_at' => now(),
+            ]);
 
             return true;
         });
@@ -118,16 +132,8 @@ class ShipmentsController extends Controller
             return $this->refused($shipment);
         }
 
-        AuditEntry::query()->create([
-            'actor_type' => 'admin',
-            'actor_id' => (string) $request->user()->getAuthIdentifier(),
-            'ip' => $request->ip(),
-            'action' => 'shipment.deleted',
-            'subject_type' => 'shipment',
-            'subject_id' => $shipment->public_id,
-            'changes' => ['courier_ref' => $courierRef],
-            'created_at' => now(),
-        ]);
+        // Stored waybill files go once the rows are gone; a missing file is fine.
+        Storage::disk('local')->delete($paths);
 
         return redirect()->route('fulfillment')->with('status', 'Deleted');
     }

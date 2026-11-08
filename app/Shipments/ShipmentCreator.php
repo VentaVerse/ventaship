@@ -8,6 +8,9 @@ use App\Couriers\Support\PhPhone;
 use App\Models\ClientApp;
 use App\Models\Shipment;
 use App\Shipments\Jobs\BookShipment;
+use Closure;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Support\Facades\Cache;
 use App\Support\Settings;
 use Illuminate\Contracts\Database\ConcurrencyErrorDetector;
 use Illuminate\Database\DeadlockException;
@@ -94,8 +97,10 @@ final class ShipmentCreator
         $account = AccountResolver::resolve($data['account_id'] ?? null, $data['courier'] ?? null);
         AccountResolver::assertBookable($account);
 
+        $reference = ($data['client_reference'] ?? null) ?: $shipment->client_reference;
+
         try {
-            return DB::transaction(function () use ($shipment, $data, $account) {
+            return $this->withManualReferenceLock(null, $reference, fn () => DB::transaction(function () use ($shipment, $data, $account) {
                 $s = Shipment::query()->whereKey($shipment->getKey())->lockForUpdate()->firstOrFail();
                 if (! $s->isEditable()) {
                     throw new ApiError(409, 'not_editable', 'Only unbooked manual shipments can be changed.');
@@ -128,7 +133,7 @@ final class ShipmentCreator
                 ])->save();
 
                 return $s->setRelation('courierAccount', $account);
-            });
+            }));
         } catch (UniqueConstraintViolationException) {
             $holder = $this->liveHolder(null, (string) (($data['client_reference'] ?? null) ?: $shipment->client_reference));
 
@@ -261,6 +266,40 @@ final class ShipmentCreator
      * Inside a caller's transaction (DeadlockException: MySQL has rolled that back too) it is never retried here.
      */
     private function storeHoldingReference(?ClientApp $app, array $attributes): Shipment
+    {
+        return $this->withManualReferenceLock($app, $attributes['active_reference'], fn () => $this->storeHoldingReferenceUnlocked($app, $attributes));
+    }
+
+    /**
+     * Manual shipments have no client app, and the unique index treats NULL apps as distinct, so two concurrent claims
+     * of one manual reference are serialised here. A claim that cannot get the lock is answered like a live holder.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $work
+     * @return T
+     */
+    private function withManualReferenceLock(?ClientApp $app, ?string $reference, Closure $work): mixed
+    {
+        if ($app !== null || $reference === null) {
+            return $work();
+        }
+
+        $lock = Cache::lock('shipment-ref:manual:'.$reference, 10);
+        try {
+            $lock->block(5);
+        } catch (LockTimeoutException) {
+            throw new ApiError(409, 'active_shipment_exists', 'A live shipment already uses this client_reference.');
+        }
+
+        try {
+            return $work();
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function storeHoldingReferenceUnlocked(?ClientApp $app, array $attributes): Shipment
     {
         for ($attempt = 1; ; $attempt++) {
             try {

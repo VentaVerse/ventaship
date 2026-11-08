@@ -175,7 +175,9 @@ class ShipmentEditDeleteTest extends TestCase
     {
         $s = $this->failedManual();
         DB::table('shipment_events')->insert(['shipment_id' => $s->id, 'source' => 'system', 'courier_status' => 'x', 'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
-        DB::table('shipment_labels')->insert(['shipment_id' => $s->id, 'format' => 'pdf', 'path' => 'x.pdf', 'bytes' => 1, 'sha256' => str_repeat('a', 64), 'fetched_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+        \Illuminate\Support\Facades\Storage::fake('local');
+        \Illuminate\Support\Facades\Storage::disk('local')->put('labels/x.pdf', 'pdf');
+        DB::table('shipment_labels')->insert(['shipment_id' => $s->id, 'format' => 'pdf', 'path' => 'labels/x.pdf', 'bytes' => 1, 'sha256' => str_repeat('a', 64), 'fetched_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
 
         $this->delete(route('shipments.destroy', $s->public_id))
             ->assertRedirect(route('fulfillment'))->assertSessionHas('status', 'Deleted');
@@ -183,6 +185,7 @@ class ShipmentEditDeleteTest extends TestCase
         $this->assertSame(0, Shipment::query()->count());
         $this->assertSame(0, DB::table('shipment_events')->count());
         $this->assertSame(0, DB::table('shipment_labels')->count());
+        \Illuminate\Support\Facades\Storage::disk('local')->assertMissing('labels/x.pdf');
 
         // The reference is free again.
         $this->post('/shipments', $this->form(['client_reference' => 'REF-1'], $this->newFormToken()));
@@ -242,5 +245,86 @@ class ShipmentEditDeleteTest extends TestCase
         preg_match('/name="form_token" value="([0-9a-f-]{36})"/', $this->get('/shipments/new')->getContent(), $m);
 
         return $m[1];
+    }
+
+    public function test_update_refused_for_queued_and_booking_and_changes_nothing(): void
+    {
+        foreach (['queued', 'booking'] as $state) {
+            $s = Shipment::factory()->create(['source' => 'manual', 'state' => $state, 'courier_account_id' => $this->account->id, 'recipient' => ['first_name' => 'Maria']]);
+
+            try {
+                app(\App\Shipments\ShipmentCreator::class)->update($s, $this->form(['client_reference' => 'X-'.$state]) + ['client_reference' => 'X-'.$state]);
+                $this->fail('update should be refused');
+            } catch (\App\Api\ApiError $e) {
+                $this->assertSame('not_editable', $e->errorCode);
+                $this->assertSame('Only unbooked manual shipments can be changed.', $e->getMessage());
+            }
+            $this->assertSame($state, $s->refresh()->state);
+            $this->assertSame('Maria', $s->recipient['first_name']);
+        }
+    }
+
+    public function test_state_flipped_after_guard_is_refused_by_update_and_destroy(): void
+    {
+        $s = $this->failedManual();
+        // The guard passes on the stale model, then the row is booked underneath.
+        $stale = Shipment::query()->find($s->id);
+        Shipment::query()->whereKey($s->id)->update(['state' => 'queued']);
+
+        $this->assertTrue($stale->isEditable());
+        $this->expectException(\App\Api\ApiError::class);
+        try {
+            app(\App\Shipments\ShipmentCreator::class)->update($stale, ['account_id' => $this->account->public_id, 'items' => []]);
+        } finally {
+            $this->assertSame('queued', $s->refresh()->state);
+        }
+    }
+
+    public function test_destroy_refused_when_state_flipped_after_guard(): void
+    {
+        $s = $this->failedManual();
+        Shipment::retrieved(function (Shipment $m) use ($s) {
+            static $done = false;
+            if (! $done && $m->id === $s->id) {
+                $done = true;
+                Shipment::query()->whereKey($s->id)->update(['state' => 'queued']);
+            }
+        });
+
+        $this->delete(route('shipments.destroy', $s->public_id))->assertSessionHasErrors('shipment');
+        $this->assertSame(1, Shipment::query()->count());
+        $this->assertSame(0, AuditEntry::query()->where('action', 'shipment.deleted')->count());
+    }
+
+    public function test_save_and_book_refused_saves_edits_and_shows_error(): void
+    {
+        $s = $this->failedManual();
+        $this->fake->refusesWith('Nope');
+        $token = $this->editToken($s);
+
+        $this->put(route('shipments.update', $s->public_id), $this->form(['book' => '1', 'client_reference' => 'REF-1', 'recipient' => ['first_name' => 'Pedro']], $token));
+
+        $s->refresh();
+        $this->assertSame('failed', $s->state);
+        $this->assertSame('Nope', $s->error_message);
+        $this->assertSame('Pedro', $s->recipient['first_name']);
+        $this->get(route('shipments.show', $s->public_id))->assertSee('Nope');
+    }
+
+    public function test_second_claim_on_a_held_manual_reference_fails_cleanly(): void
+    {
+        $s = $this->failedManual();
+        // The reference lock is held elsewhere: block() times out.
+        $held = \Mockery::mock(\Illuminate\Contracts\Cache\Lock::class);
+        $held->shouldReceive('block')->andThrow(new \Illuminate\Contracts\Cache\LockTimeoutException);
+        \Illuminate\Support\Facades\Cache::shouldReceive('lock')->with('shipment-ref:manual:REF-9', 10)->andReturn($held);
+
+        try {
+            app(\App\Shipments\ShipmentCreator::class)->update($s, ['account_id' => $this->account->public_id, 'client_reference' => 'REF-9', 'items' => []]);
+            $this->fail('expected 409');
+        } catch (\App\Api\ApiError $e) {
+            $this->assertSame('active_shipment_exists', $e->errorCode);
+        }
+        $this->assertSame('REF-1', $s->refresh()->client_reference);
     }
 }
