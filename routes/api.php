@@ -26,6 +26,7 @@ Route::middleware(['client.auth', 'throttle:api'])->group(function () {
     Route::get('shipments', [ShipmentsController::class, 'index']);
     Route::post('shipments', [ShipmentsController::class, 'store'])->middleware(['throttle:api-create', 'idempotent']);
     Route::get('shipments/{shipment}', [ShipmentsController::class, 'show']);
+    Route::post('shipments/{shipment}/cancel', [ShipmentsController::class, 'cancel'])->middleware('idempotent');
     Route::get('shipments/{shipment}/events', [ShipmentsController::class, 'events']);
     Route::post('shipments/{shipment}/refresh', [ShipmentsController::class, 'refresh']);
     Route::post('shipments/{shipment}/submit', [ShipmentsController::class, 'submit'])->middleware(['throttle:api-create', 'idempotent']);

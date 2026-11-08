@@ -10,6 +10,7 @@ use App\Http\Resources\ShipmentEventResource;
 use App\Http\Resources\ShipmentResource;
 use App\Models\Shipment;
 use App\Shipments\BookingWaiter;
+use App\Shipments\Canceller;
 use App\Shipments\ShipmentCreator;
 use App\Shipments\TrackingRefresher;
 use Illuminate\Http\JsonResponse;
@@ -80,6 +81,17 @@ class ShipmentsController extends Controller
         $submitted = $this->creator->submit($this->find($shipment));
 
         return (new ShipmentResource($submitted->refresh()->load('courierAccount')))->response()->setStatusCode(202);
+    }
+
+    /**
+     * POST /shipments/{id}/cancel: 200 with the shipment once the request is settled (cancelled, refused, unsupported,
+     * or already so), 202 while a cancel is still in flight (booking to finish, or the courier to be told).
+     */
+    public function cancel(string $shipment, Canceller $canceller): JsonResponse
+    {
+        $s = $canceller->request($this->find($shipment));
+
+        return (new ShipmentResource($s))->response()->setStatusCode($s->cancel_state === 'requested' ? 202 : 200);
     }
 
     /** GET /shipments/{id}/events: the timeline, oldest first. */

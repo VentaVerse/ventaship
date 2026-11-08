@@ -20,7 +20,7 @@ final class BookingOutcomes
 
     private const MESSAGE_MAX = 1000;
 
-    public function __construct(private readonly StatusRecorder $recorder) {}
+    public function __construct(private readonly StatusRecorder $recorder, private readonly Canceller $canceller) {}
 
     /** queued → booking, committed before the courier is called. Null when the shipment is not (or no longer) queued. */
     public function start(int $shipmentId): ?Shipment
@@ -134,6 +134,11 @@ final class BookingOutcomes
 
             Outbox::record($s->clientApp, 'shipment.booking_failed', ['event' => null], $s);
 
+            if ($s->cancel_state === 'requested') {
+                // Nothing exists at the courier, so the requested cancel is already done; the state stays failed.
+                $this->canceller->settleNeverBooked($s);
+            }
+
             return $s;
         });
     }
@@ -213,6 +218,10 @@ final class BookingOutcomes
             $s->forceFill($changes + ['needs_attention' => false, 'attention_reason' => null])->save();
 
             Outbox::record($s->clientApp, 'shipment.resolved', ['event' => null], $s);
+
+            if ($s->state === 'failed' && $s->cancel_state === 'requested') {
+                $this->canceller->settleNeverBooked($s); // the operator found no booking: the requested cancel is done
+            }
 
             return $s;
         });
