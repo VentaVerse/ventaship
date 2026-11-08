@@ -18,6 +18,12 @@ class Shipment extends Model
 
     protected $guarded = ['id', 'public_id'];
 
+    /** Only an unbooked manual shipment that still holds its data can be edited or deleted. */
+    public function isEditable(): bool
+    {
+        return $this->source === 'manual' && in_array($this->state, ['draft', 'failed'], true) && $this->pii_purged_at === null;
+    }
+
     protected function casts(): array
     {
         return [

@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Add shipment')
+@section('title', $editing ? 'Edit shipment' : 'Add shipment')
 
 @section('crumb')
     <a href="{{ route('fulfillment') }}">Shipments</a>
@@ -30,7 +30,8 @@
         'state' => ['label' => 'Province', 'required' => true],
         'postcode' => ['label' => 'Postcode', 'class' => 'st-narrow', 'max' => 16],
     ];
-    $oldItems = old('items');
+    $v = fn (string $key, mixed $default = '') => old($key, data_get($prefill, $key, $default));
+    $oldItems = $v('items');
     $rows = is_array($oldItems) && $oldItems !== []
         ? array_map(fn ($i) => ['name' => (string) ($i['name'] ?? ''), 'quantity' => (string) ($i['quantity'] ?? '1'), 'price' => (string) ($i['price'] ?? '')], array_values($oldItems))
         : [['name' => '', 'quantity' => '1', 'price' => '']];
@@ -40,8 +41,8 @@
             $itemErrors[$n][$f] = $errors->first("items.{$n}.{$f}");
         }
     }
-    $method = old('payment.method', 'prepaid');
-    $accountId = old('account_id', $accounts[0]['id'] ?? '');
+    $method = $v('payment.method', 'prepaid');
+    $accountId = $v('account_id', $accounts[0]['id'] ?? '');
 @endphp
 
 @if($accounts === [])
@@ -50,11 +51,12 @@
     </section>
 @else
 <section class="x-panel st-panel">
-    <form method="POST" action="{{ route('shipments.store') }}" novalidate>
+    <form method="POST" action="{{ $editing ? route('shipments.update', $shipment->public_id) : route('shipments.store') }}" novalidate>
         @csrf
+        @if($editing) @method('PUT') @endif
         <input type="hidden" name="form_token" value="{{ $token }}">
 
-        <div class="st-sec" x-data="serviceSelect(@js(['services' => $services, 'account' => $accountId, 'service' => (string) old('service', '')]))">
+        <div class="st-sec" x-data="serviceSelect(@js(['services' => $services, 'account' => $accountId, 'service' => (string) $v('service')]))">
             <h2 class="st-h">Courier</h2>
             <div class="st-row">
                 <x-ui.field label="Account" name="account_id" :required="true">
@@ -79,7 +81,7 @@
 
         <div class="st-sec">
             <h2 class="st-h">Customer</h2>
-            @include('shipments._form-fields', ['prefix' => 'recipient', 'fields' => $personFields, 'values' => []])
+            @include('shipments._form-fields', ['prefix' => 'recipient', 'fields' => $personFields, 'values' => $prefill['recipient'] ?? []])
         </div>
 
         <div class="st-sec" x-data="itemRows(@js(['rows' => $rows, 'errors' => $itemErrors]))">
@@ -119,18 +121,18 @@
             <h2 class="st-h">Parcel</h2>
             <div class="st-row">
                 <x-ui.field label="Weight (kg)" name="parcel.weight_kg" :required="true">
-                    <x-ui.input type="text" inputmode="decimal" id="f-parcel-weight-kg" name="parcel[weight_kg]" class="st-ctl st-narrow" value="{{ old('parcel.weight_kg') }}" required autocomplete="off" />
+                    <x-ui.input type="text" inputmode="decimal" id="f-parcel-weight-kg" name="parcel[weight_kg]" class="st-ctl st-narrow" value="{{ $v('parcel.weight_kg') }}" required autocomplete="off" />
                 </x-ui.field>
             </div>
             <div class="st-row">
                 <x-ui.field label="Type" name="parcel.type">
-                    <x-ui.input id="f-parcel-type" name="parcel[type]" class="st-ctl" value="{{ old('parcel.type') }}" maxlength="64" autocomplete="off" />
+                    <x-ui.input id="f-parcel-type" name="parcel[type]" class="st-ctl" value="{{ $v('parcel.type') }}" maxlength="64" autocomplete="off" />
                 </x-ui.field>
             </div>
             @foreach(['length_cm' => 'Length (cm)', 'width_cm' => 'Width (cm)', 'height_cm' => 'Height (cm)'] as $key => $label)
                 <div class="st-row">
                     <x-ui.field :label="$label" :name="'parcel.'.$key">
-                        <x-ui.input type="text" inputmode="decimal" id="f-parcel-{{ str_replace('_', '-', $key) }}" name="parcel[{{ $key }}]" class="st-ctl st-narrow" value="{{ old('parcel.'.$key) }}" autocomplete="off" />
+                        <x-ui.input type="text" inputmode="decimal" id="f-parcel-{{ str_replace('_', '-', $key) }}" name="parcel[{{ $key }}]" class="st-ctl st-narrow" value="{{ $v('parcel.'.$key) }}" autocomplete="off" />
                     </x-ui.field>
                 </div>
             @endforeach
@@ -154,18 +156,18 @@
             </div>
             <div class="st-row" x-show="method === 'cod'" @if($method !== 'cod') x-cloak @endif>
                 <x-ui.field label="COD amount" name="payment.cod_amount" :required="true">
-                    <x-ui.input type="text" inputmode="decimal" id="f-payment-cod-amount" name="payment[cod_amount]" class="st-ctl st-narrow" value="{{ old('payment.cod_amount') }}" x-bind:required="method === 'cod'" x-bind:disabled="method !== 'cod'" autocomplete="off" />
+                    <x-ui.input type="text" inputmode="decimal" id="f-payment-cod-amount" name="payment[cod_amount]" class="st-ctl st-narrow" value="{{ $v('payment.cod_amount') }}" x-bind:required="method === 'cod'" x-bind:disabled="method !== 'cod'" autocomplete="off" />
                 </x-ui.field>
             </div>
             <div class="st-row">
                 <x-ui.field label="Declared value" name="payment.declared_value">
-                    <x-ui.input type="text" inputmode="decimal" id="f-payment-declared-value" name="payment[declared_value]" class="st-ctl st-narrow" value="{{ old('payment.declared_value') }}" autocomplete="off" />
+                    <x-ui.input type="text" inputmode="decimal" id="f-payment-declared-value" name="payment[declared_value]" class="st-ctl st-narrow" value="{{ $v('payment.declared_value') }}" autocomplete="off" />
                 </x-ui.field>
             </div>
             <div class="st-row">
                 <label class="sh-check">
                     <input type="hidden" name="insure" value="0">
-                    <input type="checkbox" name="insure" value="1" @checked(filter_var(old('insure'), FILTER_VALIDATE_BOOLEAN))>
+                    <input type="checkbox" name="insure" value="1" @checked(filter_var($v('insure'), FILTER_VALIDATE_BOOLEAN))>
                     <span>Insure</span>
                 </label>
             </div>
@@ -173,21 +175,26 @@
 
         <div class="st-sec">
             <h2 class="st-h">Sender</h2>
-            @include('shipments._form-fields', ['prefix' => 'pickup', 'fields' => $senderFields, 'values' => $sender])
+            @include('shipments._form-fields', ['prefix' => 'pickup', 'fields' => $senderFields, 'values' => $prefill['pickup'] ?? $sender])
         </div>
 
         <div class="st-sec">
             <h2 class="st-h">Order reference</h2>
             <div class="st-row">
                 <x-ui.field label="Reference" name="client_reference">
-                    <x-ui.input id="f-client-reference" name="client_reference" class="st-ctl x-mono" value="{{ old('client_reference') }}" maxlength="64" autocomplete="off" />
+                    <x-ui.input id="f-client-reference" name="client_reference" class="st-ctl x-mono" value="{{ $v('client_reference') }}" maxlength="64" autocomplete="off" />
                 </x-ui.field>
             </div>
         </div>
 
         <div class="st-bar">
-            <x-ui.button :href="route('fulfillment')">Cancel</x-ui.button>
-            <x-ui.button variant="primary" type="submit">Book shipment</x-ui.button>
+            <x-ui.button :href="$editing ? route('shipments.show', $shipment->public_id) : route('fulfillment')">Cancel</x-ui.button>
+            @if($editing)
+                <x-ui.button type="submit">Save</x-ui.button>
+                <x-ui.button variant="primary" type="submit" name="book" value="1">Save and book</x-ui.button>
+            @else
+                <x-ui.button variant="primary" type="submit">Book shipment</x-ui.button>
+            @endif
         </div>
     </form>
 </section>

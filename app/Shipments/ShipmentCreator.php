@@ -81,6 +81,62 @@ final class ShipmentCreator
     }
 
     /**
+     * Rewrites an unbooked manual shipment (draft or failed) from validated input. A failed shipment goes back to
+     * draft with its error and attention cleared, so submit() can book it again. The client reference stays unless
+     * the input carries another one; either way the shipment holds it again, and a live holder is a 409.
+     *
+     * @param  array<string, mixed>  $data  same shape as create()
+     *
+     * @throws ApiError 409 not_editable / active_shipment_exists, 422 account_not_found / account_misconfigured
+     */
+    public function update(Shipment $shipment, array $data): Shipment
+    {
+        $account = AccountResolver::resolve($data['account_id'] ?? null, $data['courier'] ?? null);
+        AccountResolver::assertBookable($account);
+
+        try {
+            return DB::transaction(function () use ($shipment, $data, $account) {
+                $s = Shipment::query()->whereKey($shipment->getKey())->lockForUpdate()->firstOrFail();
+                if (! $s->isEditable()) {
+                    throw new ApiError(409, 'not_editable', 'Only unbooked manual shipments can be changed.');
+                }
+
+                $reference = ($data['client_reference'] ?? null) ?: $s->client_reference;
+                $holder = Shipment::query()
+                    ->where('client_app_id', $s->client_app_id)
+                    ->where('active_reference', $reference)
+                    ->whereKeyNot($s->getKey())
+                    ->lockForUpdate()
+                    ->first();
+                if ($holder !== null) {
+                    if (! in_array($holder->state, self::RELEASED_STATES, true)) {
+                        throw $this->duplicate($holder);
+                    }
+                    $holder->forceFill(['active_reference' => null])->save();
+                }
+
+                $s->forceFill(self::attributes($data) + [
+                    'courier_account_id' => $account->getKey(),
+                    'courier' => $account->courier,
+                    'state' => 'draft',
+                    'client_reference' => $reference,
+                    'active_reference' => $reference,
+                    'error_code' => null,
+                    'error_message' => null,
+                    'needs_attention' => false,
+                    'attention_reason' => null,
+                ])->save();
+
+                return $s->setRelation('courierAccount', $account);
+            });
+        } catch (UniqueConstraintViolationException) {
+            $holder = $this->liveHolder(null, (string) (($data['client_reference'] ?? null) ?: $shipment->client_reference));
+
+            throw $holder !== null ? $this->duplicate($holder) : new ApiError(409, 'active_shipment_exists', 'A live shipment already uses this client_reference.');
+        }
+    }
+
+    /**
      * Moves a draft to queued and books it. Anything but a draft is refused: submitting twice must not book twice.
      * With $now (dashboard requests: no queue worker runs) the booking runs in this request and the shipment comes
      * back with its outcome: booked, failed, or unknown with attention. `now: true` callers must not hold a transaction.

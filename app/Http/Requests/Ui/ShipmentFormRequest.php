@@ -60,11 +60,13 @@ class ShipmentFormRequest extends FormRequest
             + ['parcel.weight_kg' => ['required', 'numeric', 'gt:0', 'max:1000']];
     }
 
-    /** The validated input, with the order reference generated when it was left blank. @return array<string, mixed> */
-    public function shipmentData(): array
+    /** The validated input, with the order reference generated when it was left blank (unless an edit keeps its own). @return array<string, mixed> */
+    public function shipmentData(bool $generateReference = true): array
     {
         $data = $this->validated();
-        $data['client_reference'] ??= self::generateReference();
+        if ($generateReference) {
+            $data['client_reference'] ??= self::generateReference();
+        }
 
         return $data;
     }
