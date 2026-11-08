@@ -67,7 +67,8 @@
     $show = CourierFormFields::show($courier, $parcel, $sizeOpen);
     $slotTime = CourierFormFields::spxSlotTime($str('pickup_slot'));
     $slot = $slotTime === null ? '' : $str('pickup_slot');
-    $pickupDate = in_array($str('pickup_date'), $dateValues, true) ? $str('pickup_date') : ($dateValues[0] ?? '');
+    $staleDate = $editing && $str('pickup_date') !== '' && ! in_array($str('pickup_date'), $dateValues, true);
+    $pickupDate = in_array($str('pickup_date'), $dateValues, true) ? $str('pickup_date') : ($staleDate ? '' : ($dateValues[0] ?? ''));
     $courierState = $dims + [
         'parcel' => $parcel,
         'weight' => $str('parcel.weight_kg'),
@@ -328,10 +329,12 @@
             <fieldset class="sh-fs sh-grid" x-show="show.pickupDate" :disabled="!show.pickupDate" {{ $off($show['pickupDate']) }}>
                 <x-ui.field label="Pickup date" name="pickup_date" :required="true">
                     <x-ui.select id="f-pickup-date" name="pickup_date" x-model="pickupDate">
+                        @if($staleDate)<option value="" selected>&nbsp;</option>@endif
                         @foreach($lbcDates as $d)
                             <option value="{{ $d['value'] }}" @selected($pickupDate === $d['value'])>{{ $d['label'] }}</option>
                         @endforeach
                     </x-ui.select>
+                    @if($staleDate && ! $errors->has('pickup_date'))<div class="fm-error" id="f-pickup-date-error">Choose a date.</div>@endif
                 </x-ui.field>
             </fieldset>
         </section>

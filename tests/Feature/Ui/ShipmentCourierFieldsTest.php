@@ -343,6 +343,36 @@ class ShipmentCourierFieldsTest extends TestCase
         $this->assertSame('box', $s->refresh()->options['parcel']['type']);
     }
 
+    public function test_spx_inline_limits_and_method_follows_handover(): void
+    {
+        $this->accounts();
+        $cod = ['payment' => ['method' => 'cod']];
+        $r = $this->post('/shipments', $this->form('spx', $cod + ['value' => '1290.50']));
+        $this->assertSame('SPX collects whole pesos only.', session('errors')->first('value'));
+        $this->post('/shipments', $this->form('spx', $cod + ['value' => '50001']));
+        $this->assertSame('SPX collects up to ₱50,000.', session('errors')->first('value'));
+        $this->post('/shipments', $this->form('spx', ['value' => '1290.50']))->assertSessionHasNoErrors();
+        $this->post('/shipments', $this->form('spx', ['parcel' => ['weight_kg' => '50']]));
+        $this->assertSame('Under 50 kg.', session('errors')->first('parcel.weight_kg'));
+        $this->post('/shipments', $this->form('spx', ['parcel' => ['type' => 'custom', 'length_cm' => '151', 'width_cm' => '10', 'height_cm' => '10']]));
+        $this->assertSame('150 cm at most.', session('errors')->first('parcel.length_cm'));
+
+        $this->assertSame('dropoff', $this->latest()->method);
+        $this->post('/shipments', $this->form('spx', ['handover' => 'pickup', 'pickup_slot' => $this->slot(time() + 86400)]))->assertSessionHasNoErrors();
+        $this->assertSame('pickup', $this->latest()->method);
+    }
+
+    public function test_edit_with_stale_lbc_date_selects_nothing(): void
+    {
+        $this->accounts();
+        $s = $this->failed('lbc');
+        $o = $s->options;
+        $o['pickup_date'] = '2020-01-01';
+        $s->update(['options' => $o]);
+
+        $this->get(route('shipments.edit', $s->public_id))->assertOk()->assertSee('Choose a date.');
+    }
+
     public function test_lbc_dates_are_next_business_days(): void
     {
         $this->accounts();

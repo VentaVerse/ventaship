@@ -1479,7 +1479,7 @@ class SpxFulfillment implements Courier
         // SPX's cod_amount is whole pesos: rounding would collect a different amount than the shipment says.
         $collect = self::decimal((float) $order->collectAmount());
         if (bccomp($collect, bcadd($collect, '0', 0), 2) !== 0) {
-            return 'SPX collects whole pesos only. Send a cod_amount without centavos.';
+            return 'SPX collects whole pesos only.';
         }
         if (bccomp($collect, self::MAX_COD, 2) > 0) {
             return 'SPX COD must be whole pesos up to ₱50,000.';
@@ -1804,7 +1804,7 @@ class SpxFulfillment implements Courier
             $height = $opts['height_cm'] ?? null;
             if (!is_numeric($length) || !is_numeric($width) || !is_numeric($height)
                 || (float) $length <= 0 || (float) $width <= 0 || (float) $height <= 0) {
-                return ['ok' => false, 'error' => 'Custom parcel dimensions (length/width/height/weight) are required and must be greater than zero.'];
+                return ['ok' => false, 'error' => 'Enter the parcel size.'];
             }
             return ['ok' => true, 'dims' => [
                 'length_cm' => (float) $length, 'width_cm' => (float) $width,

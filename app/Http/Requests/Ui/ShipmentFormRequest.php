@@ -129,6 +129,9 @@ class ShipmentFormRequest extends FormRequest
         }
         if ($courier === 'spx') {
             $input['handover'] = self::blank($input['handover'] ?? null) ? 'dropoff' : $input['handover'];
+            if (in_array($input['handover'], ['pickup', 'dropoff'], true)) {
+                $input['method'] = $input['handover'];
+            }
         } else {
             unset($input['handover']);
         }
@@ -178,6 +181,7 @@ class ShipmentFormRequest extends FormRequest
         }
         if ($courier === 'spx') {
             $rules['parcel.category'] = ['required', 'string', Rule::in(CourierFormFields::categories())];
+            $rules['method'] = ['nullable', 'string', 'in:pickup,dropoff'];
             $rules['handover'] = ['required', 'string', Rule::in(array_keys(CourierFormFields::HANDOVER))];
             $rules['pickup_slot'] = ['required_if:handover,pickup', 'nullable', 'string', 'max:255',
                 function (string $attribute, mixed $value, \Closure $fail) {
@@ -248,7 +252,7 @@ class ShipmentFormRequest extends FormRequest
         // COD collects the Value, which has its own rule and message.
         $payment['payment.cod_amount'] = ['nullable', ...$this->money(), 'gt:0'];
 
-        return $this->courierRules() + [
+        $rules = $this->courierRules() + [
             'value' => ['required', 'string', 'regex:'.self::VALUE_PATTERN, 'numeric', 'gt:0', 'max:9999999999.99'],
             'total' => ['nullable', ...$this->money(), 'gt:0'],
             'account_id' => ['required', 'string', 'max:30'],
@@ -261,6 +265,41 @@ class ShipmentFormRequest extends FormRequest
             'items.*.name' => ['required', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:100000', 'regex:'.self::QTY_PATTERN],
         ] + $this->parcelRules() + $payment + $this->pickupRules() + $this->recipientRules();
+
+        return $this->spxRules($rules);
+    }
+
+    /** SPX's own limits, checked inline; money and weights as strings, never floats. @param array<string, mixed> $rules */
+    private function spxRules(array $rules): array
+    {
+        if ($this->courier() !== 'spx') {
+            return $rules;
+        }
+        $num = fn (mixed $v): ?string => is_string($v) && preg_match('/^\d{1,10}(\.\d{1,6})?$/', trim($v)) === 1 ? trim($v) : (is_int($v) ? (string) $v : null);
+        $rules['value'][] = function (string $a, mixed $v, \Closure $fail) use ($num) {
+            if (($this->input('payment.method') ?? null) !== 'cod' || ($n = $num($v)) === null) {
+                return;
+            }
+            if (bccomp($n, bcadd($n, '0', 0), 2) !== 0) {
+                $fail('SPX collects whole pesos only.');
+            } elseif (bccomp($n, '50000', 2) > 0) {
+                $fail('SPX collects up to ₱50,000.');
+            }
+        };
+        $rules['parcel.weight_kg'][] = function (string $a, mixed $v, \Closure $fail) use ($num) {
+            if (($n = $num($v)) !== null && bccomp($n, '50', 6) >= 0) {
+                $fail('Under 50 kg.');
+            }
+        };
+        foreach (self::SIZE_KEYS as $key) {
+            $rules["parcel.{$key}"][] = function (string $a, mixed $v, \Closure $fail) use ($num) {
+                if (($n = $num($v)) !== null && bccomp($n, '150', 6) > 0) {
+                    $fail('150 cm at most.');
+                }
+            };
+        }
+
+        return $rules;
     }
 
     /** The validated input, with the order reference generated when it was left blank (unless an edit keeps its own). @return array<string, mixed> */

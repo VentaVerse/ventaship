@@ -880,13 +880,13 @@ Request fields:
 | `items[].quantity` | required integer, 1 to 100000 |
 | `items[].price` | optional money ≥ 0 (per unit, informational) |
 | `items[].weight_kg` | optional number > 0, ≤ 1000 |
-| `total`, `subtotal` | optional money ≥ 0 (the order's amounts; `total` is the fallback declared value) |
+| `total`, `subtotal` | optional money ≥ 0 (the order's amounts; `total` is the fallback declared value). QuadX requires `total` ≥ 1 on prepaid, otherwise the booking fails `courier_refused` "Parcel value is required." |
 | `note` | optional string ≤ 500, passed to the courier as delivery instructions |
 | `metadata` | optional object of up to 20 keys; keys are strings ≤ 40 characters; values are strings, numbers, booleans or null (no nesting); ≤ 4096 bytes as JSON. Echoed back unchanged on every answer and webhook |
 
-**QuadX items.** QuadX receives the items with their prices when every `items[].price` is present and the lines add up to `total`. When a price is missing, or the lines do not add up, QuadX receives one consolidated item line whose amount is `total`, so its order total always matches.
+**QuadX items.** QuadX receives the items with their prices when every `items[].price` is present and the lines add up to `total`. When a price is missing, or the lines do not add up, QuadX receives one consolidated item line. The items are compared to, and that line's amount is, `total` on prepaid or `payment.cod_amount` on COD, so QuadX's order total always matches.
 
-**SPX limits.** SPX needs `parcel.weight_kg` (a booking without it is refused), the weight must be under 50 kg, each side (`length_cm`, `width_cm`, `height_cm`) at most 150 cm, and `payment.cod_amount` whole pesos up to 50,000. A shipment outside these limits is not sent: it ends `failed` with `error.code` `courier_refused`.
+**SPX limits.** SPX takes the weight from `parcel.weight_kg`, or from `items[].weight_kg` when every line has one (a booking with neither is refused), the weight must be under 50 kg, each side (`length_cm`, `width_cm`, `height_cm`) at most 150 cm, and `payment.cod_amount` whole pesos up to 50,000. A shipment outside these limits is not sent: it ends `failed` with `error.code` `courier_refused`.
 
 Money rules worth repeating: the courier collects `payment.cod_amount`, never the items' sum or `total`. Item prices do not need to add up to it. **SPX** collects whole pesos only: an SPX COD shipment with centavos (`1290.50`) is refused at booking (state `failed`, `error.code` `courier_refused`).
 

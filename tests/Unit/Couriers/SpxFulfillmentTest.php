@@ -313,7 +313,7 @@ class SpxFulfillmentTest extends TestCase
         $result = $this->courier()->createShipment($order, $this->opts(['parcel' => 'custom', 'shipping_payment' => 'sender_pay']));
 
         $this->assertFalse($result['success']);
-        $this->assertStringContainsString('Custom parcel dimensions', $result['error']);
+        $this->assertStringContainsString('Enter the parcel size.', $result['error']);
         Http::assertNothingSent();
     }
 
