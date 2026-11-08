@@ -375,4 +375,27 @@ class ShipmentCourierFieldsTest extends TestCase
         $this->post('/shipments', $this->form('lbc', ['parcel' => ['type' => '80']]))->assertSessionHasNoErrors();
         $this->assertSame('80', $this->latest()->options['parcel']['type']);
     }
+
+    public function test_ui_has_no_email_or_unit_fields(): void
+    {
+        $this->accounts();
+
+        $html = $this->get('/shipments/new')->assertOk()->getContent();
+        foreach (['recipient[email]', 'recipient[address_2]', 'pickup[address_2]', 'parcel[type]" type="text'] as $name) {
+            $this->assertStringNotContainsString($name, $html, $name);
+        }
+        $this->assertStringNotContainsString('Unit / building', $html);
+
+        // Edit: an existing address_2 and email are not shown as fields; the unit joins the street line.
+        $s = $this->failed('quadx');
+        $s->forceFill([
+            'recipient' => ['address_2' => 'Unit 4B, Sun Tower', 'email' => 'juan@example.com'] + (array) $s->recipient,
+            'pickup' => ['address_2' => 'Bldg 9'] + (array) $s->pickup,
+        ])->save();
+        $html = $this->get(route('shipments.edit', $s->public_id))->assertOk()->getContent();
+        $this->assertStringContainsString('1 Rizal St, Unit 4B, Sun Tower', $html);
+        $this->assertStringContainsString('5 Shaw Blvd, Bldg 9', $html);
+        $this->assertStringNotContainsString('juan@example.com', $html);
+        $this->assertStringNotContainsString('name="recipient[address_2]"', $html);
+    }
 }

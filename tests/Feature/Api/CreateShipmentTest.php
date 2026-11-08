@@ -306,6 +306,39 @@ class CreateShipmentTest extends TestCase
             ->assertJsonPath('data.account.id', $other->public_id);
     }
 
+    public function test_api_accepts_parcel_category(): void
+    {
+        $this->fakeDefaultAccount();
+
+        foreach (['Food and beverage', 'Clothing', 'Electronics', 'Medical', 'Groceries', 'General merchandise', 'Fragile'] as $category) {
+            $this->create($this->shipmentBody(['client_reference' => Str::random(8), 'parcel' => ['type' => 'small', 'category' => $category]]))
+                ->assertStatus(202);
+        }
+        $this->create($this->shipmentBody(['client_reference' => 'no-category', 'parcel' => ['type' => 'small']]))->assertStatus(202);
+        $this->assertSame('Fragile', Shipment::query()->orderBy('id')->get()[6]->options['parcel']['category']);
+
+        foreach (['electronics', 'Toys', 5] as $bad) {
+            $this->create($this->shipmentBody(['client_reference' => Str::random(8), 'parcel' => ['category' => $bad]]))
+                ->assertStatus(422)->assertJsonValidationErrors(['parcel.category'], 'errors');
+        }
+    }
+
+    public function test_item_quantity_below_one_and_bad_pickup_date_refused(): void
+    {
+        $this->fakeDefaultAccount();
+
+        foreach ([0, -1] as $qty) {
+            $body = $this->shipmentBody(['client_reference' => Str::random(8)]);
+            $body['items'][0]['quantity'] = $qty;
+            $this->create($body)->assertStatus(422)->assertJsonValidationErrors(['items.0.quantity'], 'errors');
+        }
+
+        foreach (['2026-13-40', '11/12/2026', 'tomorrow', '2020-01-01'] as $date) {
+            $this->create($this->shipmentBody(['client_reference' => Str::random(8), 'pickup_date' => $date]))
+                ->assertStatus(422)->assertJsonValidationErrors(['pickup_date'], 'errors');
+        }
+    }
+
     public function test_create_requires_idempotency_key(): void
     {
         $this->fakeDefaultAccount();

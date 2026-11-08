@@ -188,6 +188,21 @@ class BookingPayloadTest extends TestCase
         $this->assertSame(50000, $sent[0][0]->data()['orders'][0]['fulfillment_info']['cod_amount']);
     }
 
+    public function test_spx_cod_over_limit_with_centavos_refused(): void
+    {
+        $this->fakeSpx();
+        $account = $this->spxAccount();
+
+        $shipment = $this->spxShipment($account, ['parcel' => ['type' => 'small', 'weight_kg' => 1]], [
+            'courier_ref' => 'VS000400', 'payment_method' => 'cod', 'total' => '50000.50', 'cod_amount' => '50000.50',
+        ]);
+        $result = $this->bookSpx($account, $shipment);
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('SPX', $result['error']);
+        Http::assertNothingSent();
+    }
+
     public function test_spx_category_passthrough(): void
     {
         $this->fakeSpx();
@@ -230,6 +245,33 @@ class BookingPayloadTest extends TestCase
         foreach ($cases as $i => [$cod, $declared, , $expected]) {
             $this->assertSame((string) (float) $cod, (string) $sent[$i]->CODAmount);
             $this->assertSame($expected, (string) $sent[$i]->DeclaredValue, "COD {$cod}, declared {$declared}");
+        }
+    }
+
+    public function test_lbc_prepaid_declared_value(): void
+    {
+        $cases = [
+            // [declared_value, insure, expected DeclaredValue]
+            ['0', false, '0'],          // prepaid and uninsured: nothing declared
+            ['2000.00', false, '0'],    // a declared value alone does not insure
+            ['2000.00', true, '2000'],  // insured: the declared value
+            ['100.00', true, '500'],    // insured: the ₱500 floor
+        ];
+
+        $this->setUpLbc();
+        $this->fakeLbc();
+
+        foreach ($cases as [$declared, $insure]) {
+            $order = $this->order([], ['payment_method' => 'prepaid', 'total' => '2000.00', 'cod_amount' => null, 'declared_value' => $declared]);
+            $this->assertTrue($this->lbc()->createShipment($order, $this->bookingOptions(['insure' => $insure]))['success']);
+        }
+
+        $sent = Http::recorded(fn (Request $r) => self::isPickupRequest($r))
+            ->map(fn (array $pair) => simplexml_load_string($pair[0]->body()))->values();
+        $this->assertCount(count($cases), $sent);
+        foreach ($cases as $i => [$declared, $insure, $expected]) {
+            $this->assertSame('0', (string) $sent[$i]->CODAmount);
+            $this->assertSame($expected, (string) $sent[$i]->DeclaredValue, "declared {$declared}, insure ".var_export($insure, true));
         }
     }
 

@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Api\V1\Concerns;
 
+use App\Couriers\Spx\SpxFulfillment;
 use App\Rules\PhPhone;
+use Illuminate\Validation\Rule;
 
 /**
  * The validation rules for the parts every courier request shares: addresses, parcel, payment, account choice.
@@ -50,6 +52,7 @@ trait ValidatesShipmentParts
         return [
             'parcel' => ['nullable', 'array'],
             'parcel.type' => ['nullable', 'string', 'max:64'],
+            'parcel.category' => ['nullable', 'string', Rule::in(SpxFulfillment::PARCEL_ITEM_TYPES)],
             'parcel.weight_kg' => ['nullable', 'numeric', 'gt:0', 'max:1000'],
             'parcel.length_cm' => ['nullable', 'numeric', 'gt:0', 'max:1000'],
             'parcel.width_cm' => ['nullable', 'numeric', 'gt:0', 'max:1000'],

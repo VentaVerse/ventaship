@@ -17,11 +17,9 @@
         'first_name' => ['label' => 'First name', 'required' => true],
         'last_name' => ['label' => 'Last name'],
         'phone' => ['label' => 'Phone', 'type' => 'tel', 'required' => true, 'max' => 32],
-        'email' => ['label' => 'Email', 'type' => 'email'],
     ];
     $streetFields = [
         'address_1' => ['label' => 'Street', 'required' => true, 'class' => 'sh-span'],
-        'address_2' => ['label' => 'Unit / building', 'class' => 'sh-span'],
     ];
     $senderFields = [
         'contact_name' => ['label' => 'Name', 'required' => true],
@@ -48,8 +46,14 @@
     $usable = array_values(array_filter($tiles, fn ($t) => $t['id'] !== null));
     $accountId = $v('account_id', $usable[0]['id'] ?? '');
     $names = collect($usable)->mapWithKeys(fn ($t) => [$t['id'] => $t['name']])->all();
-    $recipient = (array) old('recipient', $prefill['recipient'] ?? []);
-    $pickup = (array) old('pickup', $sender ?? []);
+    $oneStreet = function (array $party): array {
+        $street = trim(implode(', ', array_filter([trim((string) ($party['address_1'] ?? '')), trim((string) ($party['address_2'] ?? ''))], fn ($p) => $p !== '')));
+        unset($party['address_2']);
+
+        return $street === '' ? $party : ['address_1' => $street] + $party;
+    };
+    $recipient = $oneStreet((array) old('recipient', $prefill['recipient'] ?? []));
+    $pickup = $oneStreet((array) old('pickup', $sender ?? []));
     $pickupErrors = collect($errors->keys())->contains(fn ($k) => str_starts_with($k, 'pickup.'));
     $senderOpen = $sender === null || $pickupErrors;
     $senderLine = collect([$pickup['address_1'] ?? '', $pickup['address_2'] ?? '', $pickup['barangay'] ?? '', $pickup['district'] ?? '', $pickup['city'] ?? '', $pickup['state'] ?? '', $pickup['postcode'] ?? ''])

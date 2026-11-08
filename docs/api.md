@@ -860,12 +860,13 @@ Request fields:
 | `order_label` | optional, string ≤ 64, a display label (e.g. `#4211`) |
 | `submit` | optional boolean, default `true`. `false` saves a **draft** (`201`), booked later with `POST /shipments/{id}/submit` |
 | `method` | optional, `pickup` (default) or `dropoff` |
-| `pickup_date` | optional, `YYYY-MM-DD`, today or later (Manila). **LBC** books its pickup on this date when no `pickup_slot` is sent (Monday to Saturday, from the next business day; else the next business day) |
+| `pickup_date` | optional, `YYYY-MM-DD`, today or later (Manila). Anything else (`11/12/2026`, an impossible date, a past date) is refused with `422`; it is never replaced by another date. **LBC** books its pickup on this date when no `pickup_slot` is sent: Monday to Saturday, from the next business day, up to the courier's booking window. A date LBC cannot take (a Sunday, today, too far ahead) fails the booking with `courier_refused` and a message naming the date rule. When omitted, LBC books the next business day |
 | `pickup_slot` | optional string ≤ 255: a `value` from `POST /pickup-slots` |
 | `service` | optional string ≤ 64: a `service_types` value from `GET /couriers`; the account's default when omitted |
 | `insure` | optional boolean, default `false`. `true` asks the courier to insure the parcel at `payment.declared_value` (or `total`). `false` sends no insurance, except at **LBC**, which always insures a COD parcel |
 | `parcel` | optional object |
 | `parcel.type` | optional string ≤ 64: a `parcel_options` value; the account's default when omitted |
+| `parcel.category` | optional, one of `Food and beverage`, `Clothing`, `Electronics`, `Medical`, `Groceries`, `General merchandise`, `Fragile`, spelled exactly. Any other value is refused with `422`. Used by **SPX** as the item type; `General merchandise` when omitted. Other couriers ignore it |
 | `parcel.weight_kg`, `parcel.length_cm`, `parcel.width_cm`, `parcel.height_cm` | optional numbers, > 0, ≤ 1000 |
 | `payment` | **required** object |
 | `payment.method` | **required**, `cod` or `prepaid` |
@@ -882,6 +883,10 @@ Request fields:
 | `total`, `subtotal` | optional money ≥ 0 (the order's amounts; `total` is the fallback declared value) |
 | `note` | optional string ≤ 500, passed to the courier as delivery instructions |
 | `metadata` | optional object of up to 20 keys; keys are strings ≤ 40 characters; values are strings, numbers, booleans or null (no nesting); ≤ 4096 bytes as JSON. Echoed back unchanged on every answer and webhook |
+
+**QuadX items.** QuadX receives the items with their prices when every `items[].price` is present and the lines add up to `total`. When a price is missing, or the lines do not add up, QuadX receives one consolidated item line whose amount is `total`, so its order total always matches.
+
+**SPX limits.** SPX needs `parcel.weight_kg` (a booking without it is refused), the weight must be under 50 kg, each side (`length_cm`, `width_cm`, `height_cm`) at most 150 cm, and `payment.cod_amount` whole pesos up to 50,000. A shipment outside these limits is not sent: it ends `failed` with `error.code` `courier_refused`.
 
 Money rules worth repeating: the courier collects `payment.cod_amount`, never the items' sum or `total`. Item prices do not need to add up to it. **SPX** collects whole pesos only: an SPX COD shipment with centavos (`1290.50`) is refused at booking (state `failed`, `error.code` `courier_refused`).
 
