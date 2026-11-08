@@ -8,6 +8,7 @@ use App\Models\CourierAccountSetting;
 use App\Support\Vault\CredentialVault;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 use LogicException;
 use Throwable;
 
@@ -73,8 +74,18 @@ final class AccountSettings
         }
     }
 
+    /**
+     * A plain setting, stored and audited as it is.
+     *
+     * @throws InvalidArgumentException for a key the courier's settingsSchema() marks secret: it would land in the
+     *                                  table and the audit trail in plain text
+     */
     public function write(string $key, ?string $value): void
     {
+        if ($this->isSecretKey($key)) {
+            throw new InvalidArgumentException("{$key} is a secret setting. Store it with writeSecret().");
+        }
+
         $from = $this->read($key);
         $this->persist($key, $value, ['key' => $key, 'from' => $from, 'to' => $value]);
     }
@@ -86,6 +97,23 @@ final class AccountSettings
             'key' => $key,
             'value' => $stored === null ? self::SECRET_MASK_REMOVED : self::SECRET_MASK_CHANGED,
         ]);
+    }
+
+    /** Whether the account's courier declares this key secret (encrypted, or a secret/password field). */
+    private function isSecretKey(string $key): bool
+    {
+        $courier = (string) $this->account->courier;
+        if (! CourierRegistry::has($courier)) {
+            return false;
+        }
+
+        foreach (CourierRegistry::describe($courier)->settingsSchema() as $field) {
+            if (($field['key'] ?? null) === $key) {
+                return ! empty($field['encrypted']) || in_array($field['type'] ?? null, ['secret', 'password'], true);
+            }
+        }
+
+        return false;
     }
 
     /** @param  array<string, mixed>  $changes */

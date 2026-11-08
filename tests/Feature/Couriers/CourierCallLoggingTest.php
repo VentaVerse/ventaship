@@ -90,4 +90,49 @@ class CourierCallLoggingTest extends TestCase
 
         $this->assertSame(0, CourierCall::query()->count());
     }
+
+    public function test_excerpt_masks_credential_keys_whatever_their_case(): void
+    {
+        $excerpt = \App\Couriers\Logging\RecordCourierCalls::excerpt(json_encode([
+            'Token' => 'tok-SECRET-1',
+            'secret' => 'sec-SECRET-2',
+            'API_KEY' => 'key-SECRET-3',
+            'apikey' => 'key-SECRET-4',
+            'Authorization' => 'Bearer SECRET-5',
+            'password' => 'pw-SECRET-6',
+            'key' => 'k-SECRET-7',
+            'user_secret' => 'us-SECRET-8',
+            'Ocp-Apim-Subscription-Key' => 'sub-SECRET-9',
+            'nested' => ['access_token' => 'at-SECRET-10'],
+            'message' => 'Invalid request',
+            'monkey' => 'banana',
+        ]));
+
+        $this->assertStringNotContainsString('SECRET', $excerpt);
+        $this->assertStringContainsString('Invalid request', $excerpt);
+        $this->assertStringContainsString('banana', $excerpt, 'A key that only ends in "key" is not a credential.');
+    }
+
+    public function test_excerpt_masks_credentials_and_landlines_in_a_body_that_is_not_json(): void
+    {
+        $excerpt = \App\Couriers\Logging\RecordCourierCalls::excerpt(
+            '<error>{"token": "tok-SECRET-1", "password":"pw-SECRET-2"} Call (02) 8123 4567, 028123 4567, 02-8123-4567, '
+            . '+63 2 8123 4567 or (032) 123 4567. Tracking 10000000000001, amount 1350.</error>'
+        );
+
+        $this->assertStringNotContainsString('SECRET', $excerpt);
+        foreach (['8123 4567', '028123', '8123-4567', '123 4567'] as $landline) {
+            $this->assertStringNotContainsString($landline, $excerpt);
+        }
+        $this->assertStringContainsString('10000000000001', $excerpt, 'A tracking number is not a phone number.');
+        $this->assertStringContainsString('1350', $excerpt);
+    }
+
+    public function test_excerpt_masks_landlines_inside_json_values(): void
+    {
+        $excerpt = \App\Couriers\Logging\RecordCourierCalls::excerpt(json_encode(['detail' => 'Shipper landline (02) 8123 4567 is not a mobile.']));
+
+        $this->assertStringNotContainsString('8123 4567', $excerpt);
+        $this->assertStringContainsString('is not a mobile', $excerpt);
+    }
 }

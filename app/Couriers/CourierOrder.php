@@ -2,6 +2,7 @@
 
 namespace App\Couriers;
 
+use App\Models\CourierAccount;
 use App\Models\Shipment;
 use Closure;
 use Illuminate\Support\Collection;
@@ -49,7 +50,7 @@ final class CourierOrder
     /** The literal statuses a cancel stamps on a booking, read as the cancelled phase by every courier. */
     public const CANCELED_STATUSES = ['canceled', 'cancelled'];
 
-    /** @var (Closure(string, string): ?self)|null */
+    /** @var (Closure(string, string, ?CourierAccount): ?self)|null */
     private static ?Closure $trackingLookup = null;
 
     /** @param  array<string, mixed>  $attributes */
@@ -136,16 +137,16 @@ final class CourierOrder
     }
 
     /**
-     * The order booked with this courier under this tracking number, for the courier calls that start from a
-     * tracking number alone (printing a label, refusing a late cancel). The shipments store answers it; until one is
-     * registered (Task 8, scoped to the account), nothing is found.
+     * The shipment booked on this account under this tracking number, for the courier calls that start from a
+     * tracking number alone (printing a label, refusing a late cancel). CourierServiceProvider registers the lookup
+     * against `shipments`, scoped to the account: with no saved account, nothing is found.
      */
-    public static function forTracking(string $courierKey, string $trackingNumber): ?self
+    public static function forTracking(string $courierKey, string $trackingNumber, ?CourierAccount $account): ?self
     {
-        return self::$trackingLookup ? (self::$trackingLookup)($courierKey, $trackingNumber) : null;
+        return self::$trackingLookup ? (self::$trackingLookup)($courierKey, $trackingNumber, $account) : null;
     }
 
-    /** @param  (Closure(string, string): ?self)|null  $lookup */
+    /** @param  (Closure(string, string, ?CourierAccount): ?self)|null  $lookup */
     public static function resolveTrackingUsing(?Closure $lookup): void
     {
         self::$trackingLookup = $lookup;

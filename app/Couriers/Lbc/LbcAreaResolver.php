@@ -2,7 +2,6 @@
 
 namespace App\Couriers\Lbc;
 
-use App\Services\Address\DeepAddressData;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -19,8 +18,10 @@ use Illuminate\Support\Str;
  *
  * The area code comes from the rate category validateServicableArea
  * returns ("METRO MANILA AREA" is MMA). Only when that category is missing
- * or unrecognised does it fall back to the region, read from the PSGC code
- * or the province name, and the fallback is logged.
+ * or unrecognised does it fall back to the region, read from the barangay's
+ * PSGC code, else the province's PSGC code the client sent
+ * (`codes.state`), else the province name looked up in the bundled
+ * resources/data/ph-provinces.php, and the fallback is logged.
  */
 class LbcAreaResolver
 {
@@ -53,11 +54,13 @@ class LbcAreaResolver
     {
     }
 
-    public function resolve(?string $barangay, ?string $city, ?string $province): LbcArea
+    /** @param  string|null  $provinceCode  the province's PSGC code (`codes.state`), when the client sent one */
+    public function resolve(?string $barangay, ?string $city, ?string $province, ?string $provinceCode = null): LbcArea
     {
         $barangay = trim((string) $barangay);
         $city = trim((string) $city);
         $province = trim((string) $province);
+        $region = self::regionOfPsgc($provinceCode);
 
         $area = new LbcArea(inputBarangay: $barangay, inputCity: $city, inputProvince: $province);
 
@@ -67,7 +70,7 @@ class LbcAreaResolver
 
         $location = $this->locate($barangay, $city, $province);
         if (isset($location['problem'])) {
-            return $this->withFallbackArea($area->withProblem($location['problem']));
+            return $this->withFallbackArea($area->withProblem($location['problem']), $region);
         }
         [$cityRow, $barangayRow] = [$location['city'], $location['barangay']];
 
@@ -82,7 +85,7 @@ class LbcAreaResolver
 
         $answer = $this->client->validateServiceableArea($psgc);
         if ($answer === null) {
-            return $this->withFallbackArea($area->withProblem('LBC could not answer whether it serves this barangay.'));
+            return $this->withFallbackArea($area->withProblem('LBC could not answer whether it serves this barangay.'), $region);
         }
 
         $status = (string) ($answer['status'] ?? '');
@@ -99,7 +102,19 @@ class LbcAreaResolver
             return $area->withAreaCode($code, LbcArea::FROM_SERVICEABILITY);
         }
 
-        return $this->withFallbackArea($area);
+        return $this->withFallbackArea($area, $region);
+    }
+
+    /**
+     * The two-digit PSGC region of a province code: the first two digits of
+     * a nine-digit (RRPPMMBBB) or ten-digit (RRPPPMMBBB) code. Anything else,
+     * a code that lost its leading zero included, is not trusted.
+     */
+    public static function regionOfPsgc(?string $code): ?string
+    {
+        $code = trim((string) $code);
+
+        return preg_match('/^\d{9,10}$/', $code) === 1 ? substr($code, 0, 2) : null;
     }
 
     /**
@@ -234,12 +249,18 @@ class LbcAreaResolver
             || str_contains($normalized, 'NATIONAL CAPITAL REGION');
     }
 
-    /** Region-based area code, used only when serviceability gave no usable category. */
-    private function withFallbackArea(LbcArea $area): LbcArea
+    /**
+     * Region-based area code, used only when serviceability gave no usable
+     * category: the barangay's own PSGC code first, then the province code
+     * the client sent, then the province name.
+     */
+    private function withFallbackArea(LbcArea $area, ?string $provinceRegion = null): LbcArea
     {
         $region = null;
         if ($area->psgcCode !== null) {
             $region = substr($area->psgcCode, 0, 2);
+        } elseif ($provinceRegion !== null) {
+            $region = $provinceRegion;
         } elseif ($this->isCapitalRegion(self::normalizeName($area->inputProvince))) {
             $region = '13';
         } else {
@@ -258,7 +279,7 @@ class LbcAreaResolver
         return $code !== null ? $area->withAreaCode($code, LbcArea::FROM_REGION) : $area;
     }
 
-    /** The PSGC region of a province name, from the bundled address data. */
+    /** The PSGC region of a province name, from the bundled province list (name => nine-digit PSGC code). */
     private function regionOfProvince(string $province): ?string
     {
         $wanted = self::normalizeName($province);
@@ -266,13 +287,20 @@ class LbcAreaResolver
             return null;
         }
 
-        foreach (app(DeepAddressData::class)->level('PH', 'state') as $row) {
-            if (self::normalizeName((string) $row['name']) === $wanted) {
-                // Bundled codes are the nine-digit generation: RRPPMMBBB.
-                return substr(str_pad((string) $row['code'], 9, '0', STR_PAD_LEFT), 0, 2);
+        foreach (self::provinces() as $name => $code) {
+            if (self::normalizeName((string) $name) === $wanted) {
+                return self::regionOfPsgc(str_pad((string) $code, 9, '0', STR_PAD_LEFT));
             }
         }
 
         return null;
+    }
+
+    /** @return array<string, string> */
+    private static function provinces(): array
+    {
+        static $provinces = null;
+
+        return $provinces ??= (array) require resource_path('data/ph-provinces.php');
     }
 }

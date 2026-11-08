@@ -18,9 +18,11 @@ class CourierRegistryTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_only_quadx_is_registered_and_describe_needs_no_database(): void
+    public function test_quadx_spx_and_lbc_are_registered_and_describe_needs_no_database(): void
     {
-        $this->assertSame(['quadx'], CourierRegistry::keys());
+        $this->assertSame(['quadx', 'spx', 'lbc'], CourierRegistry::keys());
+        $this->assertInstanceOf(\App\Couriers\Spx\SpxFulfillment::class, CourierRegistry::describe('spx'));
+        $this->assertInstanceOf(\App\Couriers\Lbc\LbcFulfillment::class, CourierRegistry::describe('lbc'));
 
         $described = CourierRegistry::describe('quadx');
         $this->assertInstanceOf(QuadXFulfillment::class, $described);

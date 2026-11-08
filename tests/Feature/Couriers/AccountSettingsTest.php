@@ -94,4 +94,28 @@ class AccountSettingsTest extends TestCase
 
         $this->assertNull(AccountSettings::for($account)->secret('quadx_staging_api_key'));
     }
+
+    public function test_write_refuses_a_key_the_schema_marks_secret(): void
+    {
+        $quadx = CourierAccount::factory()->create(['courier' => 'quadx']);
+        $spx = CourierAccount::factory()->create(['courier' => 'spx']);
+        $lbc = CourierAccount::factory()->create(['courier' => 'lbc']);
+
+        foreach ([[$quadx, 'quadx_staging_api_key'], [$spx, 'spx_user_secret'], [$spx, 'spx_secret_key'], [$lbc, 'lbc_live_pickup_key']] as [$account, $key]) {
+            try {
+                AccountSettings::for($account)->write($key, 'plain-text-would-leak');
+                $this->fail("{$key} was written in plain text.");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('writeSecret', $e->getMessage());
+            }
+        }
+
+        $this->assertSame(0, CourierAccountSetting::query()->count());
+        $this->assertSame(0, AuditEntry::query()->count());
+        $this->assertStringNotContainsString('plain-text-would-leak', (string) DB::table('courier_account_settings')->pluck('value')->implode('|'));
+
+        // Plain keys still write plainly.
+        AccountSettings::for($spx)->write('spx_user_id', '999999');
+        $this->assertSame('999999', AccountSettings::for($spx)->read('spx_user_id'));
+    }
 }

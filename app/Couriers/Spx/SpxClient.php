@@ -2,8 +2,9 @@
 
 namespace App\Couriers\Spx;
 
-use App\Couriers\CourierSetting;
-use Illuminate\Support\Facades\Crypt;
+use App\Couriers\AccountSettings;
+use App\Couriers\LiveBookingBlocked;
+use App\Couriers\LiveGuard;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -28,8 +29,11 @@ use Illuminate\Support\Facades\Log;
  *   - app-id / app-secret   — header-level, issued once per integration.
  *   - user_id / user_secret — body-level, per SPX account (3.1 Create
  *     Account), required by every order-related endpoint.
- * Both secrets are stored encrypted (Setting group 'courier'), mirroring
- * QuadXClient's pattern — see SpxFulfillment::settingsSchema().
+ * Both secrets are the account's own, stored encrypted (AccountSettings::writeSecret()), mirroring QuadXClient's
+ * pattern — see SpxFulfillment::settingsSchema().
+ *
+ * The environment is the account's mode: a production account talks to spx.ph, anything else to UAT. A production
+ * account's create and cancel go through LiveGuard first (createOrders(), cancelOrders()).
  */
 class SpxClient
 {
@@ -37,6 +41,8 @@ class SpxClient
         'uat'        => 'https://test-stable.spx.ph/',
         'production' => 'https://spx.ph/',
     ];
+
+    public function __construct(private readonly AccountSettings $settings) {}
 
     /** App-level credentials present — the minimum needed to sign a request. */
     public function isConfigured(): bool
@@ -74,10 +80,15 @@ class SpxClient
         return $this->userId() !== null && $this->userSecret() !== null;
     }
 
+    /** 'production' for a production account, otherwise 'uat'. */
+    public function mode(): string
+    {
+        return $this->settings->account()->mode === 'production' ? 'production' : 'uat';
+    }
+
     public function baseUrl(): string
     {
-        $mode = $this->setting('spx_mode', 'uat');
-        return self::BASE_URLS[$mode] ?? self::BASE_URLS['uat'];
+        return self::BASE_URLS[$this->mode()];
     }
 
     // --- Signing ------------------------------------------------------
@@ -131,9 +142,12 @@ class SpxClient
      * must poll getOrderCreateResult() for the real tracking number(s).
      *
      * @param array<int,array> $orders each shaped per api.md §1.4's orders[] table
+     * @throws LiveBookingBlocked for a production account with a live lock off; nothing is sent
      */
     public function createOrders(array $orders): array
     {
+        LiveGuard::assertAllowed($this->settings->account(), 'create');
+
         return $this->post('/open/api/v2/order/batch_create_order', [
             'user_id'     => (int) $this->userId(),
             'user_secret' => (string) $this->userSecret(),
@@ -151,9 +165,15 @@ class SpxClient
         ]);
     }
 
-    /** 1.3 Cancel Order (batch_cancel_order) — tracking_no_list MUST be a real JSON array, never a comma-joined string. */
+    /**
+     * 1.3 Cancel Order (batch_cancel_order) — tracking_no_list MUST be a real JSON array, never a comma-joined string.
+     *
+     * @throws LiveBookingBlocked for a production account with a live lock off; nothing is sent
+     */
     public function cancelOrders(array $trackingNumbers): array
     {
+        LiveGuard::assertAllowed($this->settings->account(), 'cancel');
+
         return $this->post('/open/api/v1/order/batch_cancel_order', [
             'user_id'          => (int) $this->userId(),
             'user_secret'      => (string) $this->userSecret(),
@@ -364,8 +384,9 @@ class SpxClient
 
         $json = $response->json();
         if (!is_array($json) || !array_key_exists('ret_code', $json)) {
+            // The body can echo the recipient back; courier_calls keeps a masked excerpt.
             Log::warning('SPX API returned a non-envelope response', [
-                'path' => $path, 'status' => $response->status(), 'body' => $response->body(),
+                'path' => $path, 'status' => $response->status(),
             ]);
             throw new \RuntimeException("SPX returned an unexpected response (HTTP {$response->status()}).");
         }
@@ -386,37 +407,21 @@ class SpxClient
 
     private function appId(): ?string
     {
-        return $this->setting('spx_app_id');
+        return $this->settings->read('spx_app_id');
     }
 
     private function appSecret(): ?string
     {
-        return $this->decrypt($this->setting('spx_secret_key'));
+        return $this->settings->secret('spx_secret_key');
     }
 
     private function userId(): ?string
     {
-        return $this->setting('spx_user_id');
+        return $this->settings->read('spx_user_id');
     }
 
     private function userSecret(): ?string
     {
-        return $this->decrypt($this->setting('spx_user_secret'));
-    }
-
-    private function setting(string $key, ?string $default = null): ?string
-    {
-        $val = CourierSetting::where('key', $key)->value('value');
-        return ($val === null || $val === '') ? $default : $val;
-    }
-
-    private function decrypt(?string $encrypted): ?string
-    {
-        if (empty($encrypted)) return null;
-        try {
-            return Crypt::decryptString($encrypted);
-        } catch (\Throwable) {
-            return null;
-        }
+        return $this->settings->secret('spx_user_secret');
     }
 }

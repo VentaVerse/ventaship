@@ -19,14 +19,14 @@ class TrackingNumber extends Model
     /** The courier definitely rejected the request; the number is issued again. */
     public const RELEASED = 'released';
 
-    protected $table = 'courier_tracking_numbers';
+    protected $table = 'tracking_numbers';
 
-    protected $fillable = ['series_id', 'number', 'status', 'order_id', 'outcome'];
+    protected $fillable = ['series_id', 'number', 'status', 'shipment_id', 'outcome'];
 
     protected $casts = [
         'series_id' => 'integer',
         'number' => 'integer',
-        'order_id' => 'integer',
+        'shipment_id' => 'integer',
     ];
 
     public function series(): BelongsTo

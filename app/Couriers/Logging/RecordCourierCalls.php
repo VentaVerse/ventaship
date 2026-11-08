@@ -17,7 +17,8 @@ use Throwable;
  * webhooks, label downloads with no account) are not courier calls and are skipped.
  *
  * Only the method, host and path are stored. Headers (the auth token) and the query string never are. A response
- * body excerpt is kept only for status 400 and above, at most 4 KB, with names, phones, addresses and emails masked.
+ * body excerpt is kept only for status 400 and above, at most 4 KB, with names, phones (mobile and landline),
+ * addresses, emails and anything credential-shaped (tokens, secrets, keys, passwords) masked.
  */
 final class RecordCourierCalls
 {
@@ -28,8 +29,24 @@ final class RecordCourierCalls
     /** JSON keys whose values are personal data. */
     private const PERSONAL_KEY = '/name|phone|mobile|contact|email|address|line_?\d|street/i';
 
+    /**
+     * JSON keys whose values are credentials, matched case-insensitively: anything naming a token, secret, password,
+     * authorization or api key, and "key" on its own or as the last word ("user_key", "Ocp-Apim-Subscription-Key",
+     * but not "monkey").
+     */
+    private const CREDENTIAL_KEY = '/token|secret|password|authorization|api_?key|(?:^|[_-])key$/i';
+
+    /** The same keys inside quotes, for a body that is not valid JSON. */
+    private const CREDENTIAL_PAIR = '/("(?:[^"]*(?:token|secret|password|authorization|api_?key)[^"]*|(?:[^"]*[_-])?key)"\s*:\s*)"(?:[^"\\\\]|\\\\.)*"/i';
+
     /** PH mobile numbers in their common spellings: 09171234567, +63 917 123 4567, 63-917-123-4567. */
     private const PHONE = '/(?<!\d)(?:\+?63|0)[\s-]?9\d{2}[\s-]?\d{3}[\s-]?\d{4}(?!\d)/';
+
+    /**
+     * PH landlines, which always carry their 0 or +63 prefix: Metro Manila (02) 8123 4567, 028123 4567,
+     * 02-8123-4567, +63 2 8123 4567, and provincial (032) 123 4567. A bare digit run (a tracking number) is not one.
+     */
+    private const LANDLINE = '/(?<![\d+])(?:\+?63[\s-]?\(?|\(?0)(?:2\)?[\s-]?\d{4}|[3-8]\d\)?[\s-]?\d{3})[\s-]?\d{4}(?!\d)/';
 
     public function handleResponse(ResponseReceived $event): void
     {
@@ -127,6 +144,12 @@ final class RecordCourierCalls
     private static function maskArray(array $data): array
     {
         foreach ($data as $key => $value) {
+            if (is_string($key) && preg_match(self::CREDENTIAL_KEY, $key) && (is_scalar($value) || is_array($value))) {
+                $data[$key] = self::MASK;
+
+                continue;
+            }
+
             if (is_string($key) && preg_match(self::PERSONAL_KEY, $key) && (is_scalar($value) || is_array($value))) {
                 $data[$key] = is_array($value) ? self::maskArray($value) : self::MASK;
 
@@ -146,7 +169,9 @@ final class RecordCourierCalls
     private static function maskText(string $text): string
     {
         $text = (string) preg_replace(self::PHONE, self::MASK, $text);
+        $text = (string) preg_replace(self::LANDLINE, self::MASK, $text);
         $text = (string) preg_replace('/[^\s@"\'<>]+@[^\s@"\'<>]+\.[a-z]{2,}/i', self::MASK, $text);
+        $text = (string) preg_replace(self::CREDENTIAL_PAIR, '$1"' . self::MASK . '"', $text);
 
         // "name":"…" style pairs in a body that is not valid JSON (truncated, HTML-wrapped, …).
         return (string) preg_replace(

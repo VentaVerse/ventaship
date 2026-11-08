@@ -20,6 +20,25 @@ trait BuildsCourierAccounts
         return $account;
     }
 
+    /**
+     * An SPX account with the app pair and, unless told otherwise, the user pair, stored the way
+     * ventaship:account-set stores them. Obviously fake values: no real SPX call is ever made.
+     */
+    protected function spxAccount(array $attributes = [], bool $withUser = true): CourierAccount
+    {
+        $account = CourierAccount::factory()->create($attributes + ['courier' => 'spx', 'mode' => 'staging']);
+
+        $settings = AccountSettings::for($account);
+        $settings->write('spx_app_id', '424242');
+        $settings->writeSecret('spx_secret_key', 'fake-app-secret-not-real');
+        if ($withUser) {
+            $settings->write('spx_user_id', '999999');
+            $settings->writeSecret('spx_user_secret', 'fake-user-secret-not-real');
+        }
+
+        return $account;
+    }
+
     /** @return array<mixed> */
     protected function quadxFixture(string $name): array
     {

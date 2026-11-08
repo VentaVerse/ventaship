@@ -4,8 +4,8 @@ namespace App\Couriers\Lbc;
 
 use App\Couriers\CourierOrder;
 use Carbon\CarbonInterface;
+use App\Couriers\PickupPoint;
 use DOMDocument;
-use App\Models\PickupAddress;
 use App\Couriers\Support\PhPhone;
 
 /**
@@ -55,7 +55,7 @@ class LbcPickupRequestBuilder
      */
     public function fields(
         CourierOrder $order,
-        PickupAddress $from,
+        PickupPoint $from,
         LbcParcel $parcel,
         LbcArea $origin,
         LbcArea $destination,
@@ -70,6 +70,11 @@ class LbcPickupRequestBuilder
         }
         if ($origin->areaCode === null || $destination->areaCode === null) {
             throw new LbcException('The LBC area code of the pickup or delivery address is not known.');
+        }
+
+        $reference = trim((string) $order->reference);
+        if ($reference === '') {
+            throw new LbcException('The shipment has no courier reference.');
         }
 
         $shipperPhone = self::phone($from->contact_phone)
@@ -131,7 +136,7 @@ class LbcPickupRequestBuilder
             'Commodity' => '1',
             'ForCrating' => '0',
             'AttachmentNameOne' => 'ORDERNO',
-            'ReferenceNoOne' => (string) $order->id,
+            'ReferenceNoOne' => self::text($reference, 64),
             'AttachmentNameTwo' => 'MODE',
             'ReferenceNoTwo' => $mode,
             'AttachmentNameThree' => '0',
@@ -209,11 +214,9 @@ class LbcPickupRequestBuilder
         return str_contains($text, '.') ? rtrim(rtrim($text, '0'), '.') : $text;
     }
 
-    /** The goods, as the order lists them: "2 x Name, 1 x Other". */
+    /** The goods, as the shipment lists them: "2 x Name, 1 x Other". */
     private function description(CourierOrder $order): string
     {
-        $order->loadMissing('products');
-
         return $order->products
             ->map(fn ($line) => ((int) $line->quantity) . ' x ' . trim((string) $line->name))
             ->implode(', ');

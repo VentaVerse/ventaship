@@ -2,6 +2,7 @@
 
 namespace Tests;
 
+use App\Couriers\CourierOrder;
 use App\Couriers\CourierRegistry;
 use App\Couriers\CourierStatusLabel;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
@@ -20,6 +21,7 @@ abstract class TestCase extends BaseTestCase
     {
         CourierRegistry::clearFakes();
         CourierStatusLabel::forget();
+        CourierOrder::resolveTrackingUsing(null);
 
         parent::tearDown();
     }

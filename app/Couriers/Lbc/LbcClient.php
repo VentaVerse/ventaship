@@ -2,6 +2,9 @@
 
 namespace App\Couriers\Lbc;
 
+use App\Couriers\AccountSettings;
+use App\Couriers\LiveBookingBlocked;
+use App\Couriers\LiveGuard;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -16,6 +19,11 @@ use Illuminate\Support\Facades\Log;
  * The auth header differs per API (see LbcFulfillment::AUTH_HEADERS). Keys
  * are never logged, and neither is a request body, because it carries the
  * shipper account number and phone numbers.
+ *
+ * Every request leaves through send(), and send() asks LiveGuard first: a
+ * pickup request or a waybill is refused, with nothing sent, unless every
+ * live lock is on for this account. The keys, the key set and the gateway are
+ * the account's own settings.
  */
 class LbcClient
 {
@@ -35,8 +43,14 @@ class LbcClient
 
     private int $timeout = self::TIMEOUT_SECONDS;
 
-    public function __construct(private readonly LbcFulfillment $lbc = new LbcFulfillment())
+    public function __construct(private readonly AccountSettings $settings)
     {
+    }
+
+    /** One API's key for the account's key set, decrypted, or null when unset or unreadable. */
+    public function subscriptionKey(string $api): ?string
+    {
+        return $this->settings->secret(LbcFulfillment::keySettingFor($api, LbcFulfillment::keySetOf($this->settings)));
     }
 
     /**
@@ -101,25 +115,21 @@ class LbcClient
     /**
      * Send one pickup request. Called once per reserved tracking number;
      * never retried here or by the caller.
+     *
+     * @throws LiveBookingBlocked when a live lock is off; nothing is sent
+     * @throws LbcException when the Pickup Request key is not set; nothing is sent
      */
     public function insertPickupRequest(string $xml): LbcPickupResult
     {
-        $key = $this->lbc->subscriptionKey('pickup');
-        if ($key === null) {
-            throw new LbcException('The LBC Pickup Request key is not set.');
-        }
+        $error = null;
+        $response = $this->send(
+            'pickup',
+            fn ($http) => $http->accept('application/xml')->withBody($xml, 'text/xml')->post($this->url(self::PICKUP_PATH)),
+            $error,
+        );
 
-        try {
-            $response = Http::withHeaders([$this->lbc->authHeader('pickup') => $key])
-                ->accept('application/xml')
-                ->connectTimeout(self::TIMEOUT_SECONDS)
-                ->timeout(self::TIMEOUT_SECONDS)
-                ->withBody($xml, 'text/xml')
-                ->post($this->url(self::PICKUP_PATH));
-        } catch (\Throwable $e) {
-            Log::warning('LBC pickup request got no answer', ['error' => $e->getMessage()]);
-
-            return LbcPickupResult::transportFailure('LBC did not answer: ' . $e->getMessage());
+        if ($response === null) {
+            return LbcPickupResult::transportFailure('LBC did not answer: ' . $error);
         }
 
         return LbcPickupResult::fromResponse($response->status(), $response->body());
@@ -133,6 +143,7 @@ class LbcClient
      * facts as the pickup request.
      *
      * @return string|null the PDF bytes, or null when no PDF came back
+     * @throws LiveBookingBlocked when a live lock is off; nothing is sent
      */
     public function generateWaybill(array $label): ?string
     {
@@ -202,20 +213,34 @@ class LbcClient
         return $this->send($api, fn ($http) => $http->acceptJson()->get($this->url($path), $query));
     }
 
-    /** One request with the API's own auth header; null when it never got an answer. */
-    private function send(string $api, callable $call): ?Response
+    /**
+     * The one way out to LBC: the live-booking locks first, then one request
+     * with the API's own auth header. Null when it never got an answer, with
+     * the reason in $error.
+     *
+     * @throws LiveBookingBlocked when the operation is guarded and a lock is off
+     * @throws LbcException when the API's key is not set
+     */
+    private function send(string $api, callable $call, ?string &$error = null): ?Response
     {
-        $key = $this->lbc->subscriptionKey($api);
+        LiveGuard::assertAllowed($this->settings->account(), $api);
+
+        $key = $this->subscriptionKey($api);
         if ($key === null) {
             throw new LbcException("The LBC {$api} key is not set.");
         }
 
+        // The pickup request's answer decides a tracking number, so it always
+        // gets the full budget, never a shortened copy's.
+        $seconds = $api === 'pickup' ? self::TIMEOUT_SECONDS : $this->timeout;
+
         try {
-            $response = $call(Http::withHeaders([$this->lbc->authHeader($api) => $key])
-                ->connectTimeout($this->timeout)
-                ->timeout($this->timeout));
+            $response = $call(Http::withHeaders([LbcFulfillment::authHeader($api) => $key])
+                ->connectTimeout($seconds)
+                ->timeout($seconds));
         } catch (\Throwable $e) {
             Log::warning('LBC request got no answer', ['api' => $api, 'error' => $e->getMessage()]);
+            $error = $e->getMessage();
 
             return null;
         }
@@ -237,6 +262,6 @@ class LbcClient
 
     private function url(string $path): string
     {
-        return $this->lbc->gatewayUrl() . ltrim($path, '/');
+        return LbcFulfillment::gatewayOf($this->settings) . ltrim($path, '/');
     }
 }

@@ -2,16 +2,18 @@
 
 namespace App\Couriers\Lbc;
 
+use App\Couriers\AccountSettings;
 use App\Couriers\CourierOrder;
+use App\Couriers\PickupPoint;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
-use App\Models\PickupAddress;
 use App\Couriers\TrackingNumbers\IssuedTrackingNumber;
 use App\Couriers\TrackingNumbers\TrackingNumberSeriesService;
 use Illuminate\Support\Facades\Log;
 
 /**
- * One LBC pickup request, from an order to LBC's answer.
+ * One LBC pickup request, from a shipment to LBC's answer, for one courier
+ * account.
  *
  *   prepare()  reads the account, resolves both addresses through LBC's
  *              address search and serviceability check, and lists anything
@@ -28,6 +30,7 @@ class LbcPickupService
     public const COURIER = 'lbc';
 
     public function __construct(
+        private readonly AccountSettings $settings,
         private readonly LbcClient $client,
         private readonly LbcAreaResolver $areas,
         private readonly TrackingNumberSeriesService $series,
@@ -37,16 +40,16 @@ class LbcPickupService
 
     public function prepare(
         CourierOrder $order,
-        PickupAddress $from,
+        PickupPoint $from,
         LbcParcel $parcel,
         CarbonInterface $preferredAt,
         string $mode = LbcPickupRequestBuilder::MODE_REGULAR,
         ?CarbonInterface $transactionAt = null,
     ): LbcPickupDraft {
-        $account = LbcAccount::fromSettings();
+        $account = LbcAccount::fromSettings($this->settings);
 
-        $origin = $this->areas->resolve($from->barangay, $from->city, $from->state);
-        $destination = $this->areas->resolve($order->shipping_barangay, $order->shipping_city, $order->shipping_state);
+        $origin = $this->areas->resolve($from->barangay, $from->city, $from->state, $from->state_code);
+        $destination = $this->areas->resolve($order->shipping_barangay, $order->shipping_city, $order->shipping_state, $order->shipping_state_code);
 
         $blockers = [];
         foreach (['pickup' => $origin, 'delivery' => $destination] as $which => $area) {
@@ -87,7 +90,7 @@ class LbcPickupService
      */
     public function preview(LbcPickupDraft $draft): array
     {
-        $issued = $this->series->peek(self::COURIER, $draft->account->seriesFirst, $draft->account->seriesLast);
+        $issued = $this->series->peek($this->settings->account());
 
         return ['issued' => $issued, 'fields' => $this->fieldsFor($draft, $issued->number)];
     }
@@ -104,13 +107,11 @@ class LbcPickupService
 
         // Build once with a placeholder first, so a missing value refuses
         // before any number is reserved.
-        $this->fieldsFor($draft, $draft->account->seriesFirst);
+        $this->fieldsFor($draft, 1);
 
         $issued = $this->series->reserve(
-            self::COURIER,
-            $draft->account->seriesFirst,
-            $draft->account->seriesLast,
-            (int) $draft->order->id,
+            $this->settings->account(),
+            $draft->order->id > 0 ? (int) $draft->order->id : null,
         );
 
         try {
@@ -131,7 +132,8 @@ class LbcPickupService
         }
 
         Log::info('LBC pickup request sent', [
-            'order_id' => $draft->order->id,
+            'account' => $this->settings->account()->public_id,
+            'shipment_id' => $draft->order->id,
             'tracking_no' => $issued->number,
             'outcome' => $result->outcome,
             'code' => $result->code(),

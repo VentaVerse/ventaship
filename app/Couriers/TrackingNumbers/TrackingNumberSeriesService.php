@@ -2,40 +2,42 @@
 
 namespace App\Couriers\TrackingNumbers;
 
-use App\Couriers\TrackingNumbers\TrackingNumber;
-use App\Couriers\TrackingNumbers\TrackingNumberSeries;
+use App\Models\CourierAccount;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Issues tracking numbers from a block the courier assigned to the store.
+ * Issues tracking numbers from the blocks a courier assigned to one courier account (tracking_series rows,
+ * added by ventaship:lbc-series-add).
  *
- * The courier does not check uniqueness for us, so this is the only thing
- * standing between two parcels and one tracking number. Every number moves
- * through three states (see TrackingNumber):
+ * The courier does not check uniqueness for us, so this is the only thing standing between two parcels and one
+ * tracking number. Every number moves through three states (see TrackingNumber):
  *
- *   reserve()  takes the lowest released number, or the next unused one,
- *              and marks it reserved. Done under a row lock on the series,
- *              so two concurrent bookings can never take the same number.
- *   spend()    the courier saved the request, or the outcome is unknown
- *              (timeout, network error, unreadable answer): it may exist on
- *              the courier's side, so it is never issued again.
- *   release()  the courier definitely rejected the request and saved
- *              nothing: the number goes back and is the next one issued.
+ *   reserve()  takes the account's lowest released number, or the next unused one from its oldest block that has
+ *              any left, and marks it reserved. Done under a row lock on the account's blocks, so two concurrent
+ *              bookings can never take the same number.
+ *   spend()    the courier saved the request, or the outcome is unknown (timeout, network error, unreadable
+ *              answer): it may exist on the courier's side, so it is never issued again.
+ *   release()  the courier definitely rejected the request and saved nothing: the number goes back and is the next
+ *              one issued.
  *
- * A reservation that is never settled (the process died mid-request) stays
- * reserved and is never issued again, which is the safe reading of "we do
- * not know".
+ * A reservation that is never settled (the process died mid-request) stays reserved and is never issued again,
+ * which is the safe reading of "we do not know".
  *
- * Numbers never leave the block: past the last number every claim refuses,
- * and a warning is logged once the remaining count falls to
- * WARN_REMAINING_FRACTION of the block, because a new block is requested
- * from the courier by hand and takes time.
+ * Numbers never leave the blocks: past the last number of the last block every claim refuses, and a warning is
+ * logged once the remaining count falls to the account's low-water mark (at most WARN_REMAINING_FRACTION of its
+ * blocks), because a new block is requested from the courier by hand and takes time.
+ *
+ * Blocks never overlap, across every account of the courier: addSeries() refuses one that would.
  */
 class TrackingNumberSeriesService
 {
-    /** Warn when this share of the block, or less, is still unissued. */
+    /** Warn when this share of the blocks, or less, is still unissued (and never later than the low-water mark). */
     public const WARN_REMAINING_FRACTION = 0.2;
+
+    /** The longest number accepted: well inside a signed 64-bit integer. */
+    public const MAX_DIGITS = 18;
 
     /** Transaction attempts when the database reports a lock conflict. */
     private const ATTEMPTS = 5;
@@ -46,106 +48,110 @@ class TrackingNumberSeriesService
     }
 
     /**
-     * The number reserve() would hand out now, without taking it. For dry
-     * runs: nothing is written.
+     * Record a block the courier assigned to this account.
+     *
+     * @throws TrackingNumberSeriesException when the range is not a block, or overlaps any block of the courier
      */
-    public function peek(string $courier, int $first, int $last): IssuedTrackingNumber
+    public function addSeries(CourierAccount $account, int $first, int $last): TrackingNumberSeries
     {
         $this->assertRange($first, $last);
+        $courier = (string) $account->courier;
 
-        $series = $this->series()->where('courier', $courier)->where('first_number', $first)->first();
+        return $this->db()->transaction(function () use ($account, $courier, $first, $last) {
+            $this->assertNoOverlap($courier, $first, $last);
 
-        if ($series === null) {
-            $this->assertNoOverlap($courier, $first, $last, null);
-
-            return $this->issued(null, $first, $first, $last);
-        }
-
-        $this->assertSameEnd($series, $last);
-
-        $released = $this->numbers()
-            ->where('series_id', $series->id)
-            ->where('status', TrackingNumber::RELEASED)
-            ->min('number');
-
-        $number = $released !== null ? (int) $released : $this->nextUnused($series);
-
-        return $this->issued(null, $number, $first, $last, $series);
+            return $this->series()->create([
+                'courier_account_id' => $account->getKey(),
+                'courier' => $courier,
+                'first_number' => $first,
+                'last_number' => $last,
+                'last_issued_number' => null,
+            ]);
+        });
     }
 
     /**
-     * How much of a block is left, for the settings page. Reads only.
+     * The number reserve() would hand out now, without taking it. For dry runs and the booking form: nothing is
+     * written.
      *
-     * `remaining` counts every number that can still be issued, the next one
-     * included: the never-issued tail of the block plus any released number.
-     *
-     * @return array{first:int, last:int, size:int, remaining:int, next:?int, near_end:bool}
+     * @throws TrackingNumberSeriesException when the account has no block, or none has a number left
      */
-    public function status(string $courier, int $first, int $last): array
+    public function peek(CourierAccount $account): IssuedTrackingNumber
     {
-        $this->assertRange($first, $last);
+        $blocks = $this->blocks($account)->get();
+        $this->assertHasBlocks($blocks);
 
-        $size = $last - $first + 1;
-        $series = $this->series()->where('courier', $courier)->where('first_number', $first)->first();
+        $released = $this->numbers()
+            ->whereIn('series_id', $blocks->modelKeys())
+            ->where('status', TrackingNumber::RELEASED)
+            ->min('number');
 
-        if ($series === null) {
-            $this->assertNoOverlap($courier, $first, $last, null);
-            $remaining = $size;
-            $next = $first;
-        } else {
-            $this->assertSameEnd($series, $last);
+        $number = $released !== null ? (int) $released : $this->nextUnused($blocks)[1];
 
-            $released = $this->numbers()
-                ->where('series_id', $series->id)
-                ->where('status', TrackingNumber::RELEASED);
+        return $this->issued(null, $number, $blocks, excluding: $number);
+    }
 
-            $unissued = $series->last_issued_number === null ? $size : max(0, $last - $series->last_issued_number);
-            $remaining = $unissued + (clone $released)->count();
-
-            $lowestReleased = (clone $released)->min('number');
-            $next = $lowestReleased !== null
-                ? (int) $lowestReleased
-                : ($unissued > 0 ? ($series->last_issued_number === null ? $first : $series->last_issued_number + 1) : null);
+    /**
+     * How much of the account's blocks is left, for the booking form and the account's checks. Reads only. Null
+     * when the account has no block at all.
+     *
+     * `remaining` counts every number that can still be issued, the next one included: the never-issued tails of the
+     * blocks plus any released number.
+     *
+     * @return array{blocks:int, size:int, remaining:int, next:?int, near_end:bool}|null
+     */
+    public function status(CourierAccount $account): ?array
+    {
+        $blocks = $this->blocks($account)->get();
+        if ($blocks->isEmpty()) {
+            return null;
         }
 
+        $released = $this->numbers()
+            ->whereIn('series_id', $blocks->modelKeys())
+            ->where('status', TrackingNumber::RELEASED);
+
+        $remaining = $this->unissued($blocks) + (clone $released)->count();
+
+        $lowestReleased = (clone $released)->min('number');
+        $next = $lowestReleased !== null ? (int) $lowestReleased : $this->nextUnusedOrNull($blocks)[1];
+
         return [
-            'first' => $first,
-            'last' => $last,
-            'size' => $size,
+            'blocks' => $blocks->count(),
+            'size' => $this->size($blocks),
             'remaining' => $remaining,
             'next' => $next,
-            'near_end' => $remaining <= (int) ceil($size * self::WARN_REMAINING_FRACTION),
+            'near_end' => $remaining <= $this->warnAt($blocks),
         ];
     }
 
     /**
      * Take the next number for a request about to be sent.
      *
-     * @throws TrackingNumberSeriesException when the block is used up or misconfigured
+     * @throws TrackingNumberSeriesException when the account has no block, the blocks are used up, or the claim raced
      */
-    public function reserve(string $courier, int $first, int $last, ?int $orderId = null): IssuedTrackingNumber
+    public function reserve(CourierAccount $account, ?int $shipmentId = null): IssuedTrackingNumber
     {
-        $this->assertRange($first, $last);
-
-        $issued = $this->db()->transaction(function () use ($courier, $first, $last, $orderId) {
-            $series = $this->lockedSeries($courier, $first, $last);
+        $issued = $this->db()->transaction(function () use ($account, $shipmentId) {
+            $blocks = $this->blocks($account)->lockForUpdate()->get();
+            $this->assertHasBlocks($blocks);
 
             $released = $this->numbers()
-                ->where('series_id', $series->id)
+                ->whereIn('series_id', $blocks->modelKeys())
                 ->where('status', TrackingNumber::RELEASED)
                 ->orderBy('number')
                 ->lockForUpdate()
                 ->first();
 
             if ($released !== null) {
-                // Conditional on the state read under the lock, so a second
-                // writer can never flip the same row to reserved twice.
+                // Conditional on the state read under the lock, so a second writer can never flip the same row to
+                // reserved twice.
                 $taken = $this->numbers()
                     ->whereKey($released->id)
                     ->where('status', TrackingNumber::RELEASED)
                     ->update([
                         'status' => TrackingNumber::RESERVED,
-                        'order_id' => $orderId,
+                        'shipment_id' => $shipmentId,
                         'outcome' => null,
                         'updated_at' => now(),
                     ]);
@@ -154,13 +160,13 @@ class TrackingNumberSeriesService
                     throw new TrackingNumberSeriesException('A released tracking number was taken by another request. Try again.');
                 }
 
-                return $this->issued($released->id, (int) $released->number, $first, $last, $series);
+                return $this->issued($released->id, (int) $released->number, $blocks);
             }
 
-            $number = $this->nextUnused($series);
+            [$series, $number] = $this->nextUnused($blocks);
 
-            // Conditional on the value read under the lock: if anything moved
-            // the counter in between, nothing is written and nothing issued.
+            // Conditional on the value read under the lock: if anything moved the counter in between, nothing is
+            // written and nothing issued.
             $moved = $this->series()
                 ->whereKey($series->id)
                 ->where(function ($q) use ($series) {
@@ -178,19 +184,18 @@ class TrackingNumberSeriesService
                 'series_id' => $series->id,
                 'number' => $number,
                 'status' => TrackingNumber::RESERVED,
-                'order_id' => $orderId,
+                'shipment_id' => $shipmentId,
             ]);
 
             $series->last_issued_number = $number;
 
-            return $this->issued($row->id, $number, $first, $last, $series);
+            return $this->issued($row->id, $number, $blocks);
         }, self::ATTEMPTS);
 
         if ($issued->nearEnd) {
             Log::warning('Tracking number series is running out', [
-                'courier' => $courier,
-                'first_number' => $first,
-                'last_number' => $last,
+                'courier' => (string) $account->courier,
+                'account' => $account->public_id,
                 'remaining' => $issued->remaining,
             ]);
         }
@@ -230,99 +235,131 @@ class TrackingNumberSeriesService
         }
     }
 
-    /** The series row, created on first use, locked for this transaction. */
-    private function lockedSeries(string $courier, int $first, int $last): TrackingNumberSeries
+    /** The account's blocks, oldest first: numbers are issued from the oldest block with any left. */
+    private function blocks(CourierAccount $account)
     {
-        $series = $this->series()->where('courier', $courier)->where('first_number', $first)->lockForUpdate()->first();
-
-        if ($series === null) {
-            $this->assertNoOverlap($courier, $first, $last, null);
-
-            // insertOrIgnore: two first claims racing on an empty table both
-            // land here, and the unique key lets exactly one row exist.
-            $this->series()->insertOrIgnore([
-                'courier' => $courier,
-                'first_number' => $first,
-                'last_number' => $last,
-                'last_issued_number' => null,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            $series = $this->series()->where('courier', $courier)->where('first_number', $first)->lockForUpdate()->firstOrFail();
-        }
-
-        $this->assertSameEnd($series, $last);
-
-        return $series;
+        return $this->series()
+            ->where('courier_account_id', $account->getKey())
+            ->orderBy('id');
     }
 
-    /** The next never-issued number, refusing past the end of the block. */
-    private function nextUnused(TrackingNumberSeries $series): int
+    /** @param  Collection<int, TrackingNumberSeries>  $blocks */
+    private function assertHasBlocks(Collection $blocks): void
     {
-        $next = $series->last_issued_number === null ? $series->first_number : $series->last_issued_number + 1;
+        if ($blocks->isEmpty()) {
+            throw new TrackingNumberSeriesException('This account has no tracking number block. Add the block the courier assigned with ventaship:lbc-series-add.');
+        }
+    }
 
-        if ($next > $series->last_number) {
+    /**
+     * The oldest block with a never-issued number, and that number. Refuses past the end of the last block.
+     *
+     * @param  Collection<int, TrackingNumberSeries>  $blocks
+     * @return array{TrackingNumberSeries, int}
+     */
+    private function nextUnused(Collection $blocks): array
+    {
+        [$series, $next] = $this->nextUnusedOrNull($blocks);
+
+        if ($series === null) {
+            /** @var TrackingNumberSeries $last */
+            $last = $blocks->last();
+
             throw new TrackingNumberSeriesException(
-                "The tracking number series {$series->first_number} to {$series->last_number} is used up. Request a new block from the courier."
+                "The tracking number series {$last->first_number} to {$last->last_number} is used up. Request a new block from the courier."
             );
         }
 
-        return $next;
+        return [$series, $next];
     }
 
-    private function issued(?int $id, int $number, int $first, int $last, ?TrackingNumberSeries $series = null): IssuedTrackingNumber
+    /**
+     * @param  Collection<int, TrackingNumberSeries>  $blocks
+     * @return array{?TrackingNumberSeries, ?int}
+     */
+    private function nextUnusedOrNull(Collection $blocks): array
     {
-        // Numbers not yet issued, other than this one. Released numbers are
-        // issued before new ones, so they count as still available.
-        $highest = max($number, (int) ($series?->last_issued_number ?? 0));
-        $remaining = max(0, $last - $highest);
-        if ($series !== null) {
-            $remaining += (int) $this->numbers()
-                ->where('series_id', $series->id)
-                ->where('status', TrackingNumber::RELEASED)
-                ->where('number', '!=', $number)
-                ->count();
+        foreach ($blocks as $series) {
+            $next = $series->last_issued_number === null ? $series->first_number : $series->last_issued_number + 1;
+            if ($next <= $series->last_number) {
+                return [$series, $next];
+            }
         }
 
-        $size = $last - $first + 1;
+        return [null, null];
+    }
+
+    /**
+     * @param  Collection<int, TrackingNumberSeries>  $blocks
+     * @param  int|null  $excluding  a number counted as still available that the caller is about to hand out
+     */
+    private function issued(?int $id, int $number, Collection $blocks, ?int $excluding = null): IssuedTrackingNumber
+    {
+        // Numbers still available after this one. Released numbers are issued before new ones, so they count.
+        $remaining = $this->unissued($blocks) + (int) $this->numbers()
+            ->whereIn('series_id', $blocks->modelKeys())
+            ->where('status', TrackingNumber::RELEASED)
+            ->count();
+
+        if ($excluding !== null) {
+            $remaining = max(0, $remaining - 1);
+        }
 
         return new IssuedTrackingNumber(
             id: $id,
             number: $number,
             remaining: $remaining,
-            nearEnd: $remaining <= (int) ceil($size * self::WARN_REMAINING_FRACTION),
+            nearEnd: $remaining <= $this->warnAt($blocks),
         );
+    }
+
+    /** @param  Collection<int, TrackingNumberSeries>  $blocks */
+    private function unissued(Collection $blocks): int
+    {
+        return (int) $blocks->sum(fn (TrackingNumberSeries $s) => $s->last_issued_number === null
+            ? $s->size()
+            : max(0, $s->last_number - $s->last_issued_number));
+    }
+
+    /** @param  Collection<int, TrackingNumberSeries>  $blocks */
+    private function size(Collection $blocks): int
+    {
+        return (int) $blocks->sum(fn (TrackingNumberSeries $s) => $s->size());
+    }
+
+    /**
+     * The remaining count at which to warn: the newest block's low-water mark, but never more than
+     * WARN_REMAINING_FRACTION of all the blocks, so a small block does not warn from its first number.
+     *
+     * @param  Collection<int, TrackingNumberSeries>  $blocks
+     */
+    private function warnAt(Collection $blocks): int
+    {
+        $lowWater = (int) ($blocks->last()?->low_water_mark ?? 200);
+
+        return min($lowWater, (int) ceil($this->size($blocks) * self::WARN_REMAINING_FRACTION));
     }
 
     private function assertRange(int $first, int $last): void
     {
-        if ($first <= 0 || $last < $first) {
+        $max = (int) str_repeat('9', self::MAX_DIGITS);
+
+        if ($first <= 0 || $last < $first || $last > $max) {
             throw new TrackingNumberSeriesException('The tracking number series needs a first and a last number, with the first not above the last.');
         }
     }
 
-    /** A block's end is fixed when it is issued; a changed end is a typing mistake, not a new block. */
-    private function assertSameEnd(TrackingNumberSeries $series, int $last): void
-    {
-        if ($series->last_number !== $last) {
-            throw new TrackingNumberSeriesException(
-                "The tracking number series starting at {$series->first_number} was recorded as ending at {$series->last_number}, not {$last}."
-            );
-        }
-    }
-
-    private function assertNoOverlap(string $courier, int $first, int $last, ?int $exceptId): void
+    /** Any block of the same courier, on any account, sharing a number with first..last. */
+    private function assertNoOverlap(string $courier, int $first, int $last): void
     {
         $overlap = $this->series()
             ->where('courier', $courier)
             ->where('first_number', '<=', $last)
             ->where('last_number', '>=', $first)
-            ->when($exceptId !== null, fn ($q) => $q->whereKeyNot($exceptId))
             ->exists();
 
         if ($overlap) {
-            throw new TrackingNumberSeriesException('This tracking number series overlaps a block already in use.');
+            throw new TrackingNumberSeriesException('This tracking number series overlaps a block already recorded.');
         }
     }
 

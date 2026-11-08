@@ -3,8 +3,8 @@
 namespace App\Couriers\Lbc;
 
 use App\Couriers\CourierOrder;
+use App\Couriers\PickupPoint;
 use Carbon\CarbonInterface;
-use App\Models\PickupAddress;
 
 /** Everything one pickup request is built from, and what would stop it. */
 final class LbcPickupDraft
@@ -12,7 +12,7 @@ final class LbcPickupDraft
     /** @param string[] $blockers reasons the request must not be sent */
     public function __construct(
         public readonly CourierOrder $order,
-        public readonly PickupAddress $from,
+        public readonly PickupPoint $from,
         public readonly LbcParcel $parcel,
         public readonly LbcAccount $account,
         public readonly LbcArea $origin,

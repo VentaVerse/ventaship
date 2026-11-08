@@ -2,16 +2,18 @@
 
 namespace App\Couriers\Spx;
 
+use App\Couriers\AccountSettings;
 use App\Couriers\CourierOrder;
-use App\Couriers\CourierSetting;
 use App\Couriers\Contracts\Courier;
+use App\Couriers\LiveBookingBlocked;
 use App\Couriers\PickupOrigin;
-use App\Models\PickupAddress;
+use App\Couriers\PickupPoint;
 use App\Couriers\ServiceabilityService;
 use App\Couriers\Support\PhPhone;
 use App\Couriers\Support\ServiceabilityVerdict;
+use App\Models\CourierAccount;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -193,11 +195,17 @@ class SpxFulfillment implements Courier
     /** Courier has the parcel and it's moving. */
     private const IN_TRANSIT_STATUSES = ['2001', '2006'];
 
+    private SpxClient $client;
+
+    private \Closure $sleeper;
+
     public function __construct(
-        private ?SpxClient $client = null,
-        private ?\Closure $sleeper = null,
+        private readonly CourierAccount $account,
+        private readonly AccountSettings $settings,
+        ?SpxClient $client = null,
+        ?\Closure $sleeper = null,
     ) {
-        $this->client = $client ?? new SpxClient();
+        $this->client = $client ?? new SpxClient($settings);
         // Real wall-clock backoff by default; tests inject a no-op (or
         // recording) closure so bounded-polling logic never actually sleeps.
         $this->sleeper = $sleeper ?? static function (int $ms): void {
@@ -215,11 +223,10 @@ class SpxFulfillment implements Courier
         return 'SPX';
     }
 
-    /** Flag on AND app-level credential completeness (app-id + secret), mirroring QuadX's pattern. */
+    /** The account is active and holds the app-level pair (app-id + secret), mirroring QuadX's pattern. */
     public function isEnabled(): bool
     {
-        $on = CourierSetting::where('key', 'spx_enabled')->value('value');
-        return (bool) $on && $this->client->isConfigured();
+        return $this->account->status === 'active' && $this->client->isConfigured();
     }
 
     /** @see Courier::configurationIssues() */
@@ -283,7 +290,11 @@ class SpxFulfillment implements Courier
         // consult USER-credential completeness (not just app-id/secret) and
         // fail with a clear message, never a raw SPX auth error.
         if (!$this->client->hasAccountCredentials()) {
-            return ['success' => false, 'error' => 'SPX booking requires the User ID / User Secret to be configured (Settings > SPX) before booking.'];
+            return ['success' => false, 'error' => 'SPX booking requires the User ID / User Secret to be configured on the account before booking.'];
+        }
+
+        if (trim((string) $order->reference) === '') {
+            return ['success' => false, 'error' => 'The shipment has no courier reference.'];
         }
 
         $built = $this->buildOrderPayload($order, $opts);
@@ -294,6 +305,9 @@ class SpxFulfillment implements Courier
 
         try {
             $createData = $this->client->createOrders([$orderPayload]);
+        } catch (LiveBookingBlocked $e) {
+            // A lock is off: nothing was sent, and the caller must see why rather than a booking failure.
+            throw $e;
         } catch (SpxApiException $e) {
             return ['success' => false, 'error' => "SPX booking failed: {$e->getMessage()} (ret_code {$e->retCode})"];
         } catch (\Throwable $e) {
@@ -361,6 +375,8 @@ class SpxFulfillment implements Courier
 
         try {
             $data = $this->client->cancelOrders([$trackingNumber]);
+        } catch (LiveBookingBlocked $e) {
+            throw $e;
         } catch (SpxApiException $e) {
             if ($e->retCode === 13002) {
                 return ['success' => false, 'error' => self::CANCEL_TOO_LATE_MESSAGE];
@@ -634,7 +650,7 @@ class SpxFulfillment implements Courier
      * Only the four refusal groups make the card inert; a parcel complaint, a
      * pickup-slot complaint and an SPX-side failure all leave it clickable.
      */
-    public function checkServiceability(CourierOrder $order, PickupAddress $from): ServiceabilityVerdict
+    public function checkServiceability(CourierOrder $order, PickupPoint $from): ServiceabilityVerdict
     {
         if (!$this->client->hasAccountCredentials()) {
             return ServiceabilityVerdict::unknown(ServiceabilityVerdict::KIND_UNREACHABLE);
@@ -791,9 +807,8 @@ class SpxFulfillment implements Courier
      *     fallback if that doesn't settle — see that method's docblock for
      *     why, this is a live-UAT gate finding, not documented behavior),
      *     then download the resulting awb_link PDF bytes and store them at
-     *     `courier-labels/spx/{tracking}.pdf`.
-     *  4. Return the URL of THIS APP'S OWN authenticated serving route
-     *     (admin.fulfillment.label-file) — never SPX's own link — per the
+     *     `labels/spx/{tracking}.pdf`.
+     *  4. Return that stored path — never SPX's own link — per the
      *     interface's sanctioned evolution #2 (see its docblock).
      *
      * $format is accepted for interface-contract compatibility but ignored:
@@ -802,7 +817,12 @@ class SpxFulfillment implements Courier
      */
     public function printLabel(string $trackingNumber, string $format): array
     {
-        $order = CourierOrder::forTracking($this->getKey(), $trackingNumber);
+        // The number becomes part of a storage path: only a plain token is ever looked up or stored.
+        if (!self::isPlainTrackingNumber($trackingNumber)) {
+            return ['success' => false, 'error' => 'That is not an SPX tracking number.'];
+        }
+
+        $order = CourierOrder::forTracking($this->getKey(), $trackingNumber, $this->account);
         if (!$order) {
             return ['success' => false, 'error' => 'No SPX order found for this tracking number.'];
         }
@@ -833,10 +853,16 @@ class SpxFulfillment implements Courier
         ];
     }
 
-    /** Storage path convention this task's brief specifies verbatim — also read back by FulfillmentController::labelFile(). */
+    /** Where a downloaded AWB is kept on the local (private) disk, served by the label store. */
     public static function labelStoragePath(string $trackingNumber): string
     {
-        return "courier-labels/spx/{$trackingNumber}.pdf";
+        return "labels/spx/{$trackingNumber}.pdf";
+    }
+
+    /** Letters, digits, dash and underscore only: safe as a file name. */
+    private static function isPlainTrackingNumber(string $trackingNumber): bool
+    {
+        return preg_match('/^[A-Za-z0-9_-]{1,64}$/', $trackingNumber) === 1;
     }
 
     /**
@@ -1047,7 +1073,7 @@ class SpxFulfillment implements Courier
      * 4.1 Tracking Web Hook (api.md §4.1) — SPX's callback body is ALREADY
      * one event (unlike QuadX's `{data:[...]}` batch shape), so this always
      * returns at most one normalized event. `order_id` is what WE sent as
-     * `order_id` at booking time (buildOrderPayload(): `(string) $order->id`)
+     * `order_id` at booking time (buildOrderPayload(): the shipment's reference)
      * — SPX's docs call it "customer order id", which is exactly this
      * interface's `reference_id`. A payload missing `status_code` entirely
      * (malformed/unexpected) yields no events rather than a guessed one.
@@ -1143,50 +1169,22 @@ class SpxFulfillment implements Courier
     }
 
     /**
-     * Task T4: 3.1 Create Account — self-service creation of the
-     * user_id/user_secret pair every order-related SPX call needs, so an
-     * admin setting up SPX for the first time doesn't have to go dig those
-     * out of an email exchange with SPX staff. Not part of
-     * Courier (no other courier has an equivalent
-     * concept) — the settings page's "Create shipper account" button
-     * (settings-courier.blade.php, only rendered while spx_user_id is
-     * empty) and CourierSettingsController::createShipperAccount() (a
-     * method_exists() dispatch, so a future courier can opt in the same
-     * way) are the only callers.
+     * 3.1 Create Account: issues the user_id/user_secret pair every order-related SPX call needs, for an account that
+     * has the app pair but no user pair yet. Not part of Courier (no other courier has an equivalent).
      *
-     * phone/email: SPX requires exactly one mandatory phone (PH format) —
-     * this reuses the exact same store pickup-contact number every other
-     * SPX method already treats as ground truth (normalizePhPhone() /
-     * senderInfo()), since there's no dedicated "SPX account contact"
-     * setting and duplicating pickup_contact_number would just be one more
-     * place for the two to drift apart. email is optional per api.md
-     * §3.1; this app's outbound "from" address (config('mail.from.address'))
-     * is the closest existing "the store's own contact email" concept — no
-     * dedicated store-contact-email setting exists either.
+     * The phone (SPX requires one PH mobile) and the email are the operator's, typed for this account; nothing is
+     * taken from a pickup address or this app's mail settings. The email is optional for SPX: pass '' to send none.
      *
-     * Stores the returned pair using the exact same encrypt-then-upsert
-     * convention CourierSettingsController::persist() uses for every other
-     * SPX credential (user_id plain, user_secret Crypt::encryptString()'d —
-     * matching settingsSchema()'s own 'encrypted' => true declaration for
-     * spx_user_secret) — persist() itself is a private controller method,
-     * so this duplicates its two-line pattern rather than reaching into it.
+     * Refused, before any call, while a User ID is already on file: replacing the pair would silently orphan every
+     * booking made under the old one (their tracking, cancel and label calls would all send the new secret).
      *
-     * Review fix (Important): "only while spx_user_id is empty" was
-     * previously UI-only (the settings page just doesn't render the button
-     * once a User ID is on file) — a direct POST (stale tab, double-submit,
-     * a re-issued request) still reached SPX and REPLACED the stored
-     * user_id/user_secret, silently orphaning whatever account existing
-     * bookings were made under (their tracking/cancel/label calls all send
-     * the NEW user_secret against orders SPX associates with the OLD
-     * account). Guarded here, server-side, first — before even checking
-     * app credentials — so a repeat/direct POST makes NO outbound call and
-     * changes nothing once an account already exists.
+     * The returned User ID is stored plain and the User Secret encrypted, matching settingsSchema().
      *
      * @return array{ok:bool, message?:string, error?:string}
      */
-    public function createShipperAccount(?string $contactPhone = null): array
+    public function createShipperAccount(string $phone, string $email): array
     {
-        if (!empty(CourierSetting::where('key', 'spx_user_id')->value('value'))) {
+        if ($this->settings->read('spx_user_id') !== null) {
             return ['ok' => false, 'error' => 'An SPX shipper account is already on file (User ID set). Remove it first if you really need to replace it, so existing bookings are not silently orphaned.'];
         }
 
@@ -1194,16 +1192,18 @@ class SpxFulfillment implements Courier
             return ['ok' => false, 'error' => 'Set the App ID / App Secret before creating a shipper account.'];
         }
 
-        // The seller center has no store pickup address: the operator types the account's contact mobile.
-        $phone = $this->normalizePhPhone($contactPhone);
-        if ($phone === null) {
+        $normalized = $this->normalizePhPhone($phone);
+        if ($normalized === null) {
             return ['ok' => false, 'error' => 'Enter a valid PH mobile number for the shipper account.'];
         }
 
-        $email = config('mail.from.address');
+        $email = trim($email);
+        if ($email !== '' && (mb_strlen($email) > 254 || filter_var($email, FILTER_VALIDATE_EMAIL) === false)) {
+            return ['ok' => false, 'error' => 'Enter a valid email address for the shipper account, or none.'];
+        }
 
         try {
-            $data = $this->client->createAccount($phone, is_string($email) && $email !== '' ? $email : null);
+            $data = $this->client->createAccount($normalized, $email !== '' ? $email : null);
         } catch (SpxApiException $e) {
             return ['ok' => false, 'error' => "SPX account creation failed: {$e->getMessage()} (ret_code {$e->retCode})"];
         } catch (\Throwable $e) {
@@ -1212,12 +1212,15 @@ class SpxFulfillment implements Courier
 
         $userId = $data['user_id'] ?? null;
         $userSecret = $data['user_secret'] ?? null;
-        if (!$userId || !$userSecret) {
+        if (!$userId || !$userSecret || !is_scalar($userId) || !is_scalar($userSecret)) {
             return ['ok' => false, 'error' => 'SPX did not return a user id/secret.'];
         }
 
-        CourierSetting::updateOrCreate(['key' => 'spx_user_id'], ['value' => (string) $userId]);
-        CourierSetting::updateOrCreate(['key' => 'spx_user_secret'], ['value' => Crypt::encryptString((string) $userSecret)]);
+        // Both or neither: a User ID stored without its secret would read as an account on file that cannot book.
+        DB::transaction(function () use ($userId, $userSecret) {
+            $this->settings->write('spx_user_id', (string) $userId);
+            $this->settings->writeSecret('spx_user_secret', (string) $userSecret);
+        });
 
         return ['ok' => true, 'message' => "Shipper account created (User ID {$userId})."];
     }
@@ -1231,7 +1234,7 @@ class SpxFulfillment implements Courier
      * nothing to fail) and hands back that documented map — wiring it
      * through the EXACT SAME "Refresh from SPX" button -> {ok, labels} ->
      * `spx_status_labels` setting flow QuadX's live refresh already uses
-     * (CourierSettingsController::refreshStatuses()), so no shared code
+     * (the account's status-label refresh), so no shared code
      * needed to change for this courier to participate in it. See
      * statusLabels() below for the second, complementary half of this
      * task's wiring: the same map made available WITHOUT requiring that
@@ -1250,12 +1253,9 @@ class SpxFulfillment implements Courier
      * pre-known vocabulary to expose this way (QuadX's only comes from a
      * live call) — so callers consult it via method_exists(), the same
      * dispatch convention this class's own createShipperAccount() already
-     * established for a capability that isn't universal. Consulted by
-     * CourierSettingsController::show() (settings page's status-mapping
-     * table) and index.blade.php's $humanizeStatus (queue row status chip),
-     * both as a fallback BELOW the cached `spx_status_labels` setting (an
-     * admin who clicked Refresh, or a future live endpoint, still wins) and
-     * ABOVE the generic ucwords(raw code) fallback.
+     * established for a capability that isn't universal. Consulted as a
+     * fallback below the cached status labels (courier_status_labels) and
+     * above the generic ucwords(raw code) fallback.
      */
     public function statusLabels(): array
     {
@@ -1292,10 +1292,7 @@ class SpxFulfillment implements Courier
         }
 
         $fetchedAt = now()->toIso8601String();
-        CourierSetting::updateOrCreate(
-            ['key' => 'spx_address_tree'],
-            ['value' => json_encode(['url' => $url, 'fetched_at' => $fetchedAt])]
-        );
+        $this->settings->write('spx_address_tree', json_encode(['url' => $url, 'fetched_at' => $fetchedAt]));
 
         return ['ok' => true, 'url' => $url, 'fetched_at' => $fetchedAt];
     }
@@ -1307,14 +1304,12 @@ class SpxFulfillment implements Courier
     }
 
     /**
-     * spx_enabled, spx_mode, spx_app_id, spx_secret_key, spx_user_id,
-     * spx_user_secret, spx_pouch_presets — exactly the keys specified by
-     * Task T1's brief, in the order they read most naturally on the page.
-     * Unlike QuadX, SPX's app-id/app-secret and user-id/user-secret are NOT
-     * mode_scoped: SPX issues one set of each per integration
-     * (integration-brief.md §2) and `spx_mode` only switches which base URL
-     * SpxClient talks to — there's no separate UAT vs production credential
-     * pair to declare.
+     * The per-account keys: spx_app_id, spx_secret_key, spx_user_id,
+     * spx_user_secret, spx_pouch_presets. On/off is the account's status and
+     * the environment (UAT or production) is the account's mode
+     * (courier_accounts columns), so neither is a setting. Unlike QuadX,
+     * SPX's app-id/app-secret and user-id/user-secret are NOT mode_scoped:
+     * SPX issues one set of each per integration (integration-brief.md §2).
      *
      * spx_pouch_presets has no first-class JSON/structured field type in
      * this interface yet (only text|password|select|toggle exist — see
@@ -1327,21 +1322,6 @@ class SpxFulfillment implements Courier
     public function settingsSchema(): array
     {
         return [
-            [
-                'key'   => 'spx_enabled',
-                'label' => 'Enable SPX',
-                'type'  => 'toggle',
-                'help'  => 'Book confirmed orders with SPX (Shopee Xpress) from the Fulfillment page.',
-            ],
-            [
-                'key'     => 'spx_mode',
-                'label'   => 'Mode',
-                'type'    => 'select',
-                'options' => [
-                    ['value' => 'uat',        'label' => 'UAT'],
-                    ['value' => 'production', 'label' => 'Production'],
-                ],
-            ],
             [
                 'key'   => 'spx_app_id',
                 'label' => 'App ID',
@@ -1452,7 +1432,7 @@ class SpxFulfillment implements Courier
         }
 
         return ['ok' => true, 'payload' => [
-            'order_id'         => (string) $order->id,
+            'order_id'         => (string) $order->reference,
             'base_info'        => ['service_type' => 1],
             'sender_info'      => $sender['info'],
             'fulfillment_info' => $this->fulfillmentInfo($order, $opts),
@@ -1462,23 +1442,15 @@ class SpxFulfillment implements Courier
     }
 
     /**
-     * Sender = the store's own pickup/warehouse origin, read from the
-     * module-owned pickup address record (courier_fulfillment_pickup_addresses).
-     * That record replaced the eight flat `settings(group=shipping,
-     * key=pickup_*)` rows this method used to read; QuadX reads the same
-     * record, so one origin still serves every courier and there is now
-     * exactly one place to edit it.
-     *
-     * Which record: the one chosen in the booking modal
-     * ($opts['pickup_address_id']) when the store keeps more than one,
-     * otherwise the default. PickupAddress::resolveFor() is the single
-     * implementation of that rule, shared with QuadX and FulfillmentService.
+     * Sender = the pickup point the client sent with the shipment
+     * ($opts['pickup'], see PickupOrigin::from()), the same origin QuadX and
+     * LBC read.
      *
      * Address hierarchy fix (T2 review, IMPORTANT 5): every worked example in
      * api.md puts the BARANGAY in `*_street` (e.g. "Barangay 294") and a
      * city-level administrative district in `*_district` (e.g. "Binondo",
      * "Intramuros") — the reverse of what this method originally sent.
-     * sender_district now uses the record's own district when it has one (PH
+     * sender_district now uses the pickup point's own district when it has one (PH
      * districts exist for Manila only) and falls back to the city otherwise —
      * the same fallback deliverInfo() uses when an order has no
      * shipping_district on file, and the exact value the retired settings
@@ -1676,7 +1648,7 @@ class SpxFulfillment implements Courier
         $qty = $qty > 0 ? $qty : 1;
 
         $firstName = $products->first()?->name;
-        $itemName = $firstName ? Str::limit($firstName, 60, '') : ('Order #' . $order->id);
+        $itemName = $firstName ? Str::limit($firstName, 60, '') : ('Order ' . $order->reference);
 
         return [
             'parcel_weight'         => $dims['max_weight_kg'],
@@ -1745,7 +1717,7 @@ class SpxFulfillment implements Courier
 
     private function pouchPresets(): array
     {
-        $raw = CourierSetting::where('key', 'spx_pouch_presets')->value('value');
+        $raw = $this->settings->read('spx_pouch_presets');
         $decoded = $raw ? json_decode($raw, true) : null;
         return (is_array($decoded) && $decoded !== []) ? $decoded : self::DEFAULT_POUCH_PRESETS;
     }
