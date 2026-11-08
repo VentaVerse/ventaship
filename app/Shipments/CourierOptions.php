@@ -7,7 +7,7 @@ use App\Models\Shipment;
 
 /**
  * A shipment's booking options in the shape the courier port reads (`$opts` of createShipment() and estimateFee()):
- * flat parcel fields, the opaque pickup slot, the shipping payment and the pickup point.
+ * flat parcel fields, the opaque pickup slot, the shipping payment, the insurance opt-in and the pickup point.
  */
 final class CourierOptions
 {
@@ -28,6 +28,7 @@ final class CourierOptions
             'pickup_date' => $options['pickup_date'] ?? null,
             'shipping_payment' => $options['shipping_payment'] ?? null,
             'buyer_payment' => $s->payment_method,
+            'insure' => ($options['insure'] ?? false) === true,
             'pickup' => is_array($s->pickup) ? PickupPoint::fromArray($s->pickup) : null,
         ], fn ($v) => $v !== null && $v !== '');
     }

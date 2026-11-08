@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Cache;
  * Every minute (base plan §2 "Booking safety"):
  * - queued for more than 30 minutes (the job never started) → failed / not_started
  * - booking for more than 10 minutes, not waiting on SPX `creating` → unknown (the job died mid-call)
+ * - waiting on SPX `creating` for more than 6 hours → needs attention, state unchanged; the poller keeps trying
  * - booked with a cancel `requested` for more than 30 minutes (since the request and since booking) and no cancel
  *   job holding the shipment's cancel lock → needs attention. The courier is never called from here.
  */
@@ -26,6 +27,8 @@ class ShipmentsSweep extends Command
     private const BOOKING_MINUTES = 10;
 
     private const CANCEL_MINUTES = 30;
+
+    private const CREATING_HOURS = 6;
 
     public function handle(BookingOutcomes $outcomes): int
     {
@@ -64,11 +67,23 @@ class ShipmentsSweep extends Command
                 }
             }, 'id');
 
+        $creating = $this->flagStaleCreating();
         $stuck = $this->flagStuckCancels();
 
-        $this->info("Failed {$failed} queued, flagged {$unknown} booking as unknown, {$stuck} stuck cancels.");
+        $this->info("Failed {$failed} queued, flagged {$unknown} booking as unknown, {$creating} unconfirmed SPX bookings, {$stuck} stuck cancels.");
 
         return self::SUCCESS;
+    }
+
+    /** One guarded UPDATE: no courier call, no state change, and attention someone else raised is never replaced. */
+    private function flagStaleCreating(): int
+    {
+        return Shipment::query()
+            ->where('state', 'booking')
+            ->where('courier_status', 'creating')
+            ->where('booking_started_at', '<', now()->subHours(self::CREATING_HOURS))
+            ->where('needs_attention', false)
+            ->update(['needs_attention' => true, 'attention_reason' => BookingOutcomes::CREATING_STALE_REASON, 'updated_at' => now()]);
     }
 
     private function flagStuckCancels(): int

@@ -85,6 +85,16 @@ class InboundQuadXTest extends TestCase
         $this->assertSame('received', WebhookReceipt::query()->sole()->status);
     }
 
+    public function test_processing_job_times_out_before_its_queue_hands_it_to_another_worker(): void
+    {
+        config(['queue.default' => 'database']);
+        $job = new ProcessReceipt(1);
+        $retryAfter = (int) config('queue.connections.'.($job->connection ?? config('queue.default')).'.retry_after');
+
+        $this->assertSame(60, $job->timeout);
+        $this->assertLessThan($retryAfter, $job->timeout);
+    }
+
     public function test_bad_token_403_and_not_stored_in_full(): void
     {
         $spx = CourierAccount::factory()->create([
@@ -312,6 +322,74 @@ class InboundQuadXTest extends TestCase
         $this->assertSame(300, $limit->maxAttempts);
         $this->assertSame(60, $limit->decaySeconds);
         $this->assertStringContainsString('10.0.0.9', (string) $limit->key);
+    }
+
+    public function test_courier_cancellation_of_a_booked_shipment_settles_it(): void
+    {
+        $s = $this->bookedShipment(['active_reference' => '4211', 'payment_method' => 'cod', 'payment_state' => 'cod_unpaid', 'cod_amount' => 500]);
+
+        $this->postRaw('/webhooks/quadx?token='.self::TOKEN, $this->statusBody('canceled', '2026-11-08T10:00:00+08:00'))->assertOk();
+
+        $s->refresh();
+        $this->assertSame('cancelled', $s->state);
+        $this->assertSame('cancelled', $s->phase);
+        $this->assertSame('cancelled', $s->cancel_state);
+        $this->assertNotNull($s->cancelled_at);
+        $this->assertNull($s->active_reference);
+        $this->assertSame('cod_void', $s->payment_state);
+        $this->assertSame(
+            ['shipment.status_changed', 'shipment.payment_state_changed', 'shipment.cancelled'],
+            OutgoingEvent::query()->orderBy('sequence')->pluck('type')->all(),
+        );
+        $this->assertSame('cancelled', OutgoingEvent::query()->where('type', 'shipment.cancelled')->sole()->payload['shipment']['state']);
+
+        // A second cancelled report is a new event but not a second cancellation.
+        $this->postRaw('/webhooks/quadx?token='.self::TOKEN, $this->statusBody('cancelled', '2026-11-08T10:05:00+08:00'))->assertOk();
+        $this->assertSame(2, ShipmentEvent::query()->count());
+        $this->assertSame(1, OutgoingEvent::query()->where('type', 'shipment.cancelled')->count());
+    }
+
+    public function test_courier_cancellation_after_a_failed_cancel_settles_it_and_clears_that_attention(): void
+    {
+        $s = $this->bookedShipment([
+            'active_reference' => '4211',
+            'cancel_state' => 'failed',
+            'needs_attention' => true,
+            'attention_reason' => 'Cancel outcome unknown — check the courier portal',
+        ]);
+
+        $this->postRaw('/webhooks/quadx?token='.self::TOKEN, $this->statusBody('canceled', '2026-11-08T10:00:00+08:00'))->assertOk();
+
+        $s->refresh();
+        $this->assertSame('cancelled', $s->state);
+        $this->assertSame('cancelled', $s->cancel_state);
+        $this->assertNull($s->active_reference);
+        $this->assertFalse($s->needs_attention);
+        $this->assertNull($s->attention_reason);
+        $this->assertSame(1, OutgoingEvent::query()->where('type', 'shipment.cancelled')->count());
+    }
+
+    public function test_courier_cancellation_keeps_attention_the_cancel_flow_did_not_raise(): void
+    {
+        $s = $this->bookedShipment(['needs_attention' => true, 'attention_reason' => 'LBC did not confirm the pickup request']);
+
+        $this->postRaw('/webhooks/quadx?token='.self::TOKEN, $this->statusBody('canceled', '2026-11-08T10:00:00+08:00'))->assertOk();
+
+        $s->refresh();
+        $this->assertSame('cancelled', $s->state);
+        $this->assertTrue($s->needs_attention);
+        $this->assertSame('LBC did not confirm the pickup request', $s->attention_reason);
+    }
+
+    private function statusBody(string $status, string $at): string
+    {
+        return (string) json_encode(['data' => [[
+            'reference_id' => 'VS000001',
+            'tracking_number' => 'QX-TEST-0001',
+            'status' => $status,
+            'status_updated_at' => $at,
+            'remarks' => null,
+        ]]]);
     }
 
     private function receipt(\DateTimeInterface $at): WebhookReceipt

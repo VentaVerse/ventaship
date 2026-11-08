@@ -33,6 +33,7 @@ class CreateShipmentRequest extends FormRequest
             'pickup_date' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:today'],
             'pickup_slot' => ['nullable', 'string', 'max:255'],
             'service' => ['nullable', 'string', 'max:64'],
+            'insure' => ['sometimes', 'boolean'],
             'items' => ['required', 'array', 'min:1', 'max:100'],
             'items.*' => ['required', 'array'],
             'items.*.name' => ['required', 'string', 'max:255'],

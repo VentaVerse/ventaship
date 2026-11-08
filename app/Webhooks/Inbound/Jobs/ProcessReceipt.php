@@ -41,7 +41,8 @@ class ProcessReceipt implements ShouldQueue
     /** @var list<int> */
     public array $backoff = [10, 60];
 
-    public int $timeout = 120;
+    // Below the default connection's 90-second retry_after, so a slow run is killed before a second worker gets it.
+    public int $timeout = 60;
 
     private const LOCK_SECONDS = 300;
 

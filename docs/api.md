@@ -257,6 +257,7 @@ How it works:
 - The first request with a key is processed and its answer (status and body) is stored.
 - A repeat with the same key and the **same request** (same method, same path and query, same body bytes) gets the stored answer again, with the header `Idempotent-Replayed: true`. Nothing is done twice. (It must still be signed afresh: see [2](#2-authentication-and-request-signing).)
 - The same key with a **different** request is `422 idempotency_key_reused`.
+- The query string is part of the request: reusing a key with a different `?wait` (or `?wait` added or dropped) is `422 idempotency_key_reused`. Retry with exactly the URL you sent first.
 - While the first request is still running, a repeat is `409 idempotency_in_progress` (`retryable: true`): wait a moment and retry.
 - Answers that say "try again" are **not** stored: any 5xx, and any error with `retryable: true` (429, 409 `idempotency_in_progress`, retryable 502). Retrying with the same key then really runs the request again.
 - Every other answer **is** stored, including 4xx errors. A 422 for a bad body is kept under that key: after you fix the body, send it under a **new** key.
@@ -811,13 +812,14 @@ Response, one entry per destination, in request order:
 
 The fee the courier itself quotes for one parcel. Ventaship never estimates a fee of its own: when the courier gives no figure (or cannot be reached), `data` is `null`.
 
-Request: `account_id` / `courier`, `pickup` (address), `recipient` (address), `service` (optional), `parcel` (optional, as in [`POST /shipments`](#post-shipments)), `payment` (required, as in `POST /shipments`).
+Request: `account_id` / `courier`, `pickup` (address), `recipient` (address), `service` (optional), `insure` (optional, as in [`POST /shipments`](#post-shipments)), `parcel` (optional, as in `POST /shipments`), `payment` (required, as in `POST /shipments`).
 
 <!-- fixture: quotes.request -->
 ```json
 {
     "courier": "quadx",
     "service": "next_day",
+    "insure": false,
     "pickup": {
         "address_1": "5 Shaw Blvd",
         "barangay": "Wack-Wack",
@@ -911,13 +913,14 @@ Request fields:
 | `pickup_date` | optional, `YYYY-MM-DD`, today or later (Manila) |
 | `pickup_slot` | optional string ≤ 255: a `value` from `POST /pickup-slots` |
 | `service` | optional string ≤ 64: a `service_types` value from `GET /couriers`; the account's default when omitted |
+| `insure` | optional boolean, default `false`. `true` asks the courier to insure the parcel at `payment.declared_value` (or `total`). `false` sends no insurance, except at **LBC**, which always insures a COD parcel |
 | `parcel` | optional object |
 | `parcel.type` | optional string ≤ 64: a `parcel_options` value; the account's default when omitted |
 | `parcel.weight_kg`, `parcel.length_cm`, `parcel.width_cm`, `parcel.height_cm` | optional numbers, > 0, ≤ 1000 |
 | `payment` | **required** object |
 | `payment.method` | **required**, `cod` or `prepaid` |
 | `payment.cod_amount` | **required for `cod`**, money > 0, ≤ 2 decimals. **Must not be sent for `prepaid`** (422). This is exactly what the courier collects from the recipient |
-| `payment.declared_value` | optional money ≥ 0: the value the courier insures. When omitted, `total` is used |
+| `payment.declared_value` | optional money ≥ 0: the insured value when the parcel is insured (`insure: true`, or any LBC COD parcel). When omitted, `total` is used |
 | `payment.shipping_payment` | optional string ≤ 32: a `shipping_payment_options` value (who pays the courier's fee, and how) |
 | `pickup` | **required**: `contact_name` (required, ≤ 255), `contact_phone` (required, [PH mobile](#phone-numbers)) and an [address](#addresses) |
 | `recipient` | **required**: `first_name` (required, ≤ 255), `last_name` (≤ 255), `phone` (required, [PH mobile](#phone-numbers)), `email` (valid email, ≤ 255) and an [address](#addresses) |
@@ -942,6 +945,7 @@ Example request:
     "order_label": "#4211",
     "method": "pickup",
     "service": "next_day",
+    "insure": false,
     "parcel": {
         "type": "box",
         "weight_kg": 1.2,
@@ -1019,6 +1023,7 @@ Response `202 Accepted`:
         "payment_state": "cod_unpaid",
         "cod_amount": "1290.00",
         "declared_value": "1290.00",
+        "insure": false,
         "items_count": 3,
         "items_summary": "Blue Tee ×2, Cap ×1",
         "notice": null,
@@ -1103,6 +1108,7 @@ For reconciliation (say, after your webhook endpoint was down), list with `updat
             "payment_state": "cod_unpaid",
             "cod_amount": "1290.00",
             "declared_value": "1290.00",
+            "insure": false,
             "items_count": 3,
             "items_summary": "Blue Tee ×2, Cap ×1",
             "notice": null,
@@ -1172,6 +1178,7 @@ One shipment. `?include=parties` adds the personal data: `pickup`, `recipient`, 
         "payment_state": "cod_unpaid",
         "cod_amount": "1290.00",
         "declared_value": "1290.00",
+        "insure": false,
         "items_count": 3,
         "items_summary": "Blue Tee ×2, Cap ×1",
         "notice": null,
@@ -1224,6 +1231,7 @@ With `?include=parties`:
         "payment_state": "cod_unpaid",
         "cod_amount": "1290.00",
         "declared_value": "1290.00",
+        "insure": false,
         "items_count": 3,
         "items_summary": "Blue Tee ×2, Cap ×1",
         "notice": null,
@@ -1377,6 +1385,7 @@ You rarely need this: couriers' webhooks and Ventaship's polling keep shipments 
         "payment_state": "cod_unpaid",
         "cod_amount": "1290.00",
         "declared_value": "1290.00",
+        "insure": false,
         "items_count": 3,
         "items_summary": "Blue Tee ×2, Cap ×1",
         "notice": null,
@@ -1480,6 +1489,7 @@ Cancelling is idempotent by state: asking again returns the shipment unchanged. 
         "payment_state": "cod_unpaid",
         "cod_amount": "1290.00",
         "declared_value": "1290.00",
+        "insure": false,
         "items_count": 3,
         "items_summary": "Blue Tee ×2, Cap ×1",
         "notice": null,
@@ -1552,6 +1562,7 @@ The same object in every answer and in every shipment webhook (`data.shipment`),
 | `payment_state` | string | see [8.3](#83-payment_state) |
 | `cod_amount` | string\|null | what the courier collects (`null` for prepaid) |
 | `declared_value` | string\|null | the insured value you sent (`null` if you sent none) |
+| `insure` | bool | whether you asked for insurance |
 | `items_count` | int | total quantity |
 | `items_summary` | string\|null | `"Blue Tee ×2, Cap ×1"`, at most 255 characters |
 | `notice` | string\|null | a note from the courier about this booking, to show the operator |
@@ -1565,7 +1576,7 @@ The same object in every answer and in every shipment webhook (`data.shipment`),
 
 Only with `GET /shipments/{id}?include=parties`: `pickup`, `recipient` (as stored: phones normalised to `09XXXXXXXXX`, `codes` always an object), `items` (`name`, `quantity`, `price` as a 2-decimal string or `null`, `weight_kg`), `note`, `parcel` (or `null`).
 
-Ventaship clears the personal data of finished shipments after a retention period (180 days by default): `pickup`, `recipient` and `note` of such shipments are then `null`.
+Ventaship clears the personal data of finished shipments after a retention period (180 days by default): `pickup`, `recipient` and `note` of such shipments are then `null`, and so is each event's `remarks` in `GET /shipments/{id}/events`.
 
 ---
 
@@ -1582,10 +1593,10 @@ The booking's lifecycle: did Ventaship get the parcel booked?
 | `draft` | saved with `submit: false`; nothing sent to the courier | yes |
 | `queued` | waiting for the booking job | yes |
 | `booking` | the courier is being asked (SPX may stay here briefly while it issues the tracking number) | yes |
-| `booked` | the courier accepted it; `tracking_number` is set. Stays `booked` for the rest of the parcel's journey: follow `phase` | yes |
+| `booked` | the courier accepted it; `tracking_number` is set. Stays `booked` for the rest of the parcel's journey (follow `phase`) unless it is cancelled | yes |
 | `unknown` | the courier call failed in a way that leaves the outcome unknown; `needs_attention` is `true`. See [9.3](#93-unknown-never-resubmit) | yes |
 | `failed` | not booked; `error` says why | **no** (released) |
-| `cancelled` | cancelled before or after booking | **no** (released) |
+| `cancelled` | cancelled before or after booking, at your request or by the courier on its own | **no** (released) |
 
 Transitions:
 
@@ -1596,7 +1607,7 @@ draft ──submit──▶ queued ──▶ booking ──▶ booked
                     └──(not started within 30 min)──▶ failed
 
 draft | queued ──cancel──▶ cancelled
-booked ──cancel accepted by the courier──▶ cancelled
+booked ──cancelled at the courier (asked for or not)──▶ cancelled
 ```
 
 ### 8.2 `phase`
@@ -1616,7 +1627,7 @@ Where the parcel is, on one scale shared by every courier. `null` until the cour
 | `returning` | coming back to the sender, or returned |
 | `cancelled` | cancelled |
 
-`phase` and `state` are independent: if the courier itself cancels a booked parcel, `phase` becomes `cancelled` while `state` stays `booked`. Show the parcel's progress from `phase` and the raw details from `courier_status` / `courier_status_label`.
+Show the parcel's progress from `phase` and the raw details from `courier_status` / `courier_status_label`. A courier status in phase `cancelled` on a booked shipment always settles it: state `cancelled`, `cancel_state` `cancelled`, reference freed, COD → `cod_void`, and a `shipment.cancelled` webhook after the `shipment.status_changed`. This happens whether or not you asked to cancel, and whatever `cancel_state` it had (a `refused` or `failed` cancel included; the attention that cancel raised is cleared).
 
 ### 8.3 `payment_state`
 
@@ -1653,7 +1664,7 @@ It only moves forward: `cod_unpaid → cod_collected → cod_remitted`, and `cod
 
 `POST /shipments` stores the shipment and answers `202` at once; a worker books it with the courier right after. Follow the result by webhook (`shipment.booked`, `shipment.booking_failed`, `shipment.unknown`), by `GET /shipments/{id}`, or by waiting in the create call itself with `?wait=N` (N ≤ 20 seconds).
 
-A shipment that has not started booking within 30 minutes (workers down) becomes `failed` with `error.code` `not_started`. One stuck in `booking` for more than 10 minutes becomes `unknown`, except an SPX shipment waiting for its tracking number (`courier_status` `creating`), which Ventaship keeps polling.
+A shipment that has not started booking within 30 minutes (workers down) becomes `failed` with `error.code` `not_started`. One stuck in `booking` for more than 10 minutes becomes `unknown`, except an SPX shipment waiting for its tracking number (`courier_status` `creating`), which Ventaship keeps polling. One still `creating` after 6 hours stays `booking` but gets `needs_attention` ("SPX has not confirmed the booking after 6 hours — check the SPX portal"), cleared when SPX confirms it.
 
 ### 9.2 `client_reference`
 
@@ -1695,16 +1706,20 @@ What `POST /shipments/{id}/cancel` does, by the shipment's state when you ask:
 | `draft`, `queued` | cancelled at once (nothing was sent to the courier); reference freed | `200`, state `cancelled`, `cancel_state` `cancelled` | `shipment.cancelled` |
 | `booking` | `cancel_state` `requested`. When the booking finishes: if booked, the cancel is sent to the courier (next rows); if refused, the cancel is simply done (state stays `failed`) | `202` | later `shipment.cancelled` / `shipment.cancel_failed` |
 | `unknown` | `cancel_state` `requested`, `needs_attention`. Waits for the owner to resolve the booking: resolved booked → sent to the courier; resolved not booked → cancel done (state `failed`) | `202` | later |
-| `booked`, courier status still cancelable (or none yet) | `cancel_state` `requested`; Ventaship asks the courier | `202` | then one of the three below |
+| `booked`, the courier already reports it cancelled | cancelled at once, the courier is not called; reference freed | `200`, state `cancelled`, `cancel_state` `cancelled` | `shipment.cancelled` |
+| `booked`, courier status still cancelable (or none yet) | `cancel_state` `requested`; Ventaship asks the courier | `202` | then one of the four below |
 | … the courier cancels | state `cancelled`, phase `cancelled`, COD → `cod_void`, reference freed | | `shipment.cancelled` |
 | … the courier refuses | `cancel_state` `refused`, `needs_attention`, state stays `booked` | | `shipment.cancel_failed` |
 | … the call fails or times out | `cancel_state` `failed`, `needs_attention` ("Cancel outcome unknown — check the courier portal"). Never retried | | `shipment.cancel_failed` |
+| … a live-booking lock is off (production **SPX** account) | nothing is sent: `cancel_state` `refused`, `needs_attention` ("Live cancels are locked for this account — nothing was sent to the courier") | | `shipment.cancel_failed` |
 | `booked`, courier status no longer cancelable (e.g. picked up) | refused at once, the courier is not called; `needs_attention` | `200`, `cancel_state` `refused` | `shipment.cancel_failed` |
 | `booked`, its courier account deleted | refused at once: `cancel_state` `refused`, `needs_attention` ("This shipment's courier account no longer exists — cancel it at the courier portal") | `200` | `shipment.cancel_failed` |
 | `booked`, the cancel cannot be prepared (account settings unreadable) | `cancel_state` `failed`, `needs_attention` ("Cancel could not be prepared — check the account settings"); the courier is not called | `200` | `shipment.cancel_failed` |
 | `booked` at **LBC** | LBC has no cancel API: `cancel_state` `unsupported`, `needs_attention`, `attention_reason` "LBC has no cancel API. Call LBC to void this booking." The shipment stays `booked` | `200` | `shipment.cancel_failed` |
 | `failed`, `cancelled` | nothing to do; returned unchanged | `200` | none |
 | any, with `cancel_state` already set | returned unchanged (a cancel is asked once) | `202` if `requested`, else `200` | none |
+
+Whatever the cancel did, a later courier report in phase `cancelled` settles the shipment (see [8.2](#82-phase)).
 
 A cancel left `requested` for more than 30 minutes on a booked shipment is flagged `needs_attention` ("Cancel request stuck — check and retry").
 
@@ -1732,7 +1747,7 @@ Ventaship POSTs an event to your client app's webhook URL for every change to on
 | `shipment.resolved` | the owner resolved an `unknown` shipment: read `data.shipment.state` (`booked` or `failed`) | `null` |
 | `shipment.status_changed` | a new courier status was recorded (webhook, poll, refresh, or the booking answer) | the status, see below |
 | `shipment.payment_state_changed` | `payment_state` changed | `null` |
-| `shipment.cancelled` | the cancel is done | `null` |
+| `shipment.cancelled` | the cancel is done (also when the courier cancelled it on its own, see [8.2](#82-phase)) | `null` |
 | `shipment.cancel_failed` | the cancel was refused, unsupported or its outcome is unknown | `null` |
 | `ping` | the owner sent a test (`ventaship:app-ping`) | (no shipment: `data` is `{"message": "ping"}`) |
 
@@ -1795,6 +1810,7 @@ For every `shipment.*` type, `data` is:
             "payment_state": "cod_unpaid",
             "cod_amount": "1290.00",
             "declared_value": "1290.00",
+            "insure": false,
             "items_count": 3,
             "items_summary": "Blue Tee ×2, Cap ×1",
             "notice": null,
@@ -1853,6 +1869,7 @@ For every `shipment.*` type, `data` is:
             "payment_state": "cod_unpaid",
             "cod_amount": "1290.00",
             "declared_value": "1290.00",
+            "insure": false,
             "items_count": 3,
             "items_summary": "Blue Tee ×2, Cap ×1",
             "notice": null,

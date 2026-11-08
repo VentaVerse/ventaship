@@ -35,6 +35,7 @@
             "payment_state": "cod_unpaid",
             "cod_amount": "1290.00",
             "declared_value": "1290.00",
+            "insure": false,
             "items_count": 3,
             "items_summary": "Blue Tee ×2, Cap ×1",
             "notice": null,

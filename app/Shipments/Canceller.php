@@ -119,6 +119,33 @@ final class Canceller
     }
 
     /**
+     * Whether the shipment's last courier status already means the courier cancelled it (phase `cancelled`). Asking
+     * that courier to cancel again would only be refused, so the cancel is settled instead.
+     */
+    public static function cancelledAtCourier(Shipment $s): bool
+    {
+        if ($s->courier_status === null || trim($s->courier_status) === '') {
+            return false;
+        }
+
+        return app(PhaseResolver::class)->phase((string) $s->courier, $s->courier_status) === 'cancelled';
+    }
+
+    /**
+     * Inside the caller's transaction, shipment row locked: the courier reported a booked shipment cancelled, whether or
+     * not anyone asked it to. A cancellation at the courier is final, so the shipment is settled whatever cancel_state
+     * it had (none, requested, refused, failed). Anything not `booked` is left alone, so it never settles twice.
+     */
+    public function settleCourierCancelled(Shipment $s): void
+    {
+        if ($s->state !== 'booked') {
+            return;
+        }
+
+        $this->finish($s);
+    }
+
+    /**
      * Inside the caller's transaction, shipment row locked: a booking that was refused while a cancel was requested.
      * Nothing exists at the courier, so the state stays as the caller set it and the cancel is simply done.
      */
@@ -131,6 +158,13 @@ final class Canceller
     private function requestAtCourier(Shipment $s): bool
     {
         try {
+            // The courier already reports it cancelled: there is nothing left to ask it, the cancel is done.
+            if (self::cancelledAtCourier($s)) {
+                $this->finish($s);
+
+                return false;
+            }
+
             $account = $s->courierAccount;
             $courier = $account === null ? null : CourierRegistry::for($account);
             if ($courier === null) {
@@ -172,8 +206,11 @@ final class Canceller
             'payment_state' => PaymentState::after($s, 'cancelled'),
         ];
 
-        // Only attention the cancel flow itself raised is cleared; an unrelated reason stays for the operator.
-        if (in_array($s->attention_reason, [self::OUTCOME_UNKNOWN_REASON, self::UNKNOWN_BOOKING_REASON, self::NOT_PREPARED_REASON, self::STUCK_REASON], true)) {
+        // Only attention the cancel flow itself raised is cleared; an unrelated reason stays for the operator. A refused,
+        // unsupported or failed cancel is always the last thing to have set the reason on a booked shipment.
+        $raisedByCancel = in_array($s->attention_reason, [self::OUTCOME_UNKNOWN_REASON, self::UNKNOWN_BOOKING_REASON, self::NOT_PREPARED_REASON, self::STUCK_REASON], true)
+            || ($s->needs_attention && in_array($s->cancel_state, ['refused', 'unsupported', 'failed'], true));
+        if ($raisedByCancel) {
             $changes += ['needs_attention' => false, 'attention_reason' => null];
         }
 

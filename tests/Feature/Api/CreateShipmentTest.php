@@ -130,6 +130,19 @@ class CreateShipmentTest extends TestCase
         $this->assertSame(1, Shipment::query()->where('active_reference', '4211')->count());
     }
 
+    public function test_insure_is_an_optional_boolean_stored_in_options(): void
+    {
+        $this->fakeDefaultAccount();
+
+        $this->create($this->shipmentBody(['client_reference' => 'a', 'insure' => 'yes']))
+            ->assertStatus(422)->assertJsonValidationErrors(['insure'], 'errors');
+
+        $this->create($this->shipmentBody(['client_reference' => 'b', 'insure' => true]))->assertStatus(202)->assertJsonPath('data.insure', true);
+        $this->create($this->shipmentBody(['client_reference' => 'c']))->assertStatus(202)->assertJsonPath('data.insure', false);
+
+        $this->assertSame([true, false], Shipment::query()->orderBy('id')->get()->map(fn (Shipment $s) => $s->options['insure'])->all());
+    }
+
     public function test_money_validation(): void
     {
         $this->fakeDefaultAccount();

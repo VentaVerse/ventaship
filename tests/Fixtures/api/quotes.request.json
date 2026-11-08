@@ -1,6 +1,7 @@
 {
     "courier": "quadx",
     "service": "next_day",
+    "insure": false,
     "pickup": {
         "address_1": "5 Shaw Blvd",
         "barangay": "Wack-Wack",

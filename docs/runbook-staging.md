@@ -18,7 +18,9 @@ Run every command from `/home/ubuntu/ventaship`.
 Four processes, each in its own terminal (or under systemd, see [9](#9-live-parcel-checklist-later)):
 
 ```bash
-php artisan serve --port=8040
+# Several PHP workers: a create with ?wait holds its worker for up to 20 seconds, and the single-worker default
+# would make every other request (webhooks included) wait behind it. In production use php-fpm behind the proxy.
+PHP_CLI_SERVER_WORKERS=4 php artisan serve --port=8040
 
 # Courier calls: booking and cancelling. One try only, five-minute timeout: a booking is never retried.
 php artisan queue:work couriers --queue=couriers --timeout=300 --tries=1
@@ -100,6 +102,8 @@ signed POST '/api/v1/shipments?wait=15' tests/Fixtures/api/create-shipment.reque
 signed GET /api/v1/shipments/shp_…
 signed GET /api/v1/shipments/shp_…/label - -o waybill.pdf
 ```
+
+If `GET /label` answers `502 courier_unavailable` and `storage/logs/laravel.log` has `Label link refused: host not on the allow-list` (with the `host`), QuadX served the waybill from a host Ventaship does not trust. Nothing was downloaded. Check that the host really is QuadX's, then add it to the courier's list in `app/Couriers/Support/LabelHosts.php` (exact host, `https` only) and deploy; the next `GET /label` fetches it.
 
 `--data-binary @file` sends the file's bytes unchanged, and the signature is computed over the same bytes (trailing newline included). Each call signs with the current second: do not send two identical requests within the same second (the second is refused as a replay).
 
@@ -199,10 +203,20 @@ _To be filled in by the owner after running §3–§7 with the real QuadX stagin
 - [ ] **O1**: a public https host for Ventaship; `APP_URL` set to it; TLS working.
 - [ ] Trusted proxies configured if behind a proxy (§5).
 - [ ] QuadX production webhook URL set to `https://{O1 host}/webhooks/quadx?token=…` (a production-mode account has its own token).
-- [ ] The QuadX account switched to `production` mode only for the live parcel, with production keys set via `ventaship:account-set … --secret`.
+- [ ] The QuadX account switched to `production` mode only for the live parcel, with production keys set via `ventaship:account-set … --secret`:
+  ```bash
+  php artisan ventaship:account-set acc_… quadx_production_api_key --secret
+  php artisan ventaship:account-set acc_… quadx_production_secret_key --secret
+  php artisan ventaship:account-mode acc_… production    # prints "acc_… (quadx) mode: staging → production"
+  php artisan ventaship:account-mode acc_… staging       # back after the live parcel
+  ```
 - [ ] §7 confirmed on staging.
 - [ ] `APP_ENV=production`, `APP_DEBUG=false`.
 - [ ] The two queue workers, the scheduler and the web server under **systemd**, restarting on failure, started on boot; `php artisan queue:restart` after every deploy.
 - [ ] **Backups**: the MySQL `ventaship` database (nightly, kept off the Pi), and `storage/app/labels` (stored waybills; they can be refetched from the courier only while the courier still serves them).
 - [ ] **`VENTASHIP_VAULT_KEY` stored separately** from the database backups (a password manager). A backup without it cannot decrypt courier credentials; the key with a backup is everything an attacker needs.
-- [ ] Live-booking locks still off unless an LBC or production SPX parcel is intended (§1).
+- [ ] Live-booking locks still off unless an LBC or production SPX parcel is intended (§1). The settings take exactly `true` or `false`; every change is written to `audit_entries`:
+  ```bash
+  php artisan ventaship:setting-set safety.allow_live_spx true     # only for an intended production SPX parcel
+  php artisan ventaship:setting-set safety.allow_live_spx false    # straight after
+  ```

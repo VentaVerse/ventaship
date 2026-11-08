@@ -94,7 +94,7 @@ class MaintenanceCommandsTest extends TestCase
         $this->assertIsArray($live->refresh()->recipient);
     }
 
-    public function test_pii_purge_covers_failed_and_cancelled_shipments_and_scrubs_event_raw(): void
+    public function test_pii_purge_covers_failed_and_cancelled_shipments_and_scrubs_event_raw_and_remarks(): void
     {
         $failed = Shipment::factory()->create(['state' => 'failed']);
         $cancelled = Shipment::factory()->create(['state' => 'cancelled', 'cancelled_at' => now()->subDays(200)]);
@@ -105,6 +105,11 @@ class MaintenanceCommandsTest extends TestCase
         $event = ShipmentEvent::query()->create([
             'shipment_id' => $failed->id, 'source' => 'webhook', 'courier_status' => 'pending',
             'occurred_at' => now()->subDays(190), 'raw' => ['recipient_name' => 'Juan Dela Cruz'],
+            'remarks' => 'Received by Juan Dela Cruz',
+        ]);
+        $keptEvent = ShipmentEvent::query()->create([
+            'shipment_id' => $recentFailed->id, 'source' => 'webhook', 'courier_status' => 'pending',
+            'occurred_at' => now()->subDays(179), 'raw' => [], 'remarks' => 'Received by Maria Santos',
         ]);
 
         $this->artisan('ventaship:pii-purge')->assertExitCode(0);
@@ -114,7 +119,11 @@ class MaintenanceCommandsTest extends TestCase
             $this->assertNull($s->recipient);
             $this->assertNotNull($s->pii_purged_at);
         }
-        $this->assertSame(['purged' => true], $event->refresh()->raw);
+        $event->refresh();
+        $this->assertSame(['purged' => true], $event->raw);
+        $this->assertNull($event->remarks, 'courier remarks often name the recipient');
+        $this->assertSame('pending', $event->courier_status);
+        $this->assertSame('Received by Maria Santos', $keptEvent->refresh()->remarks);
         $this->assertNull($recentFailed->refresh()->pii_purged_at);
         $this->assertIsArray($recentFailed->recipient);
         $this->assertNull($booked->refresh()->pii_purged_at, 'a live booking is never purged, however old');

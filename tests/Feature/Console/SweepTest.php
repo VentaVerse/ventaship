@@ -5,6 +5,7 @@ namespace Tests\Feature\Console;
 use App\Models\ClientApp;
 use App\Models\OutgoingEvent;
 use App\Models\Shipment;
+use App\Shipments\BookingOutcomes;
 use App\Shipments\Jobs\CancelAtCourier;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -59,6 +60,39 @@ class SweepTest extends TestCase
         $this->assertSame('booking', $fresh->refresh()->state);
         $this->assertSame('booking', $creating->refresh()->state);
         $this->assertSame('shipment.unknown', OutgoingEvent::query()->sole()->type);
+    }
+
+    public function test_spx_creating_for_more_than_six_hours_is_flagged_without_a_courier_call(): void
+    {
+        Queue::fake();
+        $attributes = ['state' => 'booking', 'courier' => 'spx', 'courier_status' => 'creating'];
+        $old = $this->shipment($attributes + ['booking_started_at' => now()->subHours(6)->subMinute()]);
+        $young = $this->shipment($attributes + ['booking_started_at' => now()->subHours(6)->addMinute()]);
+        $other = $this->shipment($attributes + [
+            'booking_started_at' => now()->subHours(7), 'needs_attention' => true, 'attention_reason' => 'Something else',
+        ]);
+
+        $this->artisan('ventaship:shipments-sweep')->assertExitCode(0);
+        $this->artisan('ventaship:shipments-sweep')->assertExitCode(0);
+
+        $old->refresh();
+        $this->assertSame('booking', $old->state);
+        $this->assertSame('creating', $old->courier_status);
+        $this->assertTrue($old->needs_attention);
+        $this->assertSame('SPX has not confirmed the booking after 6 hours — check the SPX portal', $old->attention_reason);
+        $this->assertSame('4211-'.$old->id, $old->active_reference);
+        $this->assertFalse($young->refresh()->needs_attention);
+        $this->assertSame('Something else', $other->refresh()->attention_reason);
+        $this->assertSame(0, OutgoingEvent::query()->count());
+        Queue::assertNothingPushed();
+
+        // SPX confirming it later clears that flag.
+        $this->assertTrue(app(BookingOutcomes::class)->creationResolved($old->id, 'SPXPH000001'));
+        $old->refresh();
+        $this->assertSame('booked', $old->state);
+        $this->assertFalse($old->needs_attention);
+        $this->assertNull($old->attention_reason);
+        $this->assertSame('Something else', $other->refresh()->attention_reason);
     }
 
     public function test_booking_still_locked_by_its_job_is_left_alone(): void

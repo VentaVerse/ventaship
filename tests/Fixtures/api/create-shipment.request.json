@@ -4,6 +4,7 @@
     "order_label": "#4211",
     "method": "pickup",
     "service": "next_day",
+    "insure": false,
     "parcel": {
         "type": "box",
         "weight_kg": 1.2,

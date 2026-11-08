@@ -18,6 +18,9 @@ final class BookingOutcomes
 {
     public const UNKNOWN_REASON = 'Booking outcome unknown — check the courier portal before retrying';
 
+    /** Set by the sweep on an SPX booking still `creating` after 6 hours; cleared when SPX confirms it. */
+    public const CREATING_STALE_REASON = 'SPX has not confirmed the booking after 6 hours — check the SPX portal';
+
     private const MESSAGE_MAX = 1000;
 
     public function __construct(private readonly StatusRecorder $recorder, private readonly Canceller $canceller) {}
@@ -128,6 +131,10 @@ final class BookingOutcomes
 
             $current = is_array($s->meta) ? $s->meta : [];
             unset($current['pending']);
+
+            if ($s->attention_reason === self::CREATING_STALE_REASON) {
+                $s->forceFill(['needs_attention' => false, 'attention_reason' => null]);
+            }
 
             $s->forceFill([
                 'state' => 'booked',

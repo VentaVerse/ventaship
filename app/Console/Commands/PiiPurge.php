@@ -12,7 +12,8 @@ use Illuminate\Console\Command;
  * pii_purged_at. Finished: a terminal courier status (terminal_at, or a delivered/cancelled phase) or state failed
  * or cancelled; its age runs from COALESCE(terminal_at, cancelled_at, updated_at).
  *
- * Cleared: pickup, recipient, courier note, and each of its events' raw courier payload (set to {"purged":true}).
+ * Cleared: pickup, recipient, courier note, and each of its events' raw courier payload (set to {"purged":true}) and
+ * remarks (couriers write who received the parcel there).
  * The rest (state, tracking, money, event statuses) stays.
  */
 class PiiPurge extends Command
@@ -50,7 +51,7 @@ class PiiPurge extends Command
                     'courier_note' => null,
                     'pii_purged_at' => now(),
                 ]);
-                ShipmentEvent::query()->whereIn('shipment_id', $ids->all())->toBase()->update(['raw' => '{"purged":true}']);
+                ShipmentEvent::query()->whereIn('shipment_id', $ids->all())->toBase()->update(['raw' => '{"purged":true}', 'remarks' => null]);
             }
         } while ($ids->count() === self::CHUNK);
 

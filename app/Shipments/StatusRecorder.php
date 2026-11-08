@@ -91,6 +91,11 @@ class StatusRecorder
                 Outbox::record($app, 'shipment.payment_state_changed', ['event' => null], $shipment);
             }
 
+            // A cancellation reported by the courier is final, asked for or not: settle the shipment in this transaction.
+            if ($phase === 'cancelled' && $shipment->state === 'booked') {
+                app(Canceller::class)->settleCourierCancelled($shipment);
+            }
+
             $s->setRawAttributes($shipment->getAttributes(), true);
 
             return $event;

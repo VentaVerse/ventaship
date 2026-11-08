@@ -115,6 +115,8 @@ final class ShipmentCreator
                 'pickup_date' => $data['pickup_date'] ?? null,
                 'pickup_slot' => $data['pickup_slot'] ?? null,
                 'shipping_payment' => $payment['shipping_payment'] ?? null,
+                // Insurance is opt-in: stored as an explicit boolean so the couriers never fall back to a default.
+                'insure' => filter_var($data['insure'] ?? false, FILTER_VALIDATE_BOOLEAN),
             ], fn ($v) => $v !== null),
             'pickup' => isset($data['pickup']) ? self::party($data['pickup'], ['contact_name', 'contact_phone'], 'contact_phone') : null,
             'recipient' => isset($data['recipient']) ? self::party($data['recipient'], ['first_name', 'last_name', 'phone', 'email'], 'phone') : null,

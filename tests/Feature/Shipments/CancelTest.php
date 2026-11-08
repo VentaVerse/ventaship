@@ -15,16 +15,18 @@ use App\Shipments\Jobs\CancelAtCourier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Context;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use RuntimeException;
+use Tests\Concerns\BuildsCourierAccounts;
 use Tests\Concerns\SignsApiRequests;
 use Tests\TestCase;
 
 class CancelTest extends TestCase
 {
-    use RefreshDatabase, SignsApiRequests;
+    use BuildsCourierAccounts, RefreshDatabase, SignsApiRequests;
 
     private array $client;
 
@@ -294,6 +296,55 @@ class CancelTest extends TestCase
         $this->assertSame('cancelled', $s->state);
         $this->assertTrue($s->needs_attention);
         $this->assertSame('LBC did not confirm the pickup request', $s->attention_reason);
+    }
+
+    public function test_cancel_of_a_shipment_the_courier_already_cancelled_settles_it(): void
+    {
+        $fake = FakeCourier::make();
+        CourierRegistry::fake('quadx', $fake);
+        $s = $this->booked(['courier_status' => 'canceled', 'active_reference' => '4211']);
+
+        $this->cancel($s)->assertOk()
+            ->assertJsonPath('data.state', 'cancelled')
+            ->assertJsonPath('data.cancel_state', 'cancelled')
+            ->assertJsonPath('data.needs_attention', false);
+
+        $this->assertSame([], $fake->calls);
+        $this->assertNull($s->refresh()->active_reference);
+        $this->assertSame('shipment.cancelled', OutgoingEvent::query()->sole()->type);
+    }
+
+    public function test_cancel_job_settles_when_the_courier_status_is_already_cancelled(): void
+    {
+        $fake = FakeCourier::make();
+        CourierRegistry::fake('quadx', $fake);
+        $s = $this->booked(['courier_status' => 'canceled', 'cancel_state' => 'requested', 'cancel_requested_at' => now()]);
+
+        Bus::dispatchNow(new CancelAtCourier($s->id));
+
+        $s->refresh();
+        $this->assertSame('cancelled', $s->state);
+        $this->assertSame('cancelled', $s->cancel_state);
+        $this->assertSame([], $fake->callsTo('cancelShipment'));
+        $this->assertSame('shipment.cancelled', OutgoingEvent::query()->sole()->type);
+    }
+
+    public function test_a_locked_live_spx_cancel_is_refused_and_nothing_is_sent(): void
+    {
+        config(['couriers.spx_live' => false]);
+        $spx = $this->spxAccount(['mode' => 'production', 'status' => 'active', 'allow_live_booking' => true]);
+        $s = $this->booked(['courier' => 'spx', 'courier_account_id' => $spx->id, 'tracking_number' => 'SPXPH000001', 'courier_status' => null]);
+
+        $this->cancelAndRunJob($s)->assertStatus(202);
+
+        $s->refresh();
+        $this->assertSame('booked', $s->state);
+        $this->assertSame('refused', $s->cancel_state);
+        $this->assertTrue($s->needs_attention);
+        $this->assertSame('Live cancels are locked for this account — nothing was sent to the courier', $s->attention_reason);
+        $this->assertNotNull($s->active_reference);
+        $this->assertSame('shipment.cancel_failed', OutgoingEvent::query()->sole()->type);
+        Http::assertNothingSent();
     }
 
     public function test_failed_hook_marks_a_stuck_cancel_failed(): void

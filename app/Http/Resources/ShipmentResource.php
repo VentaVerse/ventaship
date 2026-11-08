@@ -65,6 +65,7 @@ class ShipmentResource extends JsonResource
             'payment_state' => $s->payment_state,
             'cod_amount' => $s->cod_amount,
             'declared_value' => $s->declared_value,
+            'insure' => data_get($s->options, 'insure') === true,
             'items_count' => (int) $s->items_count,
             'items_summary' => $s->items_summary,
             'notice' => $s->notice,
