@@ -24,24 +24,27 @@ class LoginController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $credentials = $request->validate([
-            'email' => ['required', 'string', 'max:255'],
+        $data = $request->validate([
+            'login' => ['required', 'string', 'max:255'],
             'password' => ['required', 'string', 'max:1024'],
-        ], ['email.required' => 'Required.', 'password.required' => 'Required.'], ['email' => 'email']);
+        ], ['login.required' => 'Required.', 'password.required' => 'Required.']);
 
-        $credentials['email'] = Str::lower(trim($credentials['email']));
-        $key = $credentials['email'].'|'.$request->ip();
+        $login = Str::lower(trim($data['login']));
+        $key = $login.'|'.$request->ip();
 
         if (RateLimiter::tooManyAttempts($key, self::MAX_ATTEMPTS)) {
             throw ValidationException::withMessages([
-                'email' => 'Too many attempts. Try again in '.RateLimiter::availableIn($key).' seconds.',
+                'login' => 'Too many attempts. Try again in '.RateLimiter::availableIn($key).' seconds.',
             ]);
         }
+
+        // An "@" means an email; anything else is a username.
+        $credentials = [str_contains($login, '@') ? 'email' : 'username' => $login, 'password' => $data['password']];
 
         if (! Auth::guard('web')->attempt($credentials, $request->boolean('remember'))) {
             RateLimiter::hit($key, self::DECAY_SECONDS);
 
-            throw ValidationException::withMessages(['email' => 'Wrong email or password.']);
+            throw ValidationException::withMessages(['login' => 'Wrong username or password.']);
         }
 
         RateLimiter::clear($key);

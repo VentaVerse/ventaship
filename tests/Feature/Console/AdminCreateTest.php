@@ -79,4 +79,23 @@ class AdminCreateTest extends TestCase
     {
         $this->artisan('ventaship:admin', ['email' => 'nobody@example.com', '--reset' => true])->assertFailed();
     }
+
+    public function test_sets_a_username(): void
+    {
+        $this->artisan('ventaship:admin', ['email' => 'ana@example.com', '--username' => ' Ana '])
+            ->expectsQuestion('Password', 'a-long-password-1')
+            ->expectsQuestion('Confirm password', 'a-long-password-1')
+            ->assertSuccessful();
+
+        $this->assertSame('ana', \App\Models\Admin::query()->value('username'));
+    }
+
+    public function test_rejects_bad_or_taken_username(): void
+    {
+        \App\Models\Admin::query()->create(['name' => 'B', 'username' => 'ben', 'email' => 'ben@example.com', 'password' => 'x']);
+
+        $this->artisan('ventaship:admin', ['email' => 'ana@example.com', '--username' => 'a b'])->assertFailed();
+        $this->artisan('ventaship:admin', ['email' => 'ana@example.com', '--username' => 'ben'])->assertFailed();
+        $this->assertSame(1, \App\Models\Admin::query()->count());
+    }
 }

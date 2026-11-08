@@ -26,7 +26,7 @@ class AccountSecurityTest extends TestCase
     /** @return array<string, string> the cookies one browser holds after signing in */
     private function signIn(bool $remember = false): array
     {
-        $res = $this->fresh()->post('/login', ['email' => 'ana@example.com', 'password' => 'correct-horse-battery'] + ($remember ? ['remember' => '1'] : []))
+        $res = $this->fresh()->post('/login', ['login' => 'ana@example.com', 'password' => 'correct-horse-battery'] + ($remember ? ['remember' => '1'] : []))
             ->assertRedirect();
 
         return $this->cookiesFrom($res);

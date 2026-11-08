@@ -10,7 +10,7 @@ use Illuminate\Support\Str;
 
 class AdminCreate extends Command
 {
-    protected $signature = 'ventaship:admin {email} {--name= : Display name (defaults to the part of the email before the @)} {--reset : Set a new password for an existing admin}';
+    protected $signature = 'ventaship:admin {email} {--name= : Display name (defaults to the part of the email before the @)} {--username= : Sign-in username (letters, digits, . _ -; 3-64 characters)} {--reset : Set a new password for an existing admin}';
 
     protected $description = 'Create an admin, or with --reset set a new password for one (audited)';
 
@@ -25,7 +25,20 @@ class AdminCreate extends Command
             return self::FAILURE;
         }
 
+        $username = $this->option('username') === null ? null : Str::lower(trim((string) $this->option('username')));
+        if ($username !== null && preg_match('/^[a-z0-9._-]{3,64}\z/', $username) !== 1) {
+            $this->error('The username must be 3-64 letters, digits, dots, dashes or underscores.');
+
+            return self::FAILURE;
+        }
+
         $existing = Admin::query()->where('email', $email)->first();
+
+        if ($username !== null && Admin::query()->where('username', $username)->when($existing, fn ($q) => $q->whereKeyNot($existing->id))->exists()) {
+            $this->error("The username {$username} is already taken.");
+
+            return self::FAILURE;
+        }
         $reset = (bool) $this->option('reset');
 
         if ($reset && ! $existing) {
@@ -52,13 +65,13 @@ class AdminCreate extends Command
             return self::FAILURE;
         }
 
-        $admin = DB::transaction(function () use ($existing, $reset, $email, $password) {
+        $admin = DB::transaction(function () use ($existing, $reset, $email, $password, $username) {
             if ($reset) {
-                $existing->forceFill(['password' => $password, 'remember_token' => null])->save();
+                $existing->forceFill(['password' => $password, 'remember_token' => null] + ($username !== null ? ['username' => $username] : []))->save();
                 $admin = $existing;
             } else {
                 $name = trim((string) $this->option('name')) ?: Str::before($email, '@');
-                $admin = Admin::query()->create(['name' => $name, 'email' => $email, 'password' => $password]);
+                $admin = Admin::query()->create(['name' => $name, 'username' => $username, 'email' => $email, 'password' => $password]);
             }
 
             AuditEntry::query()->create([

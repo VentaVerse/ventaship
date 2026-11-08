@@ -169,7 +169,7 @@ class SettingsScreenTest extends TestCase
         $admin = $this->admin();
         $old = $admin->password;
 
-        $this->post('/login', ['email' => 'ana@example.com', 'password' => 'correct-horse-battery'])->assertRedirect();
+        $this->post('/login', ['login' => 'ana@example.com', 'password' => 'correct-horse-battery'])->assertRedirect();
         $this->assertAuthenticatedAs($admin);
 
         $this->put('/settings/account', [

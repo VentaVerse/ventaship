@@ -14,7 +14,7 @@ class LoginTest extends TestCase
 
     private function admin(): Admin
     {
-        return Admin::query()->create(['name' => 'Ana', 'email' => 'ana@example.com', 'password' => 'correct-horse-battery']);
+        return Admin::query()->create(['name' => 'Ana', 'email' => 'ana@example.com', 'username' => 'ana', 'password' => 'correct-horse-battery']);
     }
 
     public function test_guest_is_redirected_to_login(): void
@@ -35,7 +35,7 @@ class LoginTest extends TestCase
 
     public function test_login_page_renders_and_signed_in_admin_is_sent_away(): void
     {
-        $this->get('/login')->assertOk()->assertSee('Sign in')->assertDontSee('Wrong email or password.');
+        $this->get('/login')->assertOk()->assertSee('Sign in')->assertDontSee('Wrong username or password.');
         $this->actingAs($this->admin())->get('/login')->assertRedirect('/');
     }
 
@@ -45,7 +45,7 @@ class LoginTest extends TestCase
         $this->get('/login');
         $before = session()->getId();
 
-        $this->post('/login', ['email' => 'ANA@example.com', 'password' => 'correct-horse-battery'])->assertRedirect('/');
+        $this->post('/login', ['login' => 'ANA@example.com', 'password' => 'correct-horse-battery'])->assertRedirect('/');
 
         $this->assertSame($admin->id, auth()->id());
         $this->assertNotNull($admin->fresh()->last_login_at);
@@ -57,29 +57,29 @@ class LoginTest extends TestCase
     {
         $this->admin();
 
-        $this->from('/login')->post('/login', ['email' => 'ana@example.com', 'password' => 'nope'])
+        $this->from('/login')->post('/login', ['login' => 'ana@example.com', 'password' => 'nope'])
             ->assertRedirect('/login')
-            ->assertSessionHasErrors(['email' => 'Wrong email or password.'])
-            ->assertSessionHasInput('email', 'ana@example.com')
+            ->assertSessionHasErrors(['login' => 'Wrong username or password.'])
+            ->assertSessionHasInput('login', 'ana@example.com')
             ->assertSessionMissing('_old_input.password');
         $this->assertGuest();
 
-        $this->post('/login', ['email' => 'nobody@example.com', 'password' => 'nope'])
-            ->assertSessionHasErrors(['email' => 'Wrong email or password.']);
+        $this->post('/login', ['login' => 'nobody@example.com', 'password' => 'nope'])
+            ->assertSessionHasErrors(['login' => 'Wrong username or password.']);
     }
 
     public function test_empty_fields_say_required(): void
     {
-        $this->post('/login', ['email' => '', 'password' => ''])
-            ->assertSessionHasErrors(['email' => 'Required.', 'password' => 'Required.']);
+        $this->post('/login', ['login' => '', 'password' => ''])
+            ->assertSessionHasErrors(['login' => 'Required.', 'password' => 'Required.']);
     }
 
     public function test_error_state_renders_alert(): void
     {
         $this->admin();
-        $this->from('/login')->post('/login', ['email' => 'ana@example.com', 'password' => 'nope']);
+        $this->from('/login')->post('/login', ['login' => 'ana@example.com', 'password' => 'nope']);
 
-        $this->followingRedirects()->get('/login')->assertSee('Wrong email or password.')->assertSee('ana@example.com');
+        $this->followingRedirects()->get('/login')->assertSee('Wrong username or password.')->assertSee('ana@example.com');
     }
 
     public function test_remember_box_is_checked_by_default_and_keeps_an_unchecked_choice(): void
@@ -87,7 +87,7 @@ class LoginTest extends TestCase
         $this->admin();
         $this->get('/login')->assertSee('name="remember" value="1" checked', false);
 
-        $this->from('/login')->post('/login', ['email' => 'ana@example.com', 'password' => 'nope']);
+        $this->from('/login')->post('/login', ['login' => 'ana@example.com', 'password' => 'nope']);
         $html = $this->followingRedirects()->get('/login')->getContent();
         $this->assertStringNotContainsString('name="remember" value="1" checked', $html);
         $this->assertStringContainsString('name="remember"', $html);
@@ -97,13 +97,13 @@ class LoginTest extends TestCase
     {
         $this->admin();
         for ($i = 0; $i < 5; $i++) {
-            $this->post('/login', ['email' => 'ana@example.com', 'password' => 'nope'])
-                ->assertSessionHasErrors(['email' => 'Wrong email or password.']);
+            $this->post('/login', ['login' => 'ana@example.com', 'password' => 'nope'])
+                ->assertSessionHasErrors(['login' => 'Wrong username or password.']);
         }
 
-        $response = $this->post('/login', ['email' => 'Ana@example.com', 'password' => 'correct-horse-battery']);
-        $response->assertSessionHasErrors('email');
-        $this->assertMatchesRegularExpression('/^Too many attempts\. Try again in \d+ seconds\.$/', session('errors')->first('email'));
+        $response = $this->post('/login', ['login' => 'Ana@example.com', 'password' => 'correct-horse-battery']);
+        $response->assertSessionHasErrors('login');
+        $this->assertMatchesRegularExpression('/^Too many attempts\. Try again in \d+ seconds\.$/', session('errors')->first('login'));
         $this->assertGuest();
     }
 
@@ -111,8 +111,31 @@ class LoginTest extends TestCase
     {
         $this->admin();
 
-        $this->post('/login', ['email' => 'ana@example.com', 'password' => 'correct-horse-battery', 'remember' => '1'])
+        $this->post('/login', ['login' => 'ana@example.com', 'password' => 'correct-horse-battery', 'remember' => '1'])
             ->assertCookie(auth()->guard()->getRecallerName());
+    }
+
+    public function test_admin_signs_in_with_username(): void
+    {
+        $admin = $this->admin();
+
+        $this->post('/login', ['login' => ' Ana ', 'password' => 'correct-horse-battery'])->assertRedirect('/');
+
+        $this->assertAuthenticatedAs($admin);
+    }
+
+    public function test_wrong_password_for_username_shows_one_message(): void
+    {
+        $this->admin();
+
+        $this->post('/login', ['login' => 'ana', 'password' => 'nope'])
+            ->assertSessionHasErrors(['login' => 'Wrong username or password.']);
+        $this->assertGuest();
+    }
+
+    public function test_login_page_asks_for_username(): void
+    {
+        $this->get('/login')->assertOk()->assertSee('Username')->assertSee('name="login"', false);
     }
 
     public function test_logout_invalidates_session(): void

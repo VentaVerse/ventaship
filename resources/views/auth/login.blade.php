@@ -13,15 +13,15 @@
     </div>
     <h1 class="lg-title">Sign in</h1>
 
-    @if($errors->has('email') || $errors->has('password'))
+    @if($errors->has('login') || $errors->has('password'))
         <div class="lg-alert" role="alert">
             <x-ui.icon name="alert-triangle" size="16" />
-            {{ $errors->first('email') ?: $errors->first('password') }}
+            {{ $errors->first('login') ?: $errors->first('password') }}
         </div>
     @endif
 
-    <x-ui.field label="Email" name="email" errorKey="_none">
-        <x-ui.input type="email" id="f-email" name="email" value="{{ old('email') }}" autocomplete="username" autofocus required
+    <x-ui.field label="Username" name="login" errorKey="_none">
+        <x-ui.input type="text" id="f-login" name="login" value="{{ old('login') }}" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required
                     :class="$errors->any() ? 'is-invalid' : ''" />
     </x-ui.field>
     <x-ui.field label="Password" name="password" errorKey="_none">
