@@ -14,7 +14,7 @@ class Navigation
         $definition = [
             [null, [
                 ['Shipments', 'fulfillment', 'truck', ['fulfillment*']],
-                ['New shipment', 'shipments.create', 'plus'],
+                ['Add shipment', 'shipments.create', 'plus'],
                 ['Import CSV', 'imports.create', 'upload'],
             ]],
             ['Setup', [

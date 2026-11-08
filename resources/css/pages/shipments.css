@@ -1,0 +1,57 @@
+@layer components {
+    .sh-items {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
+    .sh-items__head,
+    .sh-item {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 90px 120px 110px;
+        align-items: start;
+        gap: 8px;
+    }
+
+    .sh-items__head {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--bl-ink-2);
+    }
+
+    .sh-radios {
+        display: flex;
+        gap: 18px;
+    }
+
+    .sh-radio,
+    .sh-check {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        cursor: pointer;
+    }
+
+    .sh-radio input,
+    .sh-check input[type="checkbox"] {
+        accent-color: var(--bl-brand-btn);
+    }
+
+    @media (max-width: 640px) {
+        .sh-items__head {
+            display: none;
+        }
+
+        .sh-item {
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--bl-rule);
+        }
+
+        .sh-item > :first-child,
+        .sh-item .sh-item__remove {
+            grid-column: 1 / -1;
+        }
+    }
+}

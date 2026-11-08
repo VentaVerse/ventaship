@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Ui\FulfillmentController;
 use App\Http\Controllers\Ui\SettingsController;
 use App\Http\Controllers\Ui\ShipmentActionsController;
+use App\Http\Controllers\Ui\ShipmentsController;
 use App\Http\Controllers\Webhooks\CourierWebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -16,6 +17,8 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::post('logout', [LoginController::class, 'destroy'])->name('logout');
     Route::get('/', [FulfillmentController::class, 'index'])->name('fulfillment');
     Route::get('fulfillment/poll', [FulfillmentController::class, 'poll'])->name('fulfillment.poll');
+    Route::get('shipments/new', [ShipmentsController::class, 'create'])->name('shipments.create');
+    Route::post('shipments', [ShipmentsController::class, 'store'])->name('shipments.store');
     Route::post('shipments/book', [ShipmentActionsController::class, 'book'])->name('shipments.book');
     Route::post('shipments/cancel', [ShipmentActionsController::class, 'cancel'])->name('shipments.cancel');
     Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');

@@ -4,6 +4,7 @@
 @import './pages/login.css';
 @import './pages/fulfillment.css';
 @import './pages/settings.css';
+@import './pages/shipments.css';
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../views';
