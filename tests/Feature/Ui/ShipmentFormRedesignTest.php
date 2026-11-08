@@ -159,8 +159,9 @@ class ShipmentFormRedesignTest extends TestCase
         $this->assertMatchesRegularExpression('/data-courier="quadx".*data-courier="spx".*data-courier="lbc"/s', $html);
         $this->assertMatchesRegularExpression('/type="radio" name="account_id" value="'.$this->account->public_id.'"[^>]*checked/', $html);
         $this->assertMatchesRegularExpression('/data-courier="spx".*?type="radio" name="account_id"[^>]*disabled.*?Not set up/s', $html);
-        $this->assertMatchesRegularExpression('/data-courier="lbc".*?type="radio" name="account_id"[^>]*disabled.*?Not set up/s', $html);
-        $this->assertSame(2, substr_count($html, 'Not set up'));
+        // An account that exists but is not active says so.
+        $this->assertMatchesRegularExpression('/data-courier="lbc".*?type="radio" name="account_id"[^>]*disabled.*?Inactive/s', $html);
+        $this->assertSame(1, substr_count($html, 'Not set up'));
     }
 
     public function test_sender_collapsed_when_settings_sender_exists(): void
@@ -191,5 +192,54 @@ class ShipmentFormRedesignTest extends TestCase
         $this->assertStringContainsString('name="pickup[codes][city]"', $html);
         $this->assertMatchesRegularExpression('/<aside class="sh-summary".*Book shipment/s', $html);
         $this->assertMatchesRegularExpression('/<main[^>]*class="x-content x-content--wide"/', $html);
+    }
+
+    public function test_odd_but_valid_prices_count_toward_the_total(): void
+    {
+        $this->post('/shipments', $this->form(['payment' => ['method' => 'cod'], 'items' => [['quantity' => '+2', 'price' => '.5'], ['quantity' => ' 3 ', 'price' => '5.']]]))
+            ->assertSessionHasNoErrors();
+
+        // 2 × 0.50 + 3 × 5.00
+        $s = Shipment::query()->sole();
+        $this->assertSame('16.00', $s->cod_amount);
+        $this->assertSame([2, 3], array_column($s->items, 'quantity'));
+        $this->assertSame(['0.50', '5.00'], array_column($s->items, 'price'));
+    }
+
+    public function test_prices_and_quantities_the_total_cannot_read_are_refused(): void
+    {
+        foreach (['abc', '1.234', '-5', '.', '++5'] as $price) {
+            $this->post('/shipments', $this->form(['payment' => ['method' => 'cod'], 'items' => [['price' => $price]]]))
+                ->assertSessionHasErrors('items.0.price');
+        }
+        // Numeric, but not a shape the total reads.
+        $this->post('/shipments', $this->form(['items' => [['price' => '1e3']]]))
+            ->assertSessionHasErrors(['items.0.price' => 'Use a price like 120.50.']);
+        $this->post('/shipments', $this->form(['items' => [['quantity' => '2.0']]]))
+            ->assertSessionHasErrors('items.0.quantity');
+        $this->post('/shipments', $this->form(['items' => [['quantity' => '1e1']]]))
+            ->assertSessionHasErrors('items.0.quantity');
+        $this->assertSame(0, Shipment::query()->count());
+    }
+
+    public function test_cod_without_prices_marks_the_first_unpriced_item(): void
+    {
+        $token = $this->token();
+        $this->from('/shipments/new')->post('/shipments', $this->form(['form_token' => $token, 'payment' => ['method' => 'cod'], 'items' => [['price' => '10'], ['price' => '0']]]))
+            ->assertSessionHasNoErrors();
+
+        $this->from('/shipments/new')->post('/shipments', $this->form(['payment' => ['method' => 'cod'], 'items' => [['price' => ''], ['price' => '']]]))
+            ->assertSessionHasErrors(['payment.cod_amount' => 'Add item prices.']);
+        $html = $this->get('/shipments/new')->getContent();
+        $this->assertStringContainsString('\\u0022price\\u0022:\\u0022Add item prices.\\u0022', $html);
+
+        // An older COD shipment saved without item prices says so on open.
+        $legacy = Shipment::factory()->create([
+            'source' => 'manual', 'state' => 'failed', 'client_app_id' => null, 'courier_account_id' => $this->account->id,
+            'payment_method' => 'cod', 'cod_amount' => '500.00', 'items' => [['name' => 'Tee', 'quantity' => 1, 'price' => null]],
+        ]);
+        $html = $this->get(route('shipments.edit', $legacy->public_id))->assertOk()->getContent();
+        $this->assertStringContainsString('\\u0022price\\u0022:\\u0022Add item prices.\\u0022', $html);
+        $this->assertMatchesRegularExpression('/<div class="fm-error">Add item prices\.<\/div>/', $html);
     }
 }

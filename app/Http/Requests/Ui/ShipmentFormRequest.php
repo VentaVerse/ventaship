@@ -19,6 +19,11 @@ class ShipmentFormRequest extends FormRequest
 
     private const REFERENCE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
+    /** What an item quantity and unit price may look like; resources/js/shipmentForm.js uses the same patterns. */
+    private const QTY_PATTERN = '/^\d{1,6}$/';
+
+    private const PRICE_PATTERN = '/^\d{1,10}(\.\d{1,2})?$/';
+
     public function authorize(): bool
     {
         return true;
@@ -33,7 +38,8 @@ class ShipmentFormRequest extends FormRequest
         $payment = (array) $this->input('payment', []);
         $isCod = ($payment['method'] ?? null) === 'cod';
         $insure = $this->boolean('insure');
-        $total = self::itemsTotal((array) $this->input('items', []));
+        $items = self::normaliseItems($this->input('items'));
+        $total = self::itemsTotal(is_array($items) ? $items : []);
 
         $payment['cod_amount'] = $isCod && bccomp($total, '0', 2) > 0 ? $total : null;
         $payment['declared_value'] = $insure ? $total : '0';
@@ -43,6 +49,7 @@ class ShipmentFormRequest extends FormRequest
         $reference = trim((string) $this->input('client_reference'));
 
         $this->merge([
+            'items' => $items,
             'payment' => $payment,
             'account_id' => $account === '' ? null : $account,
             'client_reference' => $reference === '' ? null : $reference,
@@ -52,8 +59,35 @@ class ShipmentFormRequest extends FormRequest
     }
 
     /**
-     * Σ quantity × price as a 2-decimal string. Rows whose quantity or price is not a plain number count as 0; the
-     * item rules report them.
+     * Prices and quantities in the one shape the total and the rules both read: trimmed, no leading "+", and a price
+     * like ".5" or "5." written out as "0.50" / "5.00". Anything else is left for the rules to refuse.
+     */
+    public static function normaliseItems(mixed $items): mixed
+    {
+        if (! is_array($items)) {
+            return $items;
+        }
+        foreach ($items as $n => $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            foreach (['quantity', 'price'] as $field) {
+                if (is_string($item[$field] ?? null)) {
+                    $item[$field] = (string) preg_replace('/^\+/', '', trim($item[$field]));
+                }
+            }
+            if (is_string($item['price'] ?? null) && preg_match('/^(\d*)\.(\d{0,2})$/', $item['price'], $m) && $m[1].$m[2] !== '') {
+                $item['price'] = ($m[1] === '' ? '0' : $m[1]).'.'.str_pad($m[2], 2, '0');
+            }
+            $items[$n] = $item;
+        }
+
+        return $items;
+    }
+
+    /**
+     * Σ quantity × price as a 2-decimal string, over normalised items. A row the total cannot read counts as 0, and
+     * the item rules (the same patterns) refuse it.
      *
      * @param  array<mixed>  $items
      */
@@ -63,7 +97,7 @@ class ShipmentFormRequest extends FormRequest
         foreach ($items as $item) {
             $qty = trim((string) (is_array($item) ? ($item['quantity'] ?? '') : ''));
             $price = trim((string) (is_array($item) ? ($item['price'] ?? '') : ''));
-            if (preg_match('/^\d{1,6}$/', $qty) && preg_match('/^\d{1,10}(\.\d{1,2})?$/', $price)) {
+            if (preg_match(self::QTY_PATTERN, $qty) && preg_match(self::PRICE_PATTERN, $price)) {
                 $total = bcadd($total, bcmul($qty, $price, 2), 2);
             }
         }
@@ -98,8 +132,8 @@ class ShipmentFormRequest extends FormRequest
             'items' => ['required', 'array', 'min:1', 'max:100'],
             'items.*' => ['required', 'array'],
             'items.*.name' => ['required', 'string', 'max:255'],
-            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:100000'],
-            'items.*.price' => $money,
+            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:100000', 'regex:'.self::QTY_PATTERN],
+            'items.*.price' => [...$money, 'regex:'.self::PRICE_PATTERN],
         ] + $this->parcelRules() + $this->paymentRules() + $this->pickupRules() + $this->recipientRules()
             + ['parcel.weight_kg' => ['required', 'numeric', 'gt:0', 'max:1000']];
     }
@@ -120,6 +154,8 @@ class ShipmentFormRequest extends FormRequest
     {
         return [
             'payment.cod_amount.required_if' => 'Add item prices.',
+            'items.*.price.regex' => 'Use a price like 120.50.',
+            'items.*.quantity.regex' => 'Whole number.',
             '*.required' => 'Required.',
             '*.required_if' => 'Required.',
             '*.max' => 'Too long.',

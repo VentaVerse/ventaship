@@ -325,7 +325,7 @@ class ShipmentsController extends Controller
                 'courier' => $courier,
                 'name' => Couriers::name($courier),
                 'id' => $ok ? $account->public_id : null,
-                'inactive' => $ok && $account->status !== 'active',
+                'inactive' => $account !== null && $account->status !== 'active',
             ];
         }
 

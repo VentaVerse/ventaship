@@ -37,9 +37,21 @@
             $itemErrors[$n][$f] = $errors->first("items.{$n}.{$f}");
         }
     }
-    $total = Money::peso(ShipmentFormRequest::itemsTotal($rows));
-    $count = array_sum(array_map(fn ($r) => ctype_digit($r['quantity']) ? (int) $r['quantity'] : 0, $rows));
+    $normal = ShipmentFormRequest::normaliseItems($rows);
+    $totalRaw = ShipmentFormRequest::itemsTotal($normal);
+    $total = Money::peso($totalRaw);
+    $count = array_sum(array_map(fn ($r) => ctype_digit($r['quantity']) ? (int) $r['quantity'] : 0, $normal));
     $method = $v('payment.method', 'prepaid');
+    // COD collects the items total: when there is none (a refused post, or an older COD shipment saved without item
+    // prices), the first unpriced row says so too.
+    $needsPrices = $errors->first('payment.cod_amount') === 'Add item prices.'
+        || ($editing && ! session()->hasOldInput() && $method === 'cod' && bccomp($totalRaw, '0', 2) <= 0);
+    if ($needsPrices) {
+        $first = collect($normal)->search(fn ($r) => ShipmentFormRequest::itemsTotal([['quantity' => '1', 'price' => $r['price']]]) === '0.00');
+        $first = $first === false ? 0 : $first;
+        $itemErrors[$first]['price'] = $itemErrors[$first]['price'] ?: 'Add item prices.';
+    }
+    $codError = $errors->first('payment.cod_amount') ?: ($needsPrices ? 'Add item prices.' : '');
     $insure = filter_var($v('insure'), FILTER_VALIDATE_BOOLEAN);
     $usable = array_values(array_filter($tiles, fn ($t) => $t['id'] !== null));
     $accountId = $v('account_id', $usable[0]['id'] ?? '');
@@ -81,10 +93,10 @@
                         <x-courier-tile :courier="$t['courier']" />
                         <span class="sh-courier__text">
                             <span class="sh-courier__name">{{ $t['name'] }}</span>
-                            @if($t['id'] === null)
-                                <span class="sh-courier__note">Not set up</span>
-                            @elseif($t['inactive'])
+                            @if($t['inactive'])
                                 <span class="sh-courier__note">Inactive</span>
+                            @elseif($t['id'] === null)
+                                <span class="sh-courier__note">Not set up</span>
                             @endif
                         </span>
                         <span class="sh-courier__tick" aria-hidden="true"><x-ui.icon name="check" size="14" /></span>
@@ -167,7 +179,7 @@
                     <dd class="sh-num" x-text="total">{{ $total }}</dd>
                 </div>
             </dl>
-            @error('payment.cod_amount')<div class="fm-error">{{ $message }}</div>@enderror
+            @if($codError !== '')<div class="fm-error">{{ $codError }}</div>@endif
             <label class="sh-check">
                 <input type="hidden" name="insure" value="0">
                 <input type="checkbox" name="insure" value="1" x-model="insure" @checked($insure)>
