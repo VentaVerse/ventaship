@@ -113,7 +113,7 @@ class PlatformAppsServiceTest extends TestCase
         $this->assertNull($app->webhook_url);
         $this->assertNull($app->webhook_events);
 
-        foreach ([['status' => 'paused'], ['webhook_url' => 'ftp://x.test'], ['name' => ' '], ['webhook_events' => ['nope']]] as $bad) {
+        foreach ([['status' => 'paused'], ['webhook_url' => 'ftp://x.test'], ['name' => ' '], ['webhook_events' => ['nope']], ['webhook_events' => [['shipment.booked']]], ['webhook_events' => [7]], ['webhook_events' => 'shipment.booked']] as $bad) {
             try {
                 $this->apps->update($app, $bad, null);
                 $this->fail('expected a refusal for '.json_encode($bad));
@@ -180,15 +180,15 @@ class PlatformAppsServiceTest extends TestCase
         ]);
 
         try {
-            $this->apps->revealKey($old, 'key', self::ADMIN);
+            $this->apps->revealKey($old->fresh(), 'key', self::ADMIN);
             $this->fail('expected a refusal');
         } catch (KeyNotViewableException $e) {
             $this->assertInstanceOf(PlatformAppException::class, $e);
         }
-        $this->assertSame('old-signing-secret-0123456789', $this->apps->revealKey($old, 'secret', self::ADMIN));
+        $this->assertSame('old-signing-secret-0123456789', $this->apps->revealKey($old->fresh(), 'secret', self::ADMIN));
 
         $this->expectException(PlatformAppException::class);
-        $this->apps->revealKey($old, 'hash', self::ADMIN);
+        $this->apps->revealKey($old->fresh(), 'hash', self::ADMIN);
     }
 
     public function test_reveal_refuses_an_undecryptable_key_cleanly(): void
@@ -262,6 +262,40 @@ class PlatformAppsServiceTest extends TestCase
         $app = $this->apps->create('Shop', 'https://shop.test/hook', null);
 
         $this->assertSame(['ok' => false, 'status' => null, 'message' => 'No answer from the platform.'], $this->apps->ping($app));
+
+        $e = OutgoingEvent::query()->sole();
+        $e->update(['status' => 'failed', 'next_attempt_at' => null]);
+        \Illuminate\Support\Facades\Cache::flush();
+        $this->assertSame(['ok' => false, 'message' => 'No answer from the platform.'], $this->apps->resend($e->fresh(), null));
+
+        $errors = DB::table('outgoing_attempts')->pluck('error')->implode('|').'|'.DB::table('outgoing_events')->pluck('last_error')->implode('|');
+        $this->assertStringContainsString('shop.test/hook', $errors);
+        $this->assertStringNotContainsString('zzz', $errors);
+    }
+
+    public function test_resend_held_behind_an_earlier_event_is_not_ok(): void
+    {
+        Http::fake(['shop.test/*' => Http::response('ok', 200)]);
+        $app = $this->apps->create('Shop', 'https://shop.test/hook', null);
+        $s = \App\Models\Shipment::factory()->create(['client_app_id' => $app->id]);
+        $first = DB::transaction(fn () => Outbox::record($app, 'shipment.booked', ['event' => null], $s->fresh()));
+        $second = DB::transaction(fn () => Outbox::record($app, 'shipment.status_changed', ['event' => null], $s->fresh()));
+        $first->update(['attempts' => 1, 'next_attempt_at' => now()->addMinute()]);
+        $second->update(['status' => 'failed', 'next_attempt_at' => null]);
+
+        $this->assertSame(['ok' => false, 'message' => 'Waiting for an earlier event.'], $this->apps->resend($second->fresh(), null));
+        Http::assertNothingSent();
+    }
+
+    public function test_reveal_rechecks_revocation_against_the_database(): void
+    {
+        $app = $this->apps->create('Shop', null, null);
+        $key = $this->apps->issueKey($app, 'Prod', null)['key'];
+        $stale = $key->fresh();
+        DB::table('api_keys')->where('id', $key->id)->update(['revoked_at' => now()]);
+
+        $this->expectException(PlatformAppException::class);
+        $this->apps->revealKey($stale, 'key', self::ADMIN);
     }
 
     public function test_ping_without_url_or_disabled_sends_nothing_and_never_throws(): void
@@ -289,6 +323,11 @@ class PlatformAppsServiceTest extends TestCase
 
         $this->assertFalse($r['ok']);
         $this->assertNull($r['status']);
+        $this->assertSame('The ping could not be sent.', $r['message']);
+        Log::shouldHaveReceived('warning')->once()->with('Ping could not be sent', \Mockery::on(
+            fn (array $ctx) => array_keys($ctx) === ['client_app', 'error'] && $ctx['client_app'] === $app->public_id
+                && class_exists($ctx['error'])
+        ));
     }
 
     public function test_resend_delivers_a_failed_event_synchronously_and_audits(): void

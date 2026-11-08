@@ -85,7 +85,8 @@ class PlatformApps
         }
         if (array_key_exists('webhook_events', $data)) {
             $events = $data['webhook_events'];
-            if ($events !== null && (! is_array($events) || array_diff($events, self::EVENT_TYPES) !== [])) {
+            if ($events !== null && (! is_array($events) || array_filter($events, fn ($t) => ! is_string($t)) !== []
+                || array_diff($events, self::EVENT_TYPES) !== [])) {
                 throw new PlatformAppException('Unknown webhook event type.');
             }
             $new['webhook_events'] = $events === null || $events === [] ? null : array_values(array_unique($events));
@@ -175,7 +176,9 @@ class PlatformApps
         if (! in_array($part, ['key', 'secret'], true)) {
             throw new PlatformAppException('Unknown key part.');
         }
-        if ($key->revoked_at !== null) {
+        // Fresh from the database: the caller's model may predate a revoke.
+        $key = ApiKey::query()->with('clientApp')->find($key->getKey());
+        if ($key === null || $key->revoked_at !== null) {
             throw new PlatformAppException('This key is revoked.');
         }
 
@@ -357,7 +360,8 @@ class PlatformApps
             return ['ok' => false, 'status' => null, 'message' => $message];
         }
 
-        return ['ok' => true, 'status' => null, 'message' => 'Queued.'];
+        // Still pending without an attempt: held back behind an earlier event for the same shipment.
+        return ['ok' => false, 'status' => null, 'message' => 'Waiting for an earlier event.'];
     }
 
     /** Decrypts a vault column, turning a bad ciphertext into a refusal instead of an error page. */
