@@ -75,6 +75,140 @@ Alpine.data('itemRows', (config) => ({
     },
 }));
 
+const PH_LEVELS = ['state', 'city', 'district', 'barangay'];
+const PH_LIST = { state: 'provinces', city: 'cities', district: 'districts', barangay: 'barangays' };
+
+// Province > city > (Manila district >) barangay. Children load when a parent changes and everything below it is
+// cleared. A level whose saved text matched nothing stays editable text until "Choose from list" is pressed.
+Alpine.data('phAddress', (config) => ({
+    sel: config.sel,
+    free: config.free,
+    text: config.text,
+    lists: config.lists,
+    postcode: config.postcode,
+    seq: 0,
+
+    options(level) {
+        return this.lists[PH_LIST[level]] ?? [];
+    },
+
+    row(level) {
+        return this.options(level).find((o) => o.code === this.sel[level]) ?? null;
+    },
+
+    hasDistricts() {
+        return !this.free.city && this.sel.city !== '' && this.lists.districts.length > 0;
+    },
+
+    show(level) {
+        return level !== 'district' || this.hasDistricts() || this.free.district;
+    },
+
+    isFree(level) {
+        return this.free[level];
+    },
+
+    enabled(level) {
+        if (level === 'state') {
+            return true;
+        }
+        if (level === 'city') {
+            return this.sel.state !== '';
+        }
+        if (level === 'district') {
+            return this.sel.city !== '';
+        }
+        return this.sel.city !== '' && (!this.hasDistricts() || this.sel.district !== '');
+    },
+
+    canChoose(level) {
+        const above = PH_LEVELS.slice(0, PH_LEVELS.indexOf(level));
+
+        return this.free[level] && !above.some((l) => this.free[l]);
+    },
+
+    name(level) {
+        if (level === 'district' && !this.show('district')) {
+            return '';
+        }
+        if (this.free[level]) {
+            return this.text[level].trim();
+        }
+        return this.row(level)?.name ?? '';
+    },
+
+    code(level) {
+        return this.free[level] ? '' : this.sel[level];
+    },
+
+    below(level) {
+        return PH_LEVELS.slice(PH_LEVELS.indexOf(level) + 1);
+    },
+
+    clear(levels) {
+        levels.forEach((l) => {
+            this.sel[l] = '';
+            this.free[l] = false;
+            this.text[l] = '';
+            this.lists[PH_LIST[l]] = l === 'state' ? this.lists.provinces : [];
+        });
+    },
+
+    async load(level, parent) {
+        const ticket = ++this.seq;
+        try {
+            const res = await fetch(`${config.url}/${PH_LIST[level]}?parent=${encodeURIComponent(parent)}`, {
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+            });
+            const data = res.ok ? await res.json() : [];
+            if (ticket === this.seq) {
+                this.lists[PH_LIST[level]] = Array.isArray(data) ? data : [];
+            }
+            return ticket === this.seq;
+        } catch (e) {
+            return false;
+        }
+    },
+
+    async changed(level) {
+        this.clear(this.below(level));
+        const value = this.sel[level];
+        if (value === '') {
+            return;
+        }
+        if (level === 'state') {
+            await this.load('city', value);
+        } else if (level === 'city') {
+            const zip = this.row('city')?.zip ?? '';
+            if (zip !== '') {
+                this.postcode = zip;
+            }
+            await this.load('district', value);
+            if (this.lists.districts.length === 0) {
+                await this.load('barangay', value);
+            }
+        } else if (level === 'district') {
+            await this.load('barangay', value);
+        }
+    },
+
+    async choose(level) {
+        this.clear(this.below(level));
+        this.sel[level] = '';
+        this.free[level] = false;
+        this.text[level] = '';
+        this.$nextTick(() => this.$root.querySelector(`select[id$="-${level}"]`)?.focus());
+        if (level === 'city' && this.sel.state !== '') {
+            await this.load('city', this.sel.state);
+        } else if (level === 'district' && this.sel.city !== '') {
+            await this.load('district', this.sel.city);
+        } else if (level === 'barangay' && this.sel.city !== '') {
+            await this.load('barangay', this.sel.district || this.sel.city);
+        }
+    },
+}));
+
 Alpine.data('bulkSelect', () => ({
     count: 0,
 

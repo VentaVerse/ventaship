@@ -483,6 +483,37 @@
         pointer-events: none;
     }
 
+    /* PSGC address cascade */
+    .ph-addr {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 14px;
+    }
+
+    .ph-addr__free {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .ph-addr__free .x-input {
+        flex: 1 1 180px;
+        width: auto;
+    }
+
+    @media (min-width: 640px) {
+        .ph-addr {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 639px) {
+        .ph-addr .x-input,
+        .ph-addr .x-btn {
+            min-height: 44px;
+        }
+    }
+
     /* Empty state */
     .x-empty {
         display: flex;

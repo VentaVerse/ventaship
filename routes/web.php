@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Ui\CourierAccountsController;
 use App\Http\Controllers\Ui\FulfillmentController;
+use App\Http\Controllers\Ui\PhAddressController;
 use App\Http\Controllers\Ui\SettingsController;
 use App\Http\Controllers\Ui\ShipmentActionsController;
 use App\Http\Controllers\Ui\ShipmentsController;
@@ -36,6 +37,7 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
         Route::post('secrets/{key}/reveal', [CourierAccountsController::class, 'reveal'])
             ->where('key', '[a-z0-9_]+')->middleware('throttle:secret-reveals')->name('accounts.reveal');
     });
+    Route::get('ph/{level}', PhAddressController::class)->where('level', 'provinces|cities|districts|barangays')->name('ph.options');
     Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');
     Route::put('settings', [SettingsController::class, 'update'])->name('settings.update');
     Route::put('settings/account', [SettingsController::class, 'account'])->name('settings.account');

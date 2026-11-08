@@ -1,0 +1,72 @@
+[
+    {
+        "code": "133902000",
+        "name": "Binondo",
+        "parent": "133900000"
+    },
+    {
+        "code": "133908000",
+        "name": "Ermita",
+        "parent": "133900000"
+    },
+    {
+        "code": "133909000",
+        "name": "Intramuros",
+        "parent": "133900000"
+    },
+    {
+        "code": "133910000",
+        "name": "Malate",
+        "parent": "133900000"
+    },
+    {
+        "code": "133911000",
+        "name": "Paco",
+        "parent": "133900000"
+    },
+    {
+        "code": "133912000",
+        "name": "Pandacan",
+        "parent": "133900000"
+    },
+    {
+        "code": "133913000",
+        "name": "Port Area",
+        "parent": "133900000"
+    },
+    {
+        "code": "133903000",
+        "name": "Quiapo",
+        "parent": "133900000"
+    },
+    {
+        "code": "133906000",
+        "name": "Sampaloc",
+        "parent": "133900000"
+    },
+    {
+        "code": "133907000",
+        "name": "San Miguel",
+        "parent": "133900000"
+    },
+    {
+        "code": "133904000",
+        "name": "San Nicolas",
+        "parent": "133900000"
+    },
+    {
+        "code": "133914000",
+        "name": "Santa Ana",
+        "parent": "133900000"
+    },
+    {
+        "code": "133905000",
+        "name": "Santa Cruz",
+        "parent": "133900000"
+    },
+    {
+        "code": "133901000",
+        "name": "Tondo I / Ii",
+        "parent": "133900000"
+    }
+]
