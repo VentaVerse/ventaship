@@ -68,4 +68,16 @@ class CourierCardsTest extends TestCase
 
         $this->assertSame('1240.00', $card['cod_unpaid']);
     }
+
+    public function test_cod_total_is_exact_where_floats_drift(): void
+    {
+        $a = CourierAccount::factory()->create(['courier' => 'quadx']);
+        foreach (['0.10', '0.20', '12345678.91'] as $amt) {
+            $this->ship($a, 'in_transit', ['payment_state' => 'cod_unpaid', 'cod_amount' => $amt]);
+        }
+
+        $card = collect(CourierCards::all())->first(fn ($c) => $c['account']?->id === $a->id);
+
+        $this->assertSame('12345679.21', $card['cod_unpaid']);
+    }
 }

@@ -37,10 +37,11 @@ class ShipmentList
      */
     public static function counts(array $filters): array
     {
-        $byPhase = self::scoped($filters)->reorder()
+        $base = self::scoped($filters);
+        $byPhase = (clone $base)->reorder()
             ->selectRaw('phase, COUNT(*) as n')->groupBy('phase')
             ->pluck('n', 'phase')->map(fn ($n) => (int) $n)->all();
-        $unpaid = self::scoped($filters)->where('payment_state', 'cod_unpaid')->count();
+        $unpaid = (clone $base)->where('payment_state', 'cod_unpaid')->count();
 
         $sum = fn (array $phases): int => array_sum(array_map(fn ($p) => $byPhase[$p] ?? 0, $phases));
 

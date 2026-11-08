@@ -28,8 +28,8 @@ class CourierCards
         $cod = Shipment::query()
             ->whereIn('courier_account_id', $accounts->pluck('id'))
             ->where('payment_state', 'cod_unpaid')->where('phase', '!=', 'cancelled')
-            ->selectRaw('courier_account_id, SUM(cod_amount) as total')->groupBy('courier_account_id')
-            ->pluck('total', 'courier_account_id');
+            ->selectRaw('courier_account_id, SUM(ROUND(cod_amount * 100)) as centavos')->groupBy('courier_account_id')
+            ->pluck('centavos', 'courier_account_id');
 
         $cards = [];
         foreach ($accounts as $a) {
@@ -44,7 +44,7 @@ class CourierCards
                 'to_handover' => $n(Tabs::CHIPS['to_handover']),
                 'shipping' => $n(['in_transit']),
                 'failed' => $n(['failed']),
-                'cod_unpaid' => number_format((float) ($cod[$a->id] ?? 0), 2, '.', ''),
+                'cod_unpaid' => self::money((int) ($cod[$a->id] ?? 0)),
             ];
         }
 
@@ -60,5 +60,11 @@ class CourierCards
             ?: ($a['account'] === null) <=> ($b['account'] === null));
 
         return $cards;
+    }
+
+    /** Whole centavos to "X.YY" with integer maths only. */
+    private static function money(int $centavos): string
+    {
+        return intdiv($centavos, 100).'.'.str_pad((string) ($centavos % 100), 2, '0', STR_PAD_LEFT);
     }
 }

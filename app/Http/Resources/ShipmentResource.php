@@ -8,7 +8,6 @@ use App\Shipments\TrackingLink;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Log;
 
 /**
  * One shipment as clients see it, in API answers and in webhook `data` (base plan §2 "Shipment resource").
