@@ -60,7 +60,7 @@
         <button type="button" class="x-menu" @click="nav = true" aria-label="Open navigation">
             <x-ui.icon name="menu" size="16" />
         </button>
-        <main id="main" tabindex="-1" class="x-content">
+        <main id="main" tabindex="-1" class="x-content{{ trim($__env->yieldContent('width')) === 'form' ? ' x-content--form' : '' }}">
             <header class="x-page">
                 <div>
                     @hasSection('crumb')<div class="x-page__crumb">@yield('crumb')</div>@endif

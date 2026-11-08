@@ -7,6 +7,7 @@
     $check = $account->last_check_ok === null ? ['Not checked', 'mute'] : ($account->last_check_ok ? ['Connected', 'good'] : ['Check failed', 'bad']);
 @endphp
 
+@section('width', 'form')
 @section('title', Couriers::name($account->courier) . ' · ' . $account->label)
 
 @section('title_lead')<x-courier-tile :courier="$account->courier" class="ac-title-tile" />@endsection

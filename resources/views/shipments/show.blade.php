@@ -1,5 +1,6 @@
 @extends('layouts.app')
 
+@section('width', 'form')
 @section('title', ($shipment->courier_ref ?: $shipment->public_id).' · Shipment')
 
 @section('crumb')

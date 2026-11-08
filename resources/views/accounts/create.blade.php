@@ -1,5 +1,6 @@
 @extends('layouts.app')
 
+@section('width', 'form')
 @section('title', 'Connect courier')
 
 @section('content')

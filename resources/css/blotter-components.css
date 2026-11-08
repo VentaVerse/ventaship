@@ -234,8 +234,13 @@
     }
 
     .x-content {
-        max-width: 1600px;
+        max-width: var(--bl-content-max);
+        margin-inline: auto;
         padding: 22px var(--bl-gutter) 40px;
+    }
+
+    .x-content--form {
+        max-width: var(--bl-form-max);
     }
 
     .x-page {
