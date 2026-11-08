@@ -111,8 +111,9 @@ class ShipmentFormRequest extends FormRequest
         return [function (Validator $validator) {
             foreach (['recipient', 'pickup'] as $prefix) {
                 $address = $this->input($prefix);
-                if (is_array($address) && ! app(PhAddress::class)->matchesPosted($address)) {
-                    $validator->errors()->add("{$prefix}.state", 'Choose from the list.');
+                $field = is_array($address) ? app(PhAddress::class)->postedMismatch($address) : null;
+                if ($field !== null) {
+                    $validator->errors()->add("{$prefix}.{$field}", 'Choose from the list.');
                 }
             }
         }];

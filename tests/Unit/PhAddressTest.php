@@ -3,10 +3,80 @@
 namespace Tests\Unit;
 
 use App\Support\PhAddress;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 class PhAddressTest extends TestCase
 {
+    use RefreshDatabase;
+
+    private string $tmp;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->tmp = sys_get_temp_dir().'/ph-test-'.bin2hex(random_bytes(6));
+        File::ensureDirectoryExists($this->tmp.'/data');
+        File::ensureDirectoryExists($this->tmp.'/compiled');
+    }
+
+    protected function tearDown(): void
+    {
+        File::deleteDirectory($this->tmp);
+        parent::tearDown();
+    }
+
+    public function test_tables_load_on_the_database_cache_store_without_writing_cache_rows(): void
+    {
+        config(['cache.default' => 'database']);
+        $ph = new PhAddress(database_path('data/ph'), $this->tmp.'/compiled');
+
+        $this->assertCount(82, $ph->provinces());
+        $this->assertNotEmpty($ph->barangays('030801000'));
+        $this->assertSame(0, DB::table('cache')->count());
+    }
+
+    public function test_a_table_is_compiled_once_and_reused(): void
+    {
+        copy(database_path('data/ph/provinces.json'), $this->tmp.'/data/provinces.json');
+        touch($this->tmp.'/data/provinces.json', 1_700_000_000);
+        $ph = new PhAddress($this->tmp.'/data', $this->tmp.'/compiled');
+
+        $this->assertCount(82, $ph->provinces());
+        $compiled = $this->tmp.'/compiled/provinces-1700000000.php';
+        $this->assertFileExists($compiled);
+
+        // Reused: past the per-request memo, the compiled file is read instead of the source.
+        (new \ReflectionProperty(PhAddress::class, 'memo'))->setValue(null, []);
+        file_put_contents($compiled, '<?php return '.var_export(['byCode' => [], 'byParent' => ['' => [['code' => '1', 'name' => 'Only']]]], true).';');
+        $this->assertSame([['code' => '1', 'name' => 'Only']], (new PhAddress($this->tmp.'/data', $this->tmp.'/compiled'))->provinces());
+    }
+
+    public function test_a_changed_source_rebuilds_and_drops_the_old_compiled_file(): void
+    {
+        $source = $this->tmp.'/data/provinces.json';
+        file_put_contents($source, json_encode([['code' => '1', 'name' => 'Old']]));
+        touch($source, 1_700_000_000);
+        $this->assertSame('Old', (new PhAddress($this->tmp.'/data', $this->tmp.'/compiled'))->provinces()[0]['name']);
+
+        file_put_contents($source, json_encode([['code' => '1', 'name' => 'New']]));
+        touch($source, 1_700_000_100);
+        $this->assertSame('New', (new PhAddress($this->tmp.'/data', $this->tmp.'/compiled'))->provinces()[0]['name']);
+
+        $this->assertFileDoesNotExist($this->tmp.'/compiled/provinces-1700000000.php');
+        $this->assertSame(['provinces-1700000100.php'], array_map('basename', glob($this->tmp.'/compiled/*')));
+    }
+
+    public function test_non_string_codes_or_names_do_not_match(): void
+    {
+        $ph = app(PhAddress::class);
+        $this->assertFalse($ph->matchesPosted(['state' => 'Metro Manila', 'codes' => ['state' => ['x']]]));
+        $this->assertFalse($ph->matchesPosted(['state' => ['Metro Manila'], 'codes' => ['state' => '130000000']]));
+        $this->assertFalse($ph->matchesPosted(['state' => 'Metro Manila', 'codes' => 'x']));
+    }
+
     public function test_files_load_and_counts_match(): void
     {
         $ph = app(PhAddress::class);
@@ -100,7 +170,7 @@ class PhAddressTest extends TestCase
 
     public function test_name_matching_collapses_whitespace(): void
     {
-        $this->assertSame('133900000', app(PhAddress::class)->matchName('cities', '130000000', "  mANILA ")['code']);
+        $this->assertSame('133900000', app(PhAddress::class)->matchName('cities', '130000000', '  mANILA ')['code']);
         $this->assertSame('137404000', app(PhAddress::class)->matchName('cities', '130000000', "quezon   \t city")['code']);
     }
 }

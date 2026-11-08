@@ -123,6 +123,24 @@ class ShipmentFormRedesignTest extends TestCase
         $this->assertSame(1, Shipment::query()->count());
     }
 
+    public function test_array_codes_are_a_validation_error_not_a_crash(): void
+    {
+        $this->post('/shipments', $this->form(['recipient' => ['codes' => ['state' => ['x']]]]))
+            ->assertRedirect()->assertSessionHasErrors('recipient.state');
+        $this->assertSame(0, Shipment::query()->count());
+    }
+
+    public function test_unmatched_district_of_a_districted_city_errors_on_the_district(): void
+    {
+        $manila = ['state' => 'Metro Manila', 'city' => 'Manila', 'district' => 'Atlantis', 'postcode' => '1006',
+            'codes' => ['state' => '130000000', 'city' => '133900000']];
+
+        $this->post('/shipments', $this->form(['recipient' => $manila]))
+            ->assertSessionHasErrors(['recipient.district' => 'Choose from the list.'])
+            ->assertSessionDoesntHaveErrors('recipient.state');
+        $this->assertSame(0, Shipment::query()->count());
+    }
+
     public function test_legacy_shipment_without_codes_edits(): void
     {
         $s = Shipment::factory()->create([

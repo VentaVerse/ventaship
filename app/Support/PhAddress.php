@@ -2,11 +2,11 @@
 
 namespace App\Support;
 
-use Illuminate\Support\Facades\Cache;
-
 /**
  * The Philippine address hierarchy (PSGC) from database/data/ph: province > city > (Manila district >) barangay.
- * Each level is indexed once (by code and by parent) and cached by the file's mtime, so a changed file rebuilds itself.
+ * Each level is indexed once (by code and by parent) and compiled to a PHP file named by the source's mtime, so
+ * opcache keeps it in shared memory and a changed source rebuilds itself. The cache store is never used: the
+ * barangays table is too big for a database cache row.
  */
 class PhAddress
 {
@@ -19,6 +19,16 @@ class PhAddress
 
     /** @var array<string, array{byCode: array<string, array<string, string>>, byParent: array<string, list<array<string, string>>>}> */
     private static array $memo = [];
+
+    private readonly string $dataDir;
+
+    private readonly string $compiledDir;
+
+    public function __construct(?string $dataDir = null, ?string $compiledDir = null)
+    {
+        $this->dataDir = $dataDir ?? database_path('data/ph');
+        $this->compiledDir = $compiledDir ?? storage_path('framework/cache/ph');
+    }
 
     /** @return list<array{code: string, name: string}> */
     public function provinces(): array
@@ -108,7 +118,28 @@ class PhAddress
      */
     public function matchesPosted(array $address): bool
     {
-        $codes = (array) ($address['codes'] ?? []);
+        return $this->postedMismatch($address) === null;
+    }
+
+    /**
+     * The field a posted address block fails on, or null when it is honest: "district" when a districted city's
+     * district does not match, otherwise "state".
+     *
+     * @param  array<string, mixed>  $address
+     */
+    public function postedMismatch(array $address): ?string
+    {
+        $codes = $address['codes'] ?? [];
+        if (! is_array($codes)) {
+            return 'state';
+        }
+        foreach ([[$codes, ['state', 'city', 'barangay']], [$address, ['state', 'city', 'district', 'barangay']]] as [$block, $keys]) {
+            foreach ($keys as $key) {
+                if (isset($block[$key]) && ! is_scalar($block[$key])) {
+                    return 'state';
+                }
+            }
+        }
         $state = (string) ($codes['state'] ?? '');
         $city = (string) ($codes['city'] ?? '');
         $barangay = (string) ($codes['barangay'] ?? '');
@@ -118,12 +149,12 @@ class PhAddress
         $cityRow = $city !== '' ? $this->find('cities', $city) : null;
         $brgyRow = $barangay !== '' ? $this->find('barangays', $barangay) : null;
         if (($state !== '' && ! $stateRow) || ($city !== '' && ! $cityRow) || ($barangay !== '' && ! $brgyRow)) {
-            return false;
+            return 'state';
         }
 
         // A city's parent must be the posted province, a barangay's the posted city (or one of its districts).
         if ($cityRow && $state !== '' && $cityRow['parent'] !== $state) {
-            return false;
+            return 'state';
         }
         $district = null;
         if ($brgyRow) {
@@ -131,36 +162,36 @@ class PhAddress
             if ($city !== '' && $parent !== $city) {
                 $district = $this->find('districts', $parent);
                 if (! $district || $district['parent'] !== $city) {
-                    return false;
+                    return 'state';
                 }
             } elseif ($city === '') {
                 // No city code to anchor it: the barangay's own ancestry must still be a real chain.
                 $district = $this->find('districts', $parent);
                 $cityCode = $district['parent'] ?? $parent;
                 if ($this->find('cities', $cityCode) === null) {
-                    return false;
+                    return 'state';
                 }
             }
         }
 
         if ($stateRow && $name('state') !== $stateRow['name']) {
-            return false;
+            return 'state';
         }
         if ($cityRow && $name('city') !== $cityRow['name']) {
-            return false;
+            return 'state';
         }
         if ($brgyRow && $name('barangay') !== $brgyRow['name']) {
-            return false;
+            return 'state';
         }
         if ($district) {
-            return $name('district') === $district['name'];
+            return $name('district') === $district['name'] ? null : 'district';
         }
         if ($cityRow && $this->districts($city) !== []) {
             // Districted city: the posted district, if any, must be one of its districts.
-            return $name('district') === '' || $this->matchName('districts', $city, $name('district')) !== null;
+            return ($name('district') === '' || $this->matchName('districts', $city, $name('district')) !== null) ? null : 'district';
         }
 
-        return $cityRow === null || $name('district') === '';
+        return ($cityRow === null || $name('district') === '') ? null : 'state';
     }
 
     /** @return list<array<string, string>> */
@@ -173,10 +204,35 @@ class PhAddress
     private function table(string $level): array
     {
         $file = self::FILES[$level] ?? throw new \InvalidArgumentException("Unknown address level [$level].");
-        $path = database_path('data/ph/'.$file);
-        $key = "ph-address.$level.".(string) filemtime($path);
+        $path = $this->dataDir.'/'.$file;
+        $compiled = $this->compiledDir."/$level-".(string) filemtime($path).'.php';
 
-        return self::$memo[$key] ??= Cache::rememberForever($key, fn () => $this->build($level, $path));
+        return self::$memo[$compiled] ??= $this->load($level, $path, $compiled);
+    }
+
+    /** @return array{byCode: array<string, array<string, string>>, byParent: array<string, list<array<string, string>>>} */
+    private function load(string $level, string $path, string $compiled): array
+    {
+        if (is_file($compiled)) {
+            return require $compiled;
+        }
+
+        $table = $this->build($level, $path);
+        if (! is_dir($this->compiledDir)) {
+            @mkdir($this->compiledDir, 0775, true);
+        }
+        $tmp = $compiled.'.'.bin2hex(random_bytes(6)).'.tmp';
+        if (@file_put_contents($tmp, '<?php return '.var_export($table, true).';'.PHP_EOL) !== false && @rename($tmp, $compiled)) {
+            foreach (glob($this->compiledDir."/$level-*.php") ?: [] as $stale) {
+                if ($stale !== $compiled) {
+                    @unlink($stale);
+                }
+            }
+        } else {
+            @unlink($tmp);
+        }
+
+        return $table;
     }
 
     /** @return array{byCode: array<string, array<string, string>>, byParent: array<string, list<array<string, string>>>} */

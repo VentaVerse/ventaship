@@ -109,8 +109,9 @@ class SettingsController extends Controller
                 'pickup_*.max' => 'Too long.',
                 'pickup_*.string' => 'Not valid.',
             ]);
-            if ($filled && ! app(PhAddress::class)->matchesPosted((array) ($data['pickup_addr'] ?? []))) {
-                throw ValidationException::withMessages(['pickup_addr.state' => 'Choose from the list.']);
+            $field = $filled ? app(PhAddress::class)->postedMismatch((array) ($data['pickup_addr'] ?? [])) : null;
+            if ($field !== null) {
+                throw ValidationException::withMessages(["pickup_addr.{$field}" => 'Choose from the list.']);
             }
             $new = [
                 'shipments.reference_prefix' => $data['shipments_reference_prefix'],
