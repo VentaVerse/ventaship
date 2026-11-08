@@ -1519,4 +1519,19 @@ class SpxFulfillmentTest extends TestCase
 
         Http::assertNothingSent();
     }
+
+    public function test_the_insured_value_is_the_declared_value_not_the_total(): void
+    {
+        $this->configureAccountCredentials();
+        Http::fake([
+            '*batch_create_order*' => Http::response(['ret_code' => 0, 'message' => 'success.', 'data' => ['batch_no' => 1]]),
+            '*get_order_create_result*' => Http::response($this->doneCreateResultResponse('SPEPH000000000089', 1)),
+        ]);
+
+        $order = $this->makeOrder([], ['total' => 1500.00, 'declared_value' => 800.00]);
+        $this->assertTrue($this->courier()->createShipment($order, $this->opts(['parcel' => 'small', 'insure' => true]))['success']);
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'batch_create_order')
+            && (float) $request->data()['orders'][0]['parcel_info']['express_insured_value'] === 800.0);
+    }
 }

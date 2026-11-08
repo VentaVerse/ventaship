@@ -601,7 +601,7 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
      */
     private static function declaredValue(CourierOrder $order, array $opts): float
     {
-        return (bool) ($opts['insure'] ?? false) ? (float) $order->total : 0.0;
+        return (bool) ($opts['insure'] ?? false) ? $order->insuredValue() : 0.0;
     }
 
     /**

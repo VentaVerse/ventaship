@@ -147,6 +147,17 @@ final class CourierOrder
     }
 
     /**
+     * The value a courier insures when the booking asks for insurance: the shipment's `declared_value`, or its
+     * `total` only when no declared value was sent.
+     */
+    public function insuredValue(): float
+    {
+        $declared = $this->attributes['declared_value'] ?? null;
+
+        return round(is_numeric($declared) ? (float) $declared : (float) $this->total, 2);
+    }
+
+    /**
      * Why this shipment cannot be booked for its payment, or null when it can: a COD shipment needs a positive
      * cod_amount, and a caller's `buyer_payment` may not contradict the shipment's own payment method.
      *

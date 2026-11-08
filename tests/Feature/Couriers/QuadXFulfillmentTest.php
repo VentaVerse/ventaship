@@ -184,6 +184,17 @@ class QuadXFulfillmentTest extends TestCase
         Http::assertNotSent(fn (Request $r) => (float) ($r['total'] ?? 0) === 1500.0);
     }
 
+    public function test_the_insured_value_is_the_declared_value_not_the_total(): void
+    {
+        Http::fake(['api.staging.quadx.xyz/*' => Http::response($this->quadxFixture('order-created'))]);
+        $account = $this->quadxAccount();
+        $shipment = $this->shipmentFor($account, ['total' => 1500.00, 'declared_value' => 800.00]);
+
+        CourierRegistry::for($account)->createShipment(CourierOrder::fromApi($shipment), ['pickup' => $this->pickup(), 'insure' => true]);
+
+        Http::assertSent(fn (Request $r) => (float) $r['declared_value'] === 800.0 && (float) $r['total'] === 1500.0);
+    }
+
     public function test_a_cod_shipment_without_an_amount_or_a_contradicting_buyer_payment_is_refused(): void
     {
         Http::fake();

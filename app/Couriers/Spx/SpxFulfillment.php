@@ -1672,7 +1672,7 @@ class SpxFulfillment implements Courier
             // declared_value insurance hazard (omitting it risks a silent
             // over/under-insure default): explicit 0 unless the admin
             // opted in via the same "insure" checkbox QuadX's form uses.
-            'express_insured_value' => (bool) ($opts['insure'] ?? false) ? (float) $order->total : 0,
+            'express_insured_value' => (bool) ($opts['insure'] ?? false) ? $order->insuredValue() : 0,
             'parcel_item_type'      => self::PARCEL_ITEM_TYPE,
         ];
     }

@@ -347,4 +347,14 @@ class LbcBookingFlowTest extends TestCase
         $this->assertSame(0, $this->pickupRequestCount());
         $this->assertSame(TrackingNumber::RELEASED, TrackingNumber::where('number', self::SERIES_FIRST)->value('status'));
     }
+
+    public function test_the_insured_value_is_the_declared_value_not_the_total(): void
+    {
+        $this->fakeLbc();
+
+        $order = $this->order([], ['total' => 1500.00, 'declared_value' => 800.00]);
+        $this->assertTrue($this->lbc()->createShipment($order, $this->bookingOptions(['insure' => '1']))['success']);
+
+        $this->assertSame('800', $this->sentPickupFields()['DeclaredValue']);
+    }
 }

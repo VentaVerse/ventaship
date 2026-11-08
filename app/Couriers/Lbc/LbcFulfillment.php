@@ -472,8 +472,9 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
     /**
      * The declared value sent with a booking.
      *
-     * COD: always insured, at the order total, which includes the shipping
-     * the buyer paid. Prepaid: the order total when insured, otherwise 0.
+     * COD: always insured. Prepaid: insured when asked, otherwise 0. The
+     * insured value is the shipment's declared_value (its total only when
+     * none was sent, CourierOrder::insuredValue()).
      * An insured value is never below LbcParcel::MIN_INSURED_DECLARED_VALUE.
      * LBC still has to confirm that it accepts 0 for an uninsured parcel.
      */
@@ -483,7 +484,7 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
             return 0.0;
         }
 
-        return round(max((float) $order->total, (float) LbcParcel::MIN_INSURED_DECLARED_VALUE), 2);
+        return round(max($order->insuredValue(), (float) LbcParcel::MIN_INSURED_DECLARED_VALUE), 2);
     }
 
     /** What the rider collects: the shipment's cod_amount on a COD shipment, nothing otherwise. */
