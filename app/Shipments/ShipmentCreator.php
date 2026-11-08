@@ -9,8 +9,12 @@ use App\Models\ClientApp;
 use App\Models\Shipment;
 use App\Shipments\Jobs\BookShipment;
 use App\Support\Settings;
+use Illuminate\Contracts\Database\ConcurrencyErrorDetector;
+use Illuminate\Database\DeadlockException;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * Stores a new shipment from validated client input. No courier is called here: a queued shipment is booked by
@@ -27,6 +31,8 @@ final class ShipmentCreator
     private const ITEMS_SUMMARY_MAX = 255;
 
     private const REF_PAD = 6;
+
+    private const CONCURRENCY_ATTEMPTS = 3;
 
     public function __construct(private readonly Settings $settings) {}
 
@@ -52,12 +58,7 @@ final class ShipmentCreator
             'order_label' => $data['order_label'] ?? null,
         ];
 
-        $shipment = DB::transaction(function () use ($app, $attributes) {
-            $shipment = $this->insertHoldingReference($app, $attributes);
-            $shipment->forceFill(['courier_ref' => $this->courierRef($shipment)])->save();
-
-            return $shipment;
-        });
+        $shipment = $this->storeHoldingReference($app, $attributes);
 
         if ($state === 'queued') {
             BookShipment::dispatch($shipment->id)->afterCommit();
@@ -137,6 +138,57 @@ final class ShipmentCreator
         $phone = PhPhone::normalize($raw);
 
         return $phone !== null && strlen($phone) === 12 ? '0'.substr($phone, 2) : $phone;
+    }
+
+    /**
+     * The insert transaction, safe against concurrent creates of the same reference. On MySQL the loser of that race
+     * may get a deadlock (1213, on the holder lookup's gap lock) or a unique violation instead of seeing the winner;
+     * either way the transaction is gone. The live holder is then looked up again outside it: if there is one, the
+     * answer is the usual 409. Otherwise the whole transaction is retried, at most CONCURRENCY_ATTEMPTS times.
+     *
+     * Inside a caller's transaction (DeadlockException: MySQL has rolled that back too) it is never retried here.
+     */
+    private function storeHoldingReference(?ClientApp $app, array $attributes): Shipment
+    {
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                return DB::transaction(function () use ($app, $attributes) {
+                    $shipment = $this->insertHoldingReference($app, $attributes);
+                    $shipment->forceFill(['courier_ref' => $this->courierRef($shipment)])->save();
+
+                    return $shipment;
+                });
+            } catch (Throwable $e) {
+                if (! $this->lostReferenceRace($e)) {
+                    throw $e;
+                }
+
+                $holder = $this->liveHolder($app, $attributes['active_reference']);
+                if ($holder !== null) {
+                    throw $this->duplicate($holder);
+                }
+
+                if ($e instanceof DeadlockException || $attempt >= self::CONCURRENCY_ATTEMPTS) {
+                    throw $e;
+                }
+            }
+        }
+    }
+
+    private function lostReferenceRace(Throwable $e): bool
+    {
+        return $e instanceof UniqueConstraintViolationException
+            || $e instanceof DeadlockException
+            || ($e instanceof QueryException && app(ConcurrencyErrorDetector::class)->causedByConcurrencyError($e));
+    }
+
+    private function liveHolder(?ClientApp $app, string $reference): ?Shipment
+    {
+        return Shipment::query()
+            ->where('client_app_id', $app?->getKey())
+            ->where('active_reference', $reference)
+            ->whereNotIn('state', self::RELEASED_STATES)
+            ->first();
     }
 
     /**

@@ -52,9 +52,10 @@ class Shipment extends Model
         return $this->belongsTo(ClientApp::class);
     }
 
+    /** Soft-deleted accounts included: a shipment keeps rendering the account it was booked with. */
     public function courierAccount(): BelongsTo
     {
-        return $this->belongsTo(CourierAccount::class);
+        return $this->belongsTo(CourierAccount::class)->withTrashed();
     }
 
     public function events(): HasMany
