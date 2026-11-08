@@ -72,6 +72,30 @@ class CourierAccountsListTest extends TestCase
         $this->post(route('accounts.setup', 'lbc'), ['mode' => 'uat'])->assertSessionHasErrors('mode');
     }
 
+    public function test_setup_refuses_cleanly_while_locked_and_keeps_mode(): void
+    {
+        $lock = \Illuminate\Support\Facades\Cache::lock('courier-setup:spx', 10);
+        $this->assertTrue($lock->get());
+
+        $this->actingAs($this->admin())->from(route('accounts.show', 'spx'))
+            ->post(route('accounts.setup', 'spx'), ['mode' => 'uat'])
+            ->assertRedirect(route('accounts.show', 'spx'))->assertSessionHasErrors('mode')
+            ->assertSessionHasInput('mode', 'uat');
+        $this->assertSame(0, CourierAccount::query()->count());
+        $lock->release();
+    }
+
+    public function test_setup_failure_in_set_mode_leaves_no_account(): void
+    {
+        $this->partialMock(CourierAccounts::class, function ($m) {
+            $m->shouldReceive('setMode')->andThrow(new \App\Couriers\CourierAccountException('nope'));
+        });
+
+        $this->actingAs($this->admin())->post(route('accounts.setup', 'spx'), ['mode' => 'uat'])->assertSessionHasErrors('mode');
+        $this->assertSame(0, CourierAccount::query()->withTrashed()->count());
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::lock('courier-setup:spx', 5)->get());
+    }
+
     public function test_no_name_field(): void
     {
         CourierAccount::factory()->create(['courier' => 'quadx', 'label' => 'Legacy label', 'mode' => 'staging']);

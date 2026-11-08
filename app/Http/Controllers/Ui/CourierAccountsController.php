@@ -35,7 +35,7 @@ class CourierAccountsController extends Controller
         try {
             $accounts->setUp($courier, $data['mode'], ['type' => 'admin', 'id' => $request->user()->getAuthIdentifier(), 'ip' => $request->ip()]);
         } catch (CourierAccountException $e) {
-            return back()->withErrors(['mode' => $e->getMessage()]);
+            return back()->withInput()->withErrors(['mode' => $e->getMessage()]);
         }
 
         return redirect(route('accounts.show', $courier))->with('status', 'Ready');

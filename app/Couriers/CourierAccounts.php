@@ -10,6 +10,8 @@ use App\Models\AuditEntry;
 use App\Models\CourierAccount;
 use App\Support\Settings;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -106,17 +108,30 @@ class CourierAccounts
         if (! in_array($mode, self::MODES[$courier] ?? [], true)) {
             throw new CourierAccountException("The mode for {$courier} must be one of: " . implode(', ', self::MODES[$courier] ?? []) . '.');
         }
-        if (CourierAccount::query()->where('courier', $courier)->exists()) {
-            throw new CourierAccountException('This courier already has an account.');
+        $lock = Cache::lock('courier-setup:' . $courier, 10);
+        try {
+            $lock->block(3);
+        } catch (LockTimeoutException) {
+            throw new CourierAccountException('Set up is already running. Try again.');
         }
 
-        // create() starts in staging or production; SPX's UAT is set right after.
-        $account = $this->create($courier, Couriers::name($courier), $mode === 'uat' ? 'staging' : $mode, true, $actor);
-        if ($mode === 'uat') {
-            $this->setMode($account, 'uat', $actor);
-        }
+        try {
+            return DB::transaction(function () use ($courier, $mode, $actor) {
+                if (CourierAccount::query()->withTrashed()->where('courier', $courier)->lockForUpdate()->exists()) {
+                    throw new CourierAccountException('This courier already has an account.');
+                }
 
-        return $account;
+                // create() starts in staging or production; SPX's UAT is set right after, in the same transaction.
+                $account = $this->create($courier, Couriers::name($courier), $mode === 'uat' ? 'staging' : $mode, true, $actor);
+                if ($mode === 'uat') {
+                    $this->setMode($account, 'uat', $actor);
+                }
+
+                return $account;
+            });
+        } finally {
+            $lock->release();
+        }
     }
 
     /** Whether the key is a secret for this account's courier. */
