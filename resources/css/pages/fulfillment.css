@@ -56,35 +56,15 @@
     }
 
     .fl-card {
-        --ch: var(--bl-ink-3);
-        --ch-w: var(--bl-mute-w);
         display: flex;
         flex-direction: column;
         gap: 12px;
     }
 
-    .fl-card--quadx { --ch: #156176; --ch-w: #e2f3f7; }
-    .fl-card--spx { --ch: #a14b0b; --ch-w: #fbeee2; }
-
-    :root[data-theme="dark"] .fl-card--quadx { --ch: #6cc4d9; --ch-w: #12333c; }
-    :root[data-theme="dark"] .fl-card--spx { --ch: #f0a066; --ch-w: #3b2412; }
-
     .fl-card__head {
         display: flex;
         align-items: center;
         gap: 10px;
-    }
-
-    .fl-card__logo {
-        width: 34px;
-        height: 34px;
-        border-radius: 10px;
-        background: var(--ch-w);
-        color: var(--ch);
-        display: grid;
-        place-items: center;
-        font-weight: 700;
-        font-size: 13px;
     }
 
     .fl-card__name {

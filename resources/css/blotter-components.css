@@ -83,6 +83,27 @@
         background: var(--bl-brand);
     }
 
+    .x-courier {
+        --ch: var(--bl-ink-3);
+        --ch-w: var(--bl-mute-w);
+        flex: none;
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        background: var(--ch-w);
+        color: var(--ch);
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+        font-size: 12.5px;
+    }
+
+    .x-courier--quadx { --ch: #156176; --ch-w: #e2f3f7; }
+    .x-courier--spx { --ch: #a14b0b; --ch-w: #fbeee2; }
+
+    :root[data-theme="dark"] .x-courier--quadx { --ch: #6cc4d9; --ch-w: #12333c; }
+    :root[data-theme="dark"] .x-courier--spx { --ch: #f0a066; --ch-w: #3b2412; }
+
     .x-nav {
         display: flex;
         flex-direction: column;

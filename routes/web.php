@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Ui\CourierAccountsController;
 use App\Http\Controllers\Ui\FulfillmentController;
 use App\Http\Controllers\Ui\SettingsController;
 use App\Http\Controllers\Ui\ShipmentActionsController;
@@ -25,6 +26,9 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::delete('shipments/{shipment:public_id}', [ShipmentsController::class, 'destroy'])->name('shipments.destroy');
     Route::post('shipments/book', [ShipmentActionsController::class, 'book'])->name('shipments.book');
     Route::post('shipments/cancel', [ShipmentActionsController::class, 'cancel'])->name('shipments.cancel');
+    Route::get('accounts', [CourierAccountsController::class, 'index'])->name('accounts.index');
+    Route::get('accounts/new', [CourierAccountsController::class, 'create'])->name('accounts.create');
+    Route::post('accounts', [CourierAccountsController::class, 'store'])->name('accounts.store');
     Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');
     Route::put('settings', [SettingsController::class, 'update'])->name('settings.update');
     Route::put('settings/account', [SettingsController::class, 'account'])->name('settings.account');

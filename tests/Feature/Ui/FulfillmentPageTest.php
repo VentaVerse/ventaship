@@ -47,8 +47,7 @@ class FulfillmentPageTest extends TestCase
         $this->get('/')->assertOk()
             ->assertSeeText(['Shipments', 'All', 'Active', 'Finished', 'All statuses'])
             ->assertSeeText(['QuadX', 'Live', 'Connected', 'LBC', 'No account'])
-            ->assertSeeText(['VS-24-00182', 'Maria Santos', 'Pasig City', '2 items', '₱1,240.00', 'COD · Unpaid', 'Booked', 'VentaCart Pro'])
-            ->assertDontSee('Connect LBC');
+            ->assertSeeText(['VS-24-00182', 'Maria Santos', 'Pasig City', '2 items', '₱1,240.00', 'COD · Unpaid', 'Booked', 'VentaCart Pro', 'Connect LBC']);
     }
 
     public function test_purged_row_renders_removed(): void
@@ -66,15 +65,6 @@ class FulfillmentPageTest extends TestCase
 
         $html = $this->get('/?view=active&status=ventaship:draft&source=manual')->assertOk()->getContent();
         $this->assertStringContainsString('view=active&amp;status=ventaship%3Adraft&amp;source=manual&amp;page=2', $html);
-    }
-
-    public function test_connect_button_hidden_without_accounts_route(): void
-    {
-        $this->get('/')->assertDontSee('Connect LBC');
-
-        Route::get('/_accounts/create', fn () => 'x')->name('accounts.create');
-        app('router')->getRoutes()->refreshNameLookups();
-        $this->get('/')->assertSeeText('Connect LBC');
     }
 
     public function test_draft_row_book_form_posts_single_id(): void
