@@ -14,7 +14,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(CredentialVault::class);
-        $this->app->singleton(Settings::class);
+        $this->app->scoped(Settings::class);
     }
 
     /**

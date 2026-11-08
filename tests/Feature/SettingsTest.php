@@ -43,8 +43,32 @@ class SettingsTest extends TestCase
         $this->assertSame(1, Setting::where('key', 'privacy.retention_days')->count());
     }
 
-    public function test_bound_as_singleton(): void
+    public function test_json_looking_strings_round_trip_with_type(): void
     {
-        $this->assertSame(app(Settings::class), app(Settings::class));
+        $settings = new Settings;
+        $settings->set('shipments.courier_ref_prefix', '2024');
+        $settings->set('x', 'null');
+        $settings->set('y', ['a' => 1]);
+
+        $fresh = new Settings;
+        $this->assertSame('2024', $fresh->get('shipments.courier_ref_prefix'));
+        $this->assertSame('null', $fresh->get('x', 'dflt'));
+        $this->assertSame(['a' => 1], $fresh->get('y'));
+    }
+
+    public function test_scoped_instance_resets_and_sees_direct_writes(): void
+    {
+        $first = app(Settings::class);
+        $this->assertSame($first, app(Settings::class));
+        $this->assertFalse($first->bool('safety.allow_live_spx'));
+
+        Setting::create(['key' => 'safety.allow_live_spx', 'value' => 'true']);
+        $this->assertFalse($first->bool('safety.allow_live_spx'));
+
+        app()->forgetScopedInstances();
+
+        $second = app(Settings::class);
+        $this->assertNotSame($first, $second);
+        $this->assertTrue($second->bool('safety.allow_live_spx'));
     }
 }

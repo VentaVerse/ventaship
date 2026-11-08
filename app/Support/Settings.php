@@ -6,7 +6,7 @@ use App\Models\Setting;
 
 /**
  * Key/value settings backed by the settings table, cached for the request.
- * Strings are stored raw; every other value is json-encoded.
+ * Every value is json-encoded on write and decoded on read, so types round-trip.
  */
 class Settings
 {
@@ -22,7 +22,7 @@ class Settings
 
         $decoded = json_decode($raw, true);
 
-        return json_last_error() === JSON_ERROR_NONE ? $decoded : $raw;
+        return json_last_error() === JSON_ERROR_NONE ? $decoded : $default;
     }
 
     public function bool(string $key, bool $default = false): bool
@@ -32,7 +32,7 @@ class Settings
 
     public function set(string $key, mixed $value): void
     {
-        $stored = is_string($value) ? $value : json_encode($value, JSON_THROW_ON_ERROR);
+        $stored = json_encode($value, JSON_THROW_ON_ERROR);
 
         Setting::updateOrCreate(['key' => $key], ['value' => $stored]);
 
