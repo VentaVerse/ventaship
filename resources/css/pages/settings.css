@@ -1,0 +1,115 @@
+@layer components {
+    .st-sec {
+        padding: 6px 20px;
+        border-bottom: 1px solid var(--bl-rule);
+    }
+
+    .st-row {
+        display: grid;
+        padding: 12px 0;
+        border-top: 1px solid var(--bl-rule);
+    }
+
+    .st-row:first-child {
+        border-top: 0;
+    }
+
+    .st-narrow {
+        max-width: 220px;
+    }
+
+    .st-row .fm-field {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        align-items: center;
+        gap: 6px 20px;
+    }
+
+    .st-row .fm-error {
+        grid-column: 2;
+    }
+
+    .st-row .st-narrow {
+        width: 100%;
+    }
+
+    @media (max-width: 640px) {
+        .st-row .fm-field {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .st-row .fm-error {
+            grid-column: 1;
+        }
+    }
+
+    .st-switch {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        font-size: 13px;
+        cursor: pointer;
+    }
+
+    .st-switch__input {
+        position: absolute;
+        right: 0;
+        width: 34px;
+        height: 20px;
+        margin: 0;
+        opacity: 0;
+        cursor: pointer;
+    }
+
+    .st-switch__track {
+        position: relative;
+        flex: none;
+        width: 34px;
+        height: 20px;
+        border-radius: 999px;
+        background: var(--bl-rule-2);
+        transition: background-color .15s;
+    }
+
+    .st-switch__track::after {
+        content: "";
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #fff;
+        transition: transform .15s;
+    }
+
+    .st-switch__input:checked ~ .st-switch__track {
+        background: var(--bl-brand-btn);
+    }
+
+    .st-switch__input:checked ~ .st-switch__track::after {
+        transform: translateX(14px);
+    }
+
+    .st-switch__input:focus-visible ~ .st-switch__track {
+        outline: 2px solid var(--bl-brand);
+        outline-offset: 2px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .st-switch__track,
+        .st-switch__track::after {
+            transition: none;
+        }
+    }
+
+    .st-bar {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 14px 20px;
+        background: var(--bl-paper);
+    }
+}
