@@ -276,7 +276,11 @@ The courier accent shows on the logo tile only, with no coloured card border.
 - The Part 1 API and webhooks are unchanged.
 
 **In Ventaship:**
-- **Shipments page.** One list of bookings. The tabs are plain filters with no workflow: All · Awaiting pickup · In transit · Delivered · Problem · Returned · Cancelled. Courier cards, waybill printing, Cancel and COD amount/state stay.
+- **Shipments page.** One list of bookings, with no workflow:
+  - **Views:** All / Active / Finished.
+  - **Filters:** courier account and source, plus a **courier-status filter built from the statuses actually present** (the courier's own labels, with counts). There is no mapping to maintain.
+  - **Rows** show the courier's status label.
+  - Courier cards, waybill printing, Cancel and COD amount/state stay.
 - **Add shipment** books on save. The form takes:
   - customer details
   - courier account

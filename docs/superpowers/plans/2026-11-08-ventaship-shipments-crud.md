@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Turn the Fulfillment page into a courier dashboard: a Shipments list with plain filter tabs, plus Add, view, edit and delete for shipments. Every UI booking or cancel reaches the courier during the click, because no queue workers run on the Pi.
+**Goal:** Turn the Fulfillment page into a courier dashboard: a Shipments list (All / Active / Finished, plus a courier-status filter built from the data), plus Add, view, edit and delete for shipments. Every UI booking or cancel reaches the courier during the click, because no queue workers run on the Pi.
 
 **Architecture:**
 - The UI reuses the Part 1 services: `ShipmentCreator` (create, submit), `Canceller` (request) and `LabelBundle`, with the same validation rule sets as the API (`ValidatesShipmentParts`).
@@ -49,45 +49,61 @@
 
 ---
 
-### Task 1: Shipments list: plain filter tabs and naming
+### Task 1: Shipments list: All / Active / Finished, plus courier and courier-status filters
 
 **Files:**
-- Modify: `app/Fulfillment/Tabs.php`, `app/Fulfillment/ShipmentList.php`, `app/Fulfillment/CourierCards.php`, `resources/views/fulfillment/*`, `app/Support/Navigation.php`
-- Test: update `tests/Feature/Fulfillment/*`, `tests/Feature/Ui/FulfillmentPageTest.php`, `tests/Feature/Ui/DisplayPhaseFlowTest.php`
+- Create: `app/Fulfillment/Views.php`, `app/Fulfillment/StatusFilter.php`
+- Modify: `app/Fulfillment/ShipmentList.php`, `app/Fulfillment/CourierCards.php`, `app/Http/Controllers/Ui/FulfillmentController.php`, `resources/views/fulfillment/*`, `resources/js/app.js` (the poll), `app/Support/Navigation.php`
+- Delete: `app/Fulfillment/Tabs.php` once nothing references it
+- Test: rewrite `tests/Feature/Fulfillment/ShipmentListTest.php` and `tests/Feature/Fulfillment/CourierCardsTest.php`, and update `tests/Feature/Ui/FulfillmentPageTest.php` and `tests/Feature/Ui/DisplayPhaseFlowTest.php`
 
 **Interfaces:**
-- **Produces:**
-  - `Tabs::PHASES` (display phases), replacing the old map; there are no chips:
-    - `all` → every phase
-    - `awaiting_pickup` → `draft, booking, to_handover`
-    - `in_transit` → `in_transit`
-    - `delivered` → `delivered`
-    - `problem` → `attention, failed, lost_damaged`
-    - `returned` → `returning`
-    - `cancelled` → `cancelled`
-  - Labels in that order: All · Awaiting pickup · In transit · Delivered · Problem · Returned · Cancelled.
-  - The `unpaid` tab and the `to_pack` / `to_handover` chips are removed.
-  - Unknown `tab` or `chip` query values fall back to `all`, as before.
+- **`Views`** is a const map of view key to label: `all` → All, `active` → Active, `finished` → Finished.
+  - **Finished** = `terminal_at IS NOT NULL OR state = 'cancelled' OR phase IN ('delivered','cancelled')`.
+  - **Active** = not finished. This includes drafts, failed or unknown bookings, and everything on the road.
+  - An unknown `view` value falls back to `all`.
+  - There are no phase tabs or chips. `?tab=` and `?chip=` are ignored.
+- **`StatusFilter::options(array $filters): list<array{key:string,label:string,courier:?string,count:int}>`**
+  - It is built from the shipments matching every other filter: view, account and source, but not status.
+  - It needs one grouped query.
+  - **Keys:**
+    - `"{courier}:{courier_status}"` for rows the courier has reported on. The label is `PhaseResolver::label($courier, $status)`, prefixed with the courier name in the select, e.g. "QuadX · Out for delivery".
+    - `"ventaship:{state}"` for rows with no courier status yet. The labels are: draft → `Not booked`, queued or booking → `Booking`, failed → `Booking failed`, unknown → `Booking result unknown`, booked → `Booked`.
+  - Ordered by courier (QuadX, SPX, LBC, Ventaship last), then by count descending.
+  - An unknown `status` value applies no filter.
+- **`ShipmentList::query(array $filters)`** takes `view`, `account`, `source` and `status`. It keeps eager loading and newest-first order.
+- **`ShipmentList::counts(array $filters): array{all:int,active:int,finished:int}`** respects account, source and status, but not view.
+- **Row:**
+  - The main badge is the **status label**: the courier's label, or the Ventaship label above. Its tone comes from `DisplayPhase` (good / cool / attn / bad / mute), with text always present.
+  - The payment badge and amount are unchanged.
+  - `data-status` = the status key.
+- **Poll** (`fulfillment.poll`):
+  - It returns `{counts:{all,active,finished}, statuses:{public_id: key}}`, with no nulls.
+  - The JS reloads only when a visible row's status key changed and nothing is ticked. It updates the view counts in place.
 - **Courier cards:**
-  - Big figures: **Awaiting pickup** and **Delivered**.
-  - Smaller lines: **In transit** and **Problem**.
-  - The **COD unpaid** strip is unchanged.
+  - Big figures: **Active** and **Delivered**.
+  - The **COD unpaid** strip stays.
+  - The small lines are dropped.
 - **Page:**
-  - Title "Shipments".
-  - The sidebar item becomes "Shipments", still route `fulfillment` at `/`.
-  - The header action shows "Add shipment" when `Route::has('shipments.create')`.
-- **Payment badges and amounts on rows are unchanged.** COD unpaid is still visible per row.
+  - Title "Shipments". The sidebar item reads "Shipments" (route `fulfillment` at `/`).
+  - Filter bar: the view segmented control (All / Active / Finished, with counts), then the courier account select, the source select, and the status select (with counts). It's a GET form, kept across pagination.
+  - The header shows "Add shipment" when `Route::has('shipments.create')`.
 
-- [ ] **Step 1: Write the failing tests and update the existing ones**
-  - `test_tab_phase_mapping` with the new keys and exact ids.
-  - `test_old_tab_values_fall_back_to_all`: `?tab=unpaid` and `?tab=to_ship&chip=to_pack`.
-  - `test_cards_show_awaiting_pickup_in_transit_problem`.
+- [ ] **Step 1: Write the failing tests**
+  - `test_views_split_active_and_finished` with exact ids: delivered, cancelled, terminal returned, draft, failed, in transit.
+  - `test_status_options_are_built_from_data_with_counts_and_labels`.
+  - `test_ventaship_pseudo_status_for_unreported_rows`.
+  - `test_status_filter_narrows_list_and_unknown_value_is_ignored`.
+  - `test_counts_ignore_view_but_respect_status`.
+  - `test_old_tab_query_is_ignored`.
+  - `test_cards_show_active_delivered_cod_unpaid`.
   - `test_page_title_and_nav_say_shipments`.
-  - Keep the purged-row and pagination tests.
+  - `test_poll_returns_status_keys_without_nulls`.
+  - Keep the purged-row and pagination-keeps-filters tests.
 - [ ] **Step 2: Run** `php artisan test --filter='Fulfillment|DisplayPhase'`. Expected: FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4:** Run `npm run build` and the full suite. Expected: PASS.
-- [ ] **Step 5:** Commit `feat(ui): shipments list with plain filter tabs`.
+- [ ] **Step 5:** Commit `feat(ui): shipments list with all/active/finished and courier-status filter`.
 
 ### Task 2: Default sender in Settings
 
