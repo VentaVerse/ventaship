@@ -24,6 +24,12 @@ class AppPing extends Command
             return self::FAILURE;
         }
 
+        if ($app->status !== 'active') {
+            $this->error("{$app->public_id} is disabled; nothing was sent.");
+
+            return self::FAILURE;
+        }
+
         if (blank($app->webhook_url)) {
             $this->warn("{$app->public_id} has no webhook URL; the ping will be skipped.");
         }

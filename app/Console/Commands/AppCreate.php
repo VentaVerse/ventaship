@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\ClientApp;
+use App\Webhooks\Outbound\WebhookUrl;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
@@ -15,8 +16,8 @@ class AppCreate extends Command
     public function handle(): int
     {
         $url = $this->option('webhook-url') ?: null;
-        if ($url !== null && ! preg_match('#^https?://#i', $url)) {
-            $this->error('The webhook URL must start with http:// or https://.');
+        if ($url !== null && ! WebhookUrl::isValid($url)) {
+            $this->error('The webhook URL must be an http:// or https:// URL with a host.');
 
             return self::FAILURE;
         }

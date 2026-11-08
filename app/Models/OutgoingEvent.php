@@ -21,6 +21,7 @@ class OutgoingEvent extends Model
             'payload' => 'array',
             'next_attempt_at' => 'datetime',
             'leased_until' => 'datetime',
+            'dispatched_until' => 'datetime',
             'window_started_at' => 'datetime',
             'delivered_at' => 'datetime',
         ];
