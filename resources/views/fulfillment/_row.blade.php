@@ -55,8 +55,9 @@
     <div class="fl-row__end">
         @if($phase === 'draft' && Route::has('shipments.book'))
             <x-ui.button size="sm" variant="primary" type="submit" form="book-{{ $shipment->public_id }}">Book</x-ui.button>
+        @else
+            <x-ui.badge :tone="$phaseTone">{{ $phaseLabel }}</x-ui.badge>
         @endif
-        <x-ui.badge :tone="$phaseTone">{{ $phaseLabel }}</x-ui.badge>
         <span class="fl-row__src">{{ ShipmentList::sourceLabel($shipment) }}</span>
     </div>
 </div>

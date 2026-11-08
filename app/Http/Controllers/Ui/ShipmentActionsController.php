@@ -50,6 +50,7 @@ class ShipmentActionsController extends Controller
         $refused = 0;
 
         foreach ($this->shipments($request) as $s) {
+            $before = $s->cancel_state;
             try {
                 $row = $canceller->request($s);
             } catch (ApiError) {
@@ -59,7 +60,9 @@ class ShipmentActionsController extends Controller
             }
             if (in_array($row->cancel_state, ['requested', 'cancelled'], true)) {
                 $done++;
-                $this->audit($request, 'shipment.cancel_requested', $s);
+                if ($row->cancel_state !== $before || $row->state !== $s->state) {
+                    $this->audit($request, 'shipment.cancel_requested', $s);
+                }
             } else {
                 $refused++;
             }
@@ -79,7 +82,7 @@ class ShipmentActionsController extends Controller
         }
 
         if ($bundle['skipped'] !== []) {
-            session()->flash('status', count($bundle['skipped']).' skipped: no waybill yet');
+            session()->put('notice', count($bundle['skipped']).' skipped: no waybill yet');
         }
 
         return response($bundle['bytes'], 200, [

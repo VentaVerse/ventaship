@@ -5,12 +5,14 @@ Alpine.data('confirmDialog', () => ({
     open: false,
     title: '',
     confirm: 'Confirm',
+    dismiss: 'Back',
     form: null,
     submitter: null,
 
     show(detail) {
         this.title = detail.title ?? '';
         this.confirm = detail.confirm ?? 'Confirm';
+        this.dismiss = detail.dismiss ?? 'Back';
         this.form = detail.form ?? null;
         this.submitter = detail.submitter ?? null;
         this.open = true;

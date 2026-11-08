@@ -135,8 +135,32 @@ class ShipmentActionsTest extends TestCase
         $res = $this->post('/shipments/labels', $this->ids($one, $draft, $two))->assertOk();
 
         $this->assertStringStartsWith('%PDF-', $res->getContent());
-        $res->assertSessionHas('status', '1 skipped: no waybill yet');
+        $res->assertSessionHas('notice', '1 skipped: no waybill yet');
         $this->assertSame([], glob(storage_path('app/tmp/*')) ?: []);
+    }
+
+    public function test_skipped_notice_survives_the_poll_and_shows_once(): void
+    {
+        $one = $this->ship('booked', 'to_handover');
+        $two = $this->ship('booked', 'to_handover');
+        $draft = $this->ship('draft', 'draft');
+
+        $this->post('/shipments/labels', $this->ids($one, $draft, $two))->assertOk();
+        $this->getJson(route('fulfillment.poll'))->assertOk();
+        $this->get('/')->assertOk()->assertSeeText('1 skipped: no waybill yet');
+        $this->get('/')->assertOk()->assertDontSeeText('skipped: no waybill yet');
+    }
+
+    public function test_cancel_does_not_re_audit_unchanged_rows(): void
+    {
+        Queue::fake();
+        $done = $this->ship('cancelled', 'cancelled', ['cancel_state' => 'cancelled']);
+        $draft = $this->ship('draft', 'draft');
+
+        $this->post('/shipments/cancel', $this->ids($done, $draft))
+            ->assertSessionHas('status', '2 cancelled or cancelling · 0 not cancellable');
+
+        $this->assertSame([$draft->public_id], AuditEntry::query()->where('action', 'shipment.cancel_requested')->pluck('subject_id')->all());
     }
 
     public function test_labels_none_ready_redirects_with_error(): void

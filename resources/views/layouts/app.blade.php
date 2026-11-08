@@ -68,11 +68,14 @@
                 </div>
                 @hasSection('actions')<div class="x-page__actions">@yield('actions')</div>@endif
             </header>
-            @php $flashErrors = isset($errors) ? $errors->all() : []; @endphp
-            @if(session('status') || $flashErrors)
+            @php $flashErrors = isset($errors) ? $errors->all() : []; $notice = session()->pull('notice'); @endphp
+            @if(session('status') || $notice || $flashErrors)
                 <div class="x-flash" role="status">
                     @if(session('status'))
                         <div class="x-flash__line x-flash__line--ok"><x-ui.icon name="check" size="14" />{{ session('status') }}</div>
+                    @endif
+                    @if($notice)
+                        <div class="x-flash__line x-flash__line--ok"><x-ui.icon name="check" size="14" />{{ $notice }}</div>
                     @endif
                     @foreach($flashErrors as $message)
                         <div class="x-flash__line x-flash__line--bad"><x-ui.icon name="alert-triangle" size="14" />{{ $message }}</div>
