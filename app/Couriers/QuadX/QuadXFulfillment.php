@@ -22,6 +22,74 @@ use App\Models\CourierAccount;
  */
 class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShippingCost
 {
+    /** QuadX's official status labels (docs/couriers/quadx/statuses.md); the live cache wins when it has one. */
+    public const STATUS_LABELS = [
+        'pending' => 'Pending',
+        'for_pickup' => 'Ready for pickup',
+        'picked_up' => 'Picked up',
+        'failed_pickup' => 'Failed pickup',
+        'failed_delivery' => 'Failed delivery',
+        'in_transit' => 'In transit',
+        'claimed' => 'Claimed',
+        'delivered' => 'Delivered',
+        'return_in_transit' => 'Returned - in transit',
+        'returned' => 'Returned',
+        'failed_return' => 'Failed return',
+        'out_for_delivery' => 'Out for delivery',
+        'confirmed' => 'Confirmed',
+        'canceled' => 'Canceled',
+        'for_consolidation' => 'For consolidation',
+        'consolidated' => 'Consolidated',
+        'for_dropoff' => 'Ready for dropoff',
+        'dropped_off' => 'Dropped off',
+        'for_acceptance' => 'For acceptance',
+        'accepted' => 'Accepted',
+        'out_for_return' => 'Out for return',
+        'for_payment' => 'For payment',
+        'paid' => 'Paid',
+        'for_transfer' => 'For transfer',
+        'received_at_pickup_hub' => 'Received at pickup hub',
+        'received_at_delivery_hub' => 'Received at delivery hub',
+        'received_at_delivery_area' => 'Received at delivery area',
+        'at_3pl_facility' => 'At 3PL facility',
+        'at_sorting_center' => 'At sorting center',
+        'in_transit_to_delivery_area' => 'In transit to delivery area',
+        'transferred_to_partner' => 'Transferred to partner',
+        'for_return' => 'For return',
+        'arrived_at_rts_hub' => 'Arrived at RTS hub',
+        'arrived_at_rts_area' => 'Arrived at RTS area',
+        'at_sorting_center_rts' => 'At sorting center RTS',
+        'for_claims' => 'For Claims',
+        'claims_in_transit' => 'Claims in transit',
+        'arrived_at_claims_area' => 'Arrived at claims area',
+        'disposed' => 'Disposed',
+        'rejected' => 'Rejected',
+        'damaged' => 'Damaged',
+        'lost' => 'Lost',
+        'rider_found' => 'Rider found',
+        'picking_up' => 'Picking up',
+        'for_delivery' => 'For delivery',
+        'for_release' => 'For release',
+        'out_for_pickup' => 'Out for pickup',
+        'failed_pickup_attempt' => 'Failed pickup attempt',
+        'runsheet_closure' => 'Runsheet closure',
+        'pickup_rider_found' => 'Pickup rider found',
+        'delivery_rider_found' => 'Delivery rider found',
+        'for_disposal' => 'For disposal',
+        'pending_disposition' => 'Pending disposition',
+        'rcd_at_sorting_center' => 'RCD at sorting center',
+        'rcd_in_transit' => 'RCD in transit',
+        'received_at_claims_recovery_hub' => 'Received at Claims/Recovery hub',
+        'dws_update' => 'DWS update',
+        'searching_for_rider' => 'Searching for Rider',
+    ];
+
+    /** @return array<string, string> */
+    public function statusLabels(): array
+    {
+        return self::STATUS_LABELS;
+    }
+
     private QuadXClient $client;
 
     private QuadXLocationResolver $resolver;

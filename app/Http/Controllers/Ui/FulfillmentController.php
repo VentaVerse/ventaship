@@ -27,7 +27,7 @@ class FulfillmentController extends Controller
             'counts' => ShipmentList::counts($filters),
             'shipments' => $shipments,
             'view' => $view,
-            'statuses' => StatusFilter::options($filters),
+            'statuses' => $this->statusOptions($filters),
             'status' => $filters['status'] ?? '',
             'account' => $filters['account'] ?? '',
             'source' => $filters['source'] ?? '',
@@ -57,5 +57,22 @@ class FulfillmentController extends Controller
             array_map(fn ($v) => is_string($v) ? $v : '', $request->only(['view', 'account', 'source', 'status'])),
             fn (string $v) => $v !== '',
         );
+    }
+
+    /** @return list<array{key:string,label:string,courier:?string,count:int}> */
+    private function statusOptions(array $filters): array
+    {
+        $options = StatusFilter::options($filters);
+        $parsed = StatusFilter::parse($filters['status'] ?? null);
+        if ($parsed !== null && ! in_array($filters['status'], array_column($options, 'key'), true)) {
+            $options[] = [
+                'key' => $filters['status'],
+                'label' => StatusFilter::label($parsed[0], $parsed[1]),
+                'courier' => $parsed[0] === StatusFilter::VENTASHIP ? null : $parsed[0],
+                'count' => 0,
+            ];
+        }
+
+        return $options;
     }
 }

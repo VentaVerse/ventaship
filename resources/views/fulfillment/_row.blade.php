@@ -55,9 +55,10 @@
         <x-ui.badge :tone="$pay[1]">{{ $pay[0] }}</x-ui.badge>
     </div>
     <div class="fl-row__end">
-        <x-ui.badge :tone="$statusTone">{{ $statusLabel }}</x-ui.badge>
         @if($shipment->state === 'draft' && Route::has('shipments.book'))
             <x-ui.button size="sm" variant="primary" type="submit" form="book-{{ $shipment->public_id }}">Book</x-ui.button>
+        @else
+            <x-ui.badge :tone="$statusTone">{{ $statusLabel }}</x-ui.badge>
         @endif
         <span class="fl-row__src">{{ ShipmentList::sourceLabel($shipment) }}</span>
     </div>

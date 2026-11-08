@@ -38,7 +38,7 @@
         <x-ui.select wrapClass="fl-filters__select" name="account" aria-label="Courier" @change="$refs.filters.requestSubmit()">
             <option value="">All couriers</option>
             @foreach($accounts as $a)
-                <option value="{{ $a->public_id }}" @selected($account === $a->public_id)>{{ $a->label }}</option>
+                <option value="{{ $a->public_id }}" @selected($account === $a->public_id)>{{ \App\Fulfillment\Couriers::name($a->courier) }} · {{ $a->label }}</option>
             @endforeach
         </x-ui.select>
 

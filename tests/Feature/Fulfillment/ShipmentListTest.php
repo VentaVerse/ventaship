@@ -199,4 +199,12 @@ class ShipmentListTest extends TestCase
         $this->assertNotNull(TrackingLink::for($s));
         $this->assertNull(TrackingLink::for($none));
     }
+
+    public function test_official_courier_labels_back_the_live_cache(): void
+    {
+        \App\Couriers\CourierStatusLabel::forget();
+        $this->assertSame('Ready for pickup', \App\Couriers\CourierStatusLabel::for('quadx', 'for_pickup'));
+        $this->assertSame('Pickup Failed', \App\Couriers\CourierStatusLabel::for('spx', '5001'));
+        $this->assertSame('For reattempt', \App\Couriers\CourierStatusLabel::for('quadx', 'for_reattempt'));
+    }
 }

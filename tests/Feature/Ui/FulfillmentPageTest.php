@@ -119,6 +119,16 @@ class FulfillmentPageTest extends TestCase
             ->assertDontSee('data-status="quadx:delivered"', false);
     }
 
+    public function test_account_select_and_active_status_with_zero_count(): void
+    {
+        $this->ship('delivered', ['courier' => 'quadx', 'courier_status' => 'delivered']);
+
+        $this->get('/?view=active&status=quadx:delivered')->assertOk()
+            ->assertSeeText('QuadX · '.$this->account->label)
+            ->assertSee('value="quadx:delivered" selected', false)
+            ->assertSeeText('QuadX · Delivered (0)');
+    }
+
     public function test_poll_returns_status_keys_without_nulls(): void
     {
         $a = $this->ship('draft', ['state' => 'draft', 'courier_status' => null]);

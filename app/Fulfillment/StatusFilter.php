@@ -91,30 +91,38 @@ final class StatusFilter
         return $out;
     }
 
-    /** Narrows to one status key; a key no shipment carries (or a malformed one) applies no filter. */
-    public static function apply(Builder $q, mixed $status): Builder
+    /** Splits a status key that names a real status (a known Ventaship state, or one some shipment carries); else null. */
+    public static function parse(mixed $status): ?array
     {
         if (! is_string($status) || ! str_contains($status, ':')) {
-            return $q;
+            return null;
         }
         [$courier, $value] = explode(':', $status, 2);
         if ($courier === '' || $value === '') {
-            return $q;
+            return null;
+        }
+        if ($courier === self::VENTASHIP) {
+            return isset(self::LABELS[$value]) ? [$courier, $value] : null;
         }
 
+        return Shipment::query()->where('courier', $courier)->where('courier_status', $value)->exists() ? [$courier, $value] : null;
+    }
+
+    /** Narrows to one status key; a key no shipment carries (or a malformed one) applies no filter. */
+    public static function apply(Builder $q, mixed $status): Builder
+    {
+        $parsed = self::parse($status);
+        if ($parsed === null) {
+            return $q;
+        }
+        [$courier, $value] = $parsed;
+
         if ($courier === self::VENTASHIP) {
-            if (! isset(self::LABELS[$value])) {
-                return $q;
-            }
             $states = $value === 'booking' ? ['queued', 'booking'] : [$value];
 
             return $q->where(fn (Builder $w) => $w->whereNull('courier_status')->orWhere('courier_status', '')
                 ->orWhereNull('courier')->orWhere('courier', ''))
                 ->whereIn('state', $states);
-        }
-
-        if (! Shipment::query()->where('courier', $courier)->where('courier_status', $value)->exists()) {
-            return $q;
         }
 
         return $q->where('courier', $courier)->where('courier_status', $value);

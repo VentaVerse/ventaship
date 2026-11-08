@@ -73,7 +73,7 @@ class DisplayPhaseFlowTest extends TestCase
         $html = $this->get('/?view=active')->assertOk()->getContent();
         $row = $this->row($html, $draft);
         $this->assertStringContainsString('data-status="ventaship:draft"', $row);
-        $this->assertStringContainsString('Not booked', $row);
+        $this->assertStringNotContainsString('x-badge__label">Not booked', $row, 'Book replaces the status badge');
         $this->assertStringContainsString('form="book-'.$draft->public_id.'"', $row);
         $this->assertStringContainsString('id="book-'.$draft->public_id.'"', $html);
 
