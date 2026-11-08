@@ -227,4 +227,62 @@ class CourierAccountShowTest extends TestCase
         $this->put(route('accounts.update', $a), [])->assertRedirect();
         $this->post(route('accounts.test', $a))->assertRedirect();
     }
+
+    public function test_blank_value_clears_a_stored_setting(): void
+    {
+        $a = $this->account('quadx');
+        AccountSettings::for($a)->write('quadx_default_parcel', 'box');
+        AccountSettings::for($a)->write('quadx_default_service', 'next_day');
+
+        $this->actingAs($this->admin())->put(route('accounts.update', $a), [
+            'label' => 'Main', 'mode' => 'staging', 'settings' => ['quadx_default_parcel' => '', 'quadx_default_service' => 'next_day'],
+        ])->assertSessionHasNoErrors()->assertSessionHas('status', 'Saved');
+
+        $this->assertNull(AccountSettings::for($a)->read('quadx_default_parcel'));
+        $this->assertSame('next_day', AccountSettings::for($a)->read('quadx_default_service'));
+        $this->assertSame(1, AuditEntry::query()->where('action', 'courier_account.setting_changed')->where('changes->key', 'quadx_default_parcel')->where('actor_type', 'admin')->count());
+    }
+
+    public function test_save_is_atomic(): void
+    {
+        $a = $this->account('quadx');
+        AccountSettings::for($a)->write('quadx_default_service', 'next_day');
+        AuditEntry::query()->delete();
+
+        $this->actingAs($this->admin())->put(route('accounts.update', $a), [
+            'label' => 'Renamed', 'mode' => 'production', 'default' => '1', 'active' => '0',
+            'settings' => ['quadx_default_service' => 'same_day_pickup', 'quadx_default_parcel' => 'nope'],
+        ])->assertSessionHasErrors('settings.quadx_default_parcel');
+
+        $a->refresh();
+        $this->assertSame('Main', $a->label);
+        $this->assertSame('staging', $a->mode);
+        $this->assertFalse($a->is_default);
+        $this->assertSame('active', $a->status);
+        $this->assertSame('next_day', AccountSettings::for($a)->read('quadx_default_service'));
+        $this->assertSame(0, AuditEntry::query()->count());
+    }
+
+    public function test_lbc_mode_switch_keeps_latch_and_other_mode_keys_and_ignores_crafted_keys(): void
+    {
+        $a = $this->account('lbc', ['allow_live_booking' => true, 'mode' => 'staging']);
+        AccountSettings::for($a)->write('lbc_mode', 'test');
+        AccountSettings::for($a)->writeSecret('lbc_test_common_key', 'test-key-1234');
+        AccountSettings::for($a)->writeSecret('lbc_live_common_key', 'live-key-5678');
+
+        $this->actingAs($this->admin())->put(route('accounts.update', $a), [
+            'label' => 'Main', 'mode' => 'production', 'allow_live_booking' => '1',
+            'settings' => ['lbc_mode' => 'test', 'lbc_live_common_key' => 'hijack', 'lbc_test_common_key' => 'hijack'],
+        ])->assertSessionHas('status', 'Saved');
+
+        $s = AccountSettings::for($a->refresh());
+        $this->assertTrue($a->allow_live_booking);
+        $this->assertSame('live', $s->read('lbc_mode'));
+        $this->assertSame('test-key-1234', $s->secret('lbc_test_common_key'));
+        $this->assertSame('live-key-5678', $s->secret('lbc_live_common_key'));
+
+        $this->actingAs($this->admin())->put(route('accounts.update', $a), ['label' => 'Main', 'mode' => 'staging', 'allow_live_booking' => '1']);
+        $this->assertTrue($a->refresh()->allow_live_booking);
+        $this->assertSame('live-key-5678', AccountSettings::for($a)->secret('lbc_live_common_key'));
+    }
 }

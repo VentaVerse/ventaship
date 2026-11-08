@@ -1,6 +1,25 @@
 @extends('layouts.app')
 
-@section('title', \App\Fulfillment\Couriers::name($account->courier) . ' · ' . $account->label)
+@php
+    use App\Fulfillment\Couriers;
+
+    $modeWords = ['staging' => 'Staging', 'uat' => 'UAT', 'production' => 'Live'];
+    $check = $account->last_check_ok === null ? ['Not checked', 'mute'] : ($account->last_check_ok ? ['Connected', 'good'] : ['Check failed', 'bad']);
+@endphp
+
+@section('title', Couriers::name($account->courier) . ' · ' . $account->label)
+
+@section('title_lead')<x-courier-tile :courier="$account->courier" class="ac-title-tile" />@endsection
+
+@section('title_after')
+    <span class="ac-title-badges">
+        <x-ui.badge tone="cool">{{ $modeWords[$account->mode] ?? ucfirst($account->mode) }}</x-ui.badge>
+        <x-ui.badge :tone="$check[1]">{{ $check[0] }}</x-ui.badge>
+        @if($account->status === 'inactive')
+            <x-ui.badge>Inactive</x-ui.badge>
+        @endif
+    </span>
+@endsection
 
 @section('crumb')<a href="{{ route('accounts.index') }}">Courier accounts</a>@endsection
 
@@ -13,23 +32,11 @@
 
 @section('content')
 @php
-    use App\Fulfillment\Couriers;
-
     $name = Couriers::name($account->courier);
-    $modeWords = ['staging' => 'Staging', 'uat' => 'UAT', 'production' => 'Live'];
-    $check = $account->last_check_ok === null ? ['Not checked', 'mute'] : ($account->last_check_ok ? ['Connected', 'good'] : ['Check failed', 'bad']);
     $mode = old('mode', $account->mode);
     $isOn = fn (string $key, bool $current) => old($key, $current ? '1' : '0') === '1';
 @endphp
 
-<div class="ac-head">
-    <x-courier-tile :courier="$account->courier" />
-    <x-ui.badge tone="cool">{{ $modeWords[$account->mode] ?? ucfirst($account->mode) }}</x-ui.badge>
-    <x-ui.badge :tone="$check[1]">{{ $check[0] }}</x-ui.badge>
-    @if($account->status === 'inactive')
-        <x-ui.badge>Inactive</x-ui.badge>
-    @endif
-</div>
 
 <section class="x-panel ac-page">
     <form method="POST" action="{{ route('accounts.update', $account) }}" novalidate>

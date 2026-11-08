@@ -10,6 +10,7 @@ use App\Http\Controllers\Controller;
 use App\Models\CourierAccount;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -61,10 +62,7 @@ class CourierAccountsController extends Controller
     public function show(CourierAccount $account, CourierAccounts $accounts): View
     {
         $settings = AccountSettings::for($account);
-        $fields = collect($accounts->schema($account))
-            ->reject(fn (array $f) => ! empty($f['encrypted']) || ! empty($f['mode_scoped']) || $f['key'] === 'lbc_mode')
-            ->map(fn (array $f) => $f + ['value' => $settings->read($f['key'])])
-            ->values()->all();
+        $fields = array_map(fn (array $f) => $f + ['value' => $settings->read($f['key'])], $accounts->plainFields($account));
 
         return view('accounts.show', [
             'account' => $account,
@@ -96,6 +94,7 @@ class CourierAccountsController extends Controller
             }
         };
 
+        DB::beginTransaction();
         $attempt('label', fn () => $accounts->rename($account, $data['label'], $actor));
         $attempt('mode', fn () => $accounts->setMode($account, $data['mode'], $actor));
         if (array_key_exists('default', $data) && $data['default'] !== null) {
@@ -110,24 +109,28 @@ class CourierAccountsController extends Controller
 
         // Only plain booking-default fields are writable here; secrets and mode-scoped keys have their own controls.
         $current = AccountSettings::for($account);
-        $plain = collect($accounts->schema($account))
-            ->reject(fn (array $f) => ! empty($f['encrypted']) || ! empty($f['mode_scoped']) || $f['key'] === 'lbc_mode')
-            ->pluck('key')->all();
+        $plain = array_column($accounts->plainFields($account), 'key');
         foreach ($data['settings'] ?? [] as $key => $value) {
             if (! in_array($key, $plain, true)) {
                 continue;
             }
             $value = trim((string) $value);
             $stored = (string) $current->read($key, '');
-            if ($value === $stored || ($value === '' && $stored === '')) {
+            if ($value === $stored) {
                 continue;
             }
-            $attempt("settings.{$key}", fn () => $accounts->setSetting($account, $key, $value, $actor));
+            $attempt("settings.{$key}", fn () => $value === ''
+                ? $accounts->clearSetting($account, $key, $actor)
+                : $accounts->setSetting($account, $key, $value, $actor));
         }
 
         if ($errors !== []) {
+            DB::rollBack();
+
             return back()->withInput()->withErrors($errors);
         }
+
+        DB::commit();
 
         return redirect(route('accounts.show', $account))->with('status', 'Saved');
     }

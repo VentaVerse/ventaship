@@ -85,7 +85,46 @@ class CourierAccounts
     /** Whether the key is a secret for this account's courier. */
     public function isSecret(CourierAccount $account, string $key): bool
     {
-        return ! empty($this->field($account, $key)['encrypted']);
+        return self::isSecretField($this->field($account, $key));
+    }
+
+    /** The one secret predicate: encrypted, or a secret/password field. @param  array<string, mixed>  $field */
+    public static function isSecretField(array $field): bool
+    {
+        return ! empty($field['encrypted']) || in_array($field['type'] ?? null, ['secret', 'password'], true);
+    }
+
+    /**
+     * The booking-default fields: plain, not tied to a mode, and not the LBC key-set select (setMode owns that).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function plainFields(CourierAccount $account): array
+    {
+        return array_values(array_filter(
+            $this->schema($account),
+            fn (array $f) => ! self::isSecretField($f) && empty($f['mode_scoped']) && $f['key'] !== 'lbc_mode',
+        ));
+    }
+
+    /** Clears a plain setting. @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor */
+    public function clearSetting(CourierAccount $account, string $key, ?array $actor = null): void
+    {
+        if (self::isSecretField($this->field($account, $key))) {
+            throw new CourierAccountException('Not a plain setting.');
+        }
+
+        DB::transaction(function () use ($account, $key, $actor) {
+            AccountSettings::for($account)->write($key, null);
+            if ($key === 'spx_app_id') {
+                $account->forceFill(['external_ref' => null])->save();
+            }
+            $this->attribute($actor, AuditEntry::query()
+                ->where('action', 'courier_account.setting_changed')
+                ->where('subject_id', $account->public_id)
+                ->where('changes->key', $key)
+                ->latest('id')->first());
+        });
     }
 
     /** @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor */

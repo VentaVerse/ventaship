@@ -64,7 +64,7 @@
             <header class="x-page">
                 <div>
                     @hasSection('crumb')<div class="x-page__crumb">@yield('crumb')</div>@endif
-                    <h1 class="x-page__title">@yield('title')</h1>
+                    <h1 class="x-page__title">@yield('title_lead')@yield('title')@yield('title_after')</h1>
                 </div>
                 @hasSection('actions')<div class="x-page__actions">@yield('actions')</div>@endif
             </header>

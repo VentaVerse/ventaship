@@ -57,12 +57,19 @@
         gap: 8px;
     }
 
-    .ac-head {
+    .x-page__title:has(.ac-title-tile) {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 8px 10px;
-        margin-bottom: 14px;
+        gap: 8px 12px;
+    }
+
+    .ac-title-badges {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        font-size: 11px;
+        letter-spacing: 0;
     }
 
     .ac-seg {
