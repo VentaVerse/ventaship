@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Ui;
 
+use App\Couriers\CourierAccounts;
 use App\Couriers\CourierRegistry;
 use App\Couriers\FakeCourier;
 use App\Models\Admin;
@@ -139,6 +140,61 @@ class ShipmentFormRedesignTest extends TestCase
             ->assertSessionHasErrors(['recipient.district' => 'Choose from the list.'])
             ->assertSessionDoesntHaveErrors('recipient.state');
         $this->assertSame(0, Shipment::query()->count());
+    }
+
+    public function test_settings_sender_books_end_to_end_with_the_default_quadx_account(): void
+    {
+        // A legacy duplicate QuadX account (older, active) and a newer default: the default is the one booked on.
+        $this->account->forceFill(['label' => 'Legacy', 'is_default' => false, 'default_slot' => null])->save();
+        $default = CourierAccount::factory()->create(['courier' => 'quadx', 'label' => 'QuadX', 'status' => 'active', 'is_default' => true, 'default_slot' => 'quadx']);
+        $this->fake->booksAs('QX-E2E-1');
+
+        $ph = app(PhAddress::class);
+        $district = $ph->districts('133900000')[0];
+        $brgy = $ph->barangays($district['code'])[0];
+        $codes = ['state' => '130000000', 'city' => '133900000', 'barangay' => $brgy['code']];
+        $this->put('/settings', [
+            'tab' => 'general', 'shipments_reference_prefix' => 'VS', 'privacy_retention_days' => '180',
+            'pickup_contact_name' => 'Venta Warehouse', 'pickup_contact_phone' => '0918 123 4567', 'pickup_address_1' => '5 Shaw Blvd',
+            'pickup_addr' => ['state' => 'Metro Manila', 'city' => 'Manila', 'district' => $district['name'], 'barangay' => $brgy['name'],
+                'postcode' => '1006', 'codes' => $codes],
+        ])->assertSessionHasNoErrors();
+
+        // What the add form renders is what the browser posts back.
+        $dom = new \DOMDocument;
+        @$dom->loadHTML($this->get('/shipments/new')->assertOk()->getContent());
+        $xpath = new \DOMXPath($dom);
+        $fields = [];
+        foreach ($xpath->query('//input[starts-with(@name, "pickup[") or @name="form_token"]') as $input) {
+            $fields[] = rawurlencode($input->getAttribute('name')).'='.rawurlencode($input->getAttribute('value'));
+        }
+        parse_str(implode('&', $fields), $posted);
+        $tile = $xpath->query('//*[@data-courier="quadx"]//input[@name="account_id"]')->item(0);
+        $this->assertNotNull($tile);
+        $this->assertSame($codes, $posted['pickup']['codes']);
+        $this->assertSame($district['name'], $posted['pickup']['district']);
+        $this->assertSame($default->public_id, $tile->getAttribute('value'));
+
+        $this->post('/shipments', $posted + [
+            'account_id' => $tile->getAttribute('value'),
+            'recipient' => ['first_name' => 'Juan', 'last_name' => 'Dela Cruz', 'phone' => '0917 123 4567',
+                'address_1' => '1 Rizal St', 'city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1210'],
+            'items' => [['name' => 'Blue Tee', 'quantity' => '2', 'price' => '500.10'], ['name' => 'Cap', 'quantity' => '3', 'price' => '99.99']],
+            'parcel' => ['weight_kg' => '1.2'],
+            'payment' => ['method' => 'cod'],
+            'insure' => '1',
+        ])->assertSessionHasNoErrors()->assertSessionHas('status', 'Booked · QX-E2E-1');
+
+        $s = Shipment::query()->sole();
+        $this->assertSame('booked', $s->state);
+        $this->assertSame('QX-E2E-1', $s->tracking_number);
+        $this->assertSame('1300.17', $s->cod_amount);
+        $this->assertSame('1300.17', $s->declared_value);
+        $this->assertSame($codes, $s->pickup['codes']);
+        $this->assertSame($district['name'], $s->pickup['district']);
+        $this->assertSame($brgy['name'], $s->pickup['barangay']);
+        $this->assertSame(app(CourierAccounts::class)->forCourier('quadx')->id, $s->courier_account_id);
+        $this->assertSame($default->id, $s->courier_account_id);
     }
 
     public function test_legacy_shipment_without_codes_edits(): void
