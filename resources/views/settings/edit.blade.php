@@ -57,24 +57,7 @@
                     </x-ui.field>
                 </div>
                 <div class="st-row">
-                    <x-ui.field label="Barangay" name="pickup_barangay">
-                        <x-ui.input id="f-pickup-barangay" name="pickup_barangay" class="st-ctl" value="{{ old('pickup_barangay', $sender['pickup_barangay'] ?? '') }}" maxlength="255" autocomplete="off" />
-                    </x-ui.field>
-                </div>
-                <div class="st-row">
-                    <x-ui.field label="City" name="pickup_city">
-                        <x-ui.input id="f-pickup-city" name="pickup_city" class="st-ctl" value="{{ old('pickup_city', $sender['pickup_city'] ?? '') }}" maxlength="255" autocomplete="off" />
-                    </x-ui.field>
-                </div>
-                <div class="st-row">
-                    <x-ui.field label="Province" name="pickup_state">
-                        <x-ui.input id="f-pickup-state" name="pickup_state" class="st-ctl" value="{{ old('pickup_state', $sender['pickup_state'] ?? '') }}" maxlength="255" autocomplete="off" />
-                    </x-ui.field>
-                </div>
-                <div class="st-row">
-                    <x-ui.field label="Postcode" name="pickup_postcode">
-                        <x-ui.input id="f-pickup-postcode" name="pickup_postcode" class="st-ctl st-narrow" value="{{ old('pickup_postcode', $sender['pickup_postcode'] ?? '') }}" maxlength="16" autocomplete="off" />
-                    </x-ui.field>
+                    <x-ph-address prefix="pickup_addr" :values="old('pickup_addr', $senderAddress)" />
                 </div>
             </div>
             @include('settings._bar', ['tab' => 'general'])

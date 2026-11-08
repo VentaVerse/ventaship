@@ -52,7 +52,7 @@ class Settings
     public function pickup(): ?array
     {
         $pickup = [];
-        foreach (['contact_name', 'contact_phone', 'address_1', 'address_2', 'barangay', 'city', 'state', 'postcode'] as $field) {
+        foreach (['contact_name', 'contact_phone', 'address_1', 'address_2', 'barangay', 'district', 'city', 'state', 'postcode'] as $field) {
             $value = $this->get("pickup.{$field}");
             $pickup[$field] = is_string($value) && $value !== '' ? $value : null;
         }
@@ -60,7 +60,15 @@ class Settings
             return null;
         }
 
-        return $pickup + ['country' => 'PH'];
+        $codes = [];
+        foreach (['state', 'city', 'barangay'] as $level) {
+            $value = $this->get("pickup.codes.{$level}");
+            if (is_string($value) && $value !== '') {
+                $codes[$level] = $value;
+            }
+        }
+
+        return $pickup + ['codes' => $codes, 'country' => 'PH'];
     }
 
     /** @return array<string, string|null> */

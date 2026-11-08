@@ -235,10 +235,13 @@ class SettingsScreenTest extends TestCase
     /** @return array<string, string> */
     private function sender(array $over = []): array
     {
+        $addr = $over['pickup_addr'] ?? null;
+        unset($over['pickup_addr']);
+
         return $over + [
             'pickup_contact_name' => 'Ana Reyes', 'pickup_contact_phone' => '0917 123 4567',
-            'pickup_address_1' => '12 Rizal St', 'pickup_address_2' => 'Unit 4', 'pickup_barangay' => 'Poblacion',
-            'pickup_city' => 'Makati', 'pickup_state' => 'Metro Manila', 'pickup_postcode' => '1200',
+            'pickup_address_1' => '12 Rizal St', 'pickup_address_2' => 'Unit 4',
+            'pickup_addr' => $addr ?? ['barangay' => 'Poblacion', 'city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1200'],
         ];
     }
 
@@ -254,7 +257,7 @@ class SettingsScreenTest extends TestCase
         $this->assertSame('Metro Manila', $settings->get('pickup.state'));
         $this->assertSame(8, AuditEntry::query()->where('action', 'setting.changed')->where('subject_id', 'like', 'pickup.%')->count());
 
-        $this->actingAs($admin)->put('/settings', $this->general($this->sender(['pickup_city' => 'Pasig'])));
+        $this->actingAs($admin)->put('/settings', $this->general($this->sender(['pickup_addr' => ['barangay' => 'Poblacion', 'city' => 'Pasig', 'state' => 'Metro Manila', 'postcode' => '1200']])));
         $this->assertSame(
             ['pickup.city'],
             AuditEntry::query()->where('action', 'setting.changed')->where('subject_id', 'like', 'pickup.%')
@@ -281,7 +284,7 @@ class SettingsScreenTest extends TestCase
         $this->actingAs($admin)->from('/settings')->put('/settings', $this->general(['pickup_address_2' => 'Unit 4']))
             ->assertSessionHasErrors([
                 'pickup_contact_name' => 'Required.', 'pickup_contact_phone' => 'Required.', 'pickup_address_1' => 'Required.',
-                'pickup_city' => 'Required.', 'pickup_state' => 'Required.',
+                'pickup_addr.city' => 'Required.', 'pickup_addr.state' => 'Required.',
             ]);
 
         $this->actingAs($admin)->from('/settings')->put('/settings', $this->general($this->sender(['pickup_contact_phone' => '12345'])))
@@ -296,13 +299,51 @@ class SettingsScreenTest extends TestCase
         $settings = app(Settings::class);
         $this->assertNull($settings->pickup());
 
-        $this->actingAs($this->admin())->put('/settings', $this->general($this->sender(['pickup_address_2' => '', 'pickup_barangay' => ''])));
+        $this->actingAs($this->admin())->put('/settings', $this->general($this->sender(['pickup_address_2' => '', 'pickup_addr' => ['city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1200']])));
 
         $this->assertSame([
             'contact_name' => 'Ana Reyes', 'contact_phone' => '0917 123 4567', 'address_1' => '12 Rizal St',
-            'address_2' => null, 'barangay' => null, 'city' => 'Makati', 'state' => 'Metro Manila',
-            'postcode' => '1200', 'country' => 'PH',
+            'address_2' => null, 'barangay' => null, 'district' => null, 'city' => 'Makati', 'state' => 'Metro Manila',
+            'postcode' => '1200', 'codes' => [], 'country' => 'PH',
         ], app(Settings::class)->pickup());
+    }
+
+    public function test_sender_codes_saved_and_returned_by_pickup(): void
+    {
+        $ph = app(\App\Support\PhAddress::class);
+        $state = $ph->provinces()[0];
+        $city = $ph->cities($state['code'])[0];
+        $brgy = $ph->barangays($city['code'])[0];
+        $addr = [
+            'state' => $state['name'], 'city' => $city['name'], 'district' => '', 'barangay' => $brgy['name'], 'postcode' => '2800',
+            'codes' => ['state' => $state['code'], 'city' => $city['code'], 'barangay' => $brgy['code']],
+        ];
+        $admin = $this->admin();
+
+        $this->actingAs($admin)->put('/settings', $this->general($this->sender(['pickup_addr' => $addr])))->assertSessionHasNoErrors();
+
+        $settings = app(Settings::class);
+        $this->assertSame($city['code'], $settings->get('pickup.codes.city'));
+        $this->assertNull($settings->get('pickup.district'));
+        $pickup = $settings->pickup();
+        $this->assertSame(['state' => $state['code'], 'city' => $city['code'], 'barangay' => $brgy['code']], $pickup['codes']);
+        $this->assertArrayHasKey('district', $pickup);
+
+        $html = $this->actingAs($admin)->get('/settings')->getContent();
+        $this->assertStringContainsString('name="pickup_addr[codes][city]"', $html);
+        $this->assertStringContainsString('value="'.$city['code'].'"', $html);
+
+        // A code that does not belong to the posted names is refused and nothing changes.
+        $bad = ['codes' => ['state' => $state['code'], 'city' => 'bogus', 'barangay' => $brgy['code']]] + $addr;
+        $this->actingAs($admin)->from('/settings')->put('/settings', $this->general($this->sender(['pickup_addr' => $bad])))
+            ->assertSessionHasErrors(['pickup_addr.state' => 'Choose from the list.']);
+        $this->assertSame($city['code'], $settings->pickup()['codes']['city']);
+
+        // Clearing everything unsets the sender, codes included.
+        $this->actingAs($admin)->put('/settings', $this->general(['pickup_addr' => ['codes' => ['state' => '', 'city' => '', 'barangay' => '']]]))
+            ->assertSessionHasNoErrors();
+        $this->assertNull(app(Settings::class)->pickup());
+        $this->assertNull(app(Settings::class)->get('pickup.codes.city'));
     }
 
     public function test_empty_sender_writes_no_pickup_audit_rows(): void
