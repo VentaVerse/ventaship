@@ -1,0 +1,13 @@
+{
+    "id": "8f0b6c1e-0000-4000-8000-000000000001",
+    "tracking_number": "QX-TEST-0001",
+    "reference_id": "VS000001",
+    "status": "in_transit",
+    "tat": {
+        "sla_start": 1762560000,
+        "for_pickup": 1762560000,
+        "picked_up": 1762574400,
+        "in_transit": 1762588800
+    },
+    "tracking_links": []
+}

@@ -2,6 +2,8 @@
 
 namespace Tests;
 
+use App\Couriers\CourierRegistry;
+use App\Couriers\CourierStatusLabel;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\Http;
 
@@ -12,5 +14,13 @@ abstract class TestCase extends BaseTestCase
         parent::setUp();
 
         Http::preventStrayRequests();
+    }
+
+    protected function tearDown(): void
+    {
+        CourierRegistry::clearFakes();
+        CourierStatusLabel::forget();
+
+        parent::tearDown();
     }
 }

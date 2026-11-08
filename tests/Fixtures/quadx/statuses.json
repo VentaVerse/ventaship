@@ -1,0 +1,6 @@
+[
+    {"name": "for_pickup", "label": "For Pickup"},
+    {"name": "picked_up", "label": "Picked Up"},
+    {"name": "in_transit", "label": "In Transit"},
+    {"name": "delivered", "label": "Delivered"}
+]

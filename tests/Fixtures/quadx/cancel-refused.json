@@ -1,0 +1,5 @@
+{
+    "errors": {
+        "detail": "Order cannot be cancelled. It has already been picked up."
+    }
+}

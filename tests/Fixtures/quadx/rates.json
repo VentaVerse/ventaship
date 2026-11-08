@@ -1,0 +1,9 @@
+{
+    "data": {
+        "attributes": {
+            "shipping_fee": {"small-pouch": 80, "medium-pouch": 100, "big-pouch": 130, "box": 150},
+            "fees_adjustments": {"shipping_fee": {"small-pouch": 77, "medium-pouch": 95, "big-pouch": 125, "box": 145}},
+            "insurance_fee": 0
+        }
+    }
+}

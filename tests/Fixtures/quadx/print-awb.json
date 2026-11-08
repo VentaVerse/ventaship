@@ -1,0 +1,6 @@
+{
+    "message": {
+        "awb": "https://quadx-awb.s3.ap-southeast-1.amazonaws.com/staging/QX-TEST-0001-zebra.pdf?X-Amz-Expires=600&X-Amz-Signature=0f1e2d",
+        "v35": "https://quadx-awb.s3.ap-southeast-1.amazonaws.com/staging/QX-TEST-0001-v35.pdf?X-Amz-Expires=600&X-Amz-Signature=3c4b5a"
+    }
+}
