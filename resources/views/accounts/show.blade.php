@@ -39,7 +39,9 @@
 
 
 <section class="x-panel ac-page">
-    <form method="POST" action="{{ route('accounts.update', $account) }}" novalidate>
+    <form method="POST" action="{{ route('accounts.update', $account) }}" novalidate
+          x-data="{ mode: @js($mode), modeWords: @js($modeWords), status: '' }"
+          x-on:credential-status="status = ''; $nextTick(() => status = $event.detail)">
         @csrf
         @method('PUT')
         <div class="st-sec">
@@ -55,7 +57,7 @@
                     <div class="ac-seg" id="account-mode" role="radiogroup" aria-labelledby="account-mode-label">
                         @foreach($modes as $m)
                             <label class="ac-seg__opt">
-                                <input type="radio" class="ac-seg__input" name="mode" value="{{ $m }}" @checked($mode === $m)>
+                                <input type="radio" class="ac-seg__input" name="mode" value="{{ $m }}" x-model="mode" @checked($mode === $m)>
                                 <span class="ac-seg__tick" aria-hidden="true"><x-ui.icon name="check" size="14" /></span>
                                 <span>{{ $modeWords[$m] ?? ucfirst($m) }}</span>
                             </label>
@@ -92,7 +94,34 @@
             @endif
         </div>
 
-        {{-- Task 4: Keys section (masked secrets, follows #account-mode) goes here. --}}
+        @if($keyGroups !== [])
+            <div class="st-sec">
+                <h2 class="st-h ac-keys-h">Keys
+                    <x-ui.badge :tone="$mode === 'production' ? 'good' : 'cool'" data-keys-badge x-bind:class="{ 'x-badge--good': mode === 'production', 'x-badge--cool': mode !== 'production' }"><span x-text="modeWords[mode] ?? mode">{{ $modeWords[$mode] ?? ucfirst($mode) }}</span></x-ui.badge>
+                </h2>
+                @foreach($keyGroups as $group)
+                    @php $groupMode = $group['mode']; @endphp
+                    <div class="ac-keys" data-keys="{{ $group['scope'] ?? 'all' }}"
+                         @if($groupMode !== null) x-bind:hidden="mode !== @js($groupMode)" @endif
+                         @if($groupMode !== null && $groupMode !== $mode) hidden @endif>
+                        @foreach($group['keys'] as $k)
+                            <div class="st-row">
+                                <x-ui.credential
+                                    :name="'secrets[' . $k['key'] . ']'"
+                                    :label="$k['label']"
+                                    :account="$account"
+                                    :key="$k['key']"
+                                    :masked="$k['masked']"
+                                    :revealUrl="route('accounts.reveal', [$account, $k['key']])"
+                                    :context="$groupMode === null ? null : ($modeWords[$groupMode] ?? ucfirst($groupMode))"
+                                    :id="'f-key-' . $k['key']" />
+                            </div>
+                        @endforeach
+                    </div>
+                @endforeach
+                <p class="x-sr" aria-live="polite" x-text="status"></p>
+            </div>
+        @endif
 
         @if($fields !== [])
             <div class="st-sec">

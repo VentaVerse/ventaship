@@ -56,14 +56,14 @@ class CourierAccountShowTest extends TestCase
         $this->assertStringContainsString('id="account-mode"', $html);
         $this->assertSame(2, substr_count($html, 'type="radio"'));
         $this->assertStringNotContainsString('Allow live booking', $html);
-        $this->assertStringNotContainsString('quadx_staging_api_key', $html);
+        $this->assertStringNotContainsString('name="settings[quadx_staging_api_key]"', $html);
 
         $spx = $this->account('spx', ['mode' => 'uat']);
         $html = $this->actingAs($admin)->get(route('accounts.show', $spx))->assertOk()
             ->assertSee('Allow live booking')->assertSee('UAT')->assertSee('App ID')->assertSee('User ID')->assertSee('Pouch presets')
             ->getContent();
         $this->assertSame(3, substr_count($html, 'type="radio"'));
-        $this->assertStringNotContainsString('spx_secret_key', $html);
+        $this->assertStringNotContainsString('name="settings[spx_secret_key]"', $html);
 
         $lbc = $this->account('lbc');
         $html = $this->actingAs($admin)->get(route('accounts.show', $lbc))->assertOk()
@@ -71,7 +71,7 @@ class CourierAccountShowTest extends TestCase
             ->getContent();
         $this->assertStringNotContainsString('lbc_mode', $html);
         $this->assertStringNotContainsString('Key set', $html);
-        $this->assertStringNotContainsString('lbc_test_common_key', $html);
+        $this->assertStringNotContainsString('name="settings[lbc_test_common_key]"', $html);
     }
 
     public function test_inactive_account_shows_inactive_badge_in_list(): void

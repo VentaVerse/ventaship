@@ -46,5 +46,14 @@ class AppServiceProvider extends ServiceProvider
 
         // Courier webhooks carry no API key: per IP.
         RateLimiter::for('courier-webhooks', fn (Request $request) => Limit::perMinute(300)->by('courier-webhooks:ip:' . $request->ip()));
+
+        // Viewing a courier secret: per admin.
+        RateLimiter::for('secret-reveals', fn (Request $request) => Limit::perMinute(10)
+            ->by('secret-reveals:admin:' . ($request->user()?->getAuthIdentifier() ?? 'ip:' . $request->ip()))
+            ->response(fn (Request $request, array $headers) => response()->json(
+                ['message' => 'Too many views. Try again in ' . max(1, (int) ($headers['Retry-After'] ?? 60)) . ' seconds.'],
+                429,
+                $headers + ['Cache-Control' => 'no-store'],
+            )));
     }
 }

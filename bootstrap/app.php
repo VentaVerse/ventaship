@@ -33,6 +33,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->api(prepend: [LogApiRequest::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Courier secrets typed into the account form never go back into the session as old input.
+        $exceptions->dontFlash(['secrets']);
         // Every answer under api/* uses the one error body; nothing else (stack traces, HTML) ever leaves.
         $exceptions->render(function (ApiError $e, Request $request) {
             return $request->is('api/*') ? $e->toResponse() : null;

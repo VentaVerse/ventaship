@@ -32,6 +32,8 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::get('accounts/{account:public_id}', [CourierAccountsController::class, 'show'])->name('accounts.show');
     Route::put('accounts/{account:public_id}', [CourierAccountsController::class, 'update'])->name('accounts.update');
     Route::post('accounts/{account:public_id}/test', [CourierAccountsController::class, 'test'])->name('accounts.test');
+    Route::post('accounts/{account:public_id}/secrets/{key}/reveal', [CourierAccountsController::class, 'reveal'])
+        ->where('key', '[a-z0-9_]+')->middleware('throttle:secret-reveals')->name('accounts.reveal');
     Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');
     Route::put('settings', [SettingsController::class, 'update'])->name('settings.update');
     Route::put('settings/account', [SettingsController::class, 'account'])->name('settings.account');

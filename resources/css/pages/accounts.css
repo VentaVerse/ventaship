@@ -128,4 +128,54 @@
             min-height: 44px;
         }
     }
+
+    .ac-keys-h {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .ac-cred {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .ac-cred__input {
+        flex: 1 1 220px;
+        max-width: 340px;
+        background: var(--bl-chrome);
+        font: 500 13px var(--font-mono);
+    }
+
+    .ac-cred__input.is-shown,
+    .ac-cred__input.is-editing {
+        background: var(--bl-sheet);
+    }
+
+    .ac-cred__acts {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .ac-cred__tick {
+        font: 500 11.5px var(--font-mono);
+        color: var(--bl-ink-3);
+    }
+
+    .ac-cred__error {
+        flex-basis: 100%;
+    }
+
+    @media (max-width: 640px) {
+        .ac-cred__input {
+            max-width: none;
+            height: 44px;
+        }
+    }
 }
