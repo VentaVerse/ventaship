@@ -317,7 +317,7 @@ class ShipmentsController extends Controller
         $usable = new Collection;
         foreach (self::COURIERS as $courier) {
             $account = $own !== null && $own->courier === $courier ? $own : app(CourierAccounts::class)->forCourier($courier);
-            $ok = $account !== null && ($account->status === 'active' || $account->is($own));
+            $ok = $account !== null && ($account->isActive() || $account->is($own));
             if ($ok) {
                 $usable->push($account);
             }
@@ -325,7 +325,7 @@ class ShipmentsController extends Controller
                 'courier' => $courier,
                 'name' => Couriers::name($courier),
                 'id' => $ok ? $account->public_id : null,
-                'inactive' => $account !== null && $account->status !== 'active',
+                'inactive' => $account !== null && ! $account->isActive(),
             ];
         }
 

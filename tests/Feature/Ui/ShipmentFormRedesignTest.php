@@ -168,7 +168,7 @@ class ShipmentFormRedesignTest extends TestCase
 
     public function test_courier_tiles_disable_unset_couriers(): void
     {
-        CourierAccount::factory()->create(['courier' => 'lbc', 'label' => 'LBC', 'status' => 'disabled', 'is_default' => true, 'default_slot' => 'lbc']);
+        CourierAccount::factory()->create(['courier' => 'lbc', 'label' => 'LBC', 'status' => 'inactive', 'is_default' => true, 'default_slot' => 'lbc']);
 
         $html = $this->get('/shipments/new')->assertOk()->getContent();
 

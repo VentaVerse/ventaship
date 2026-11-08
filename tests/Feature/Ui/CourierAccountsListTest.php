@@ -2,11 +2,14 @@
 
 namespace Tests\Feature\Ui;
 
+use App\Couriers\CourierAccountException;
 use App\Couriers\CourierAccounts;
 use App\Models\Admin;
 use App\Models\AuditEntry;
 use App\Models\CourierAccount;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 class CourierAccountsListTest extends TestCase
@@ -74,7 +77,7 @@ class CourierAccountsListTest extends TestCase
 
     public function test_setup_refuses_cleanly_while_locked_and_keeps_mode(): void
     {
-        $lock = \Illuminate\Support\Facades\Cache::lock('courier-setup:spx', 10);
+        $lock = Cache::lock('courier-setup:spx', 10);
         $this->assertTrue($lock->get());
 
         $this->actingAs($this->admin())->from(route('accounts.show', 'spx'))
@@ -88,12 +91,12 @@ class CourierAccountsListTest extends TestCase
     public function test_setup_failure_in_set_mode_leaves_no_account(): void
     {
         $this->partialMock(CourierAccounts::class, function ($m) {
-            $m->shouldReceive('setMode')->andThrow(new \App\Couriers\CourierAccountException('nope'));
+            $m->shouldReceive('setMode')->andThrow(new CourierAccountException('nope'));
         });
 
         $this->actingAs($this->admin())->post(route('accounts.setup', 'spx'), ['mode' => 'uat'])->assertSessionHasErrors('mode');
         $this->assertSame(0, CourierAccount::query()->withTrashed()->count());
-        $this->assertTrue(\Illuminate\Support\Facades\Cache::lock('courier-setup:spx', 5)->get());
+        $this->assertTrue(Cache::lock('courier-setup:spx', 5)->get());
     }
 
     public function test_no_name_field(): void
@@ -123,10 +126,32 @@ class CourierAccountsListTest extends TestCase
         $this->assertSame(2, CourierAccount::query()->where('courier', 'quadx')->count());
     }
 
+    public function test_any_status_but_active_is_inactive(): void
+    {
+        $account = CourierAccount::factory()->create(['courier' => 'quadx', 'label' => 'Main', 'status' => 'disabled']);
+        $this->assertFalse($account->isActive());
+        $this->assertTrue($account->forceFill(['status' => 'active'])->isActive());
+        $account->forceFill(['status' => 'disabled'])->save();
+
+        $this->actingAs($this->admin())->get(route('accounts.index'))->assertOk()->assertSee('Inactive');
+    }
+
+    public function test_setup_ignores_a_trashed_account_like_for_courier(): void
+    {
+        CourierAccount::factory()->create(['courier' => 'quadx', 'label' => 'Old', 'status' => 'active', 'is_default' => true, 'default_slot' => 'quadx'])->delete();
+        $accounts = app(CourierAccounts::class);
+        $this->assertNull($accounts->forCourier('quadx'));
+
+        $account = $accounts->setUp('quadx', 'staging');
+
+        $this->assertTrue($accounts->forCourier('quadx')->is($account));
+        $this->assertSame(2, CourierAccount::query()->withTrashed()->where('courier', 'quadx')->count());
+    }
+
     public function test_create_routes_gone(): void
     {
-        $this->assertFalse(\Illuminate\Support\Facades\Route::has('accounts.create'));
-        $this->assertFalse(\Illuminate\Support\Facades\Route::has('accounts.store'));
+        $this->assertFalse(Route::has('accounts.create'));
+        $this->assertFalse(Route::has('accounts.store'));
         $admin = $this->admin();
         $this->actingAs($admin)->get('/accounts/new')->assertNotFound();
         $this->post('/accounts', ['courier' => 'quadx', 'label' => 'A', 'mode' => 'staging'])->assertStatus(405);

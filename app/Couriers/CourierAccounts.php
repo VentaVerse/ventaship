@@ -9,8 +9,8 @@ use App\Fulfillment\Couriers;
 use App\Models\AuditEntry;
 use App\Models\CourierAccount;
 use App\Support\Settings;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\DB;
@@ -49,7 +49,7 @@ class CourierAccounts
     {
         $label = trim($label);
         if (! CourierRegistry::has($courier)) {
-            throw new CourierAccountException('Unknown courier. Available: ' . implode(', ', CourierRegistry::keys()) . '.');
+            throw new CourierAccountException('Unknown courier. Available: '.implode(', ', CourierRegistry::keys()).'.');
         }
         if ($label === '' || mb_strlen($label) > 255) {
             throw new CourierAccountException('The label must be 1 to 255 characters.');
@@ -91,7 +91,7 @@ class CourierAccounts
         $all = CourierAccount::query()->where('courier', $courier)->orderBy('id')->get();
 
         return $all->firstWhere('is_default', true)
-            ?? $all->firstWhere('status', 'active')
+            ?? $all->first(fn (CourierAccount $a) => $a->isActive())
             ?? $all->first();
     }
 
@@ -103,12 +103,12 @@ class CourierAccounts
     public function setUp(string $courier, string $mode, ?array $actor = null): CourierAccount
     {
         if (! CourierRegistry::has($courier)) {
-            throw new CourierAccountException('Unknown courier. Available: ' . implode(', ', CourierRegistry::keys()) . '.');
+            throw new CourierAccountException('Unknown courier. Available: '.implode(', ', CourierRegistry::keys()).'.');
         }
         if (! in_array($mode, self::MODES[$courier] ?? [], true)) {
-            throw new CourierAccountException("The mode for {$courier} must be one of: " . implode(', ', self::MODES[$courier] ?? []) . '.');
+            throw new CourierAccountException("The mode for {$courier} must be one of: ".implode(', ', self::MODES[$courier] ?? []).'.');
         }
-        $lock = Cache::lock('courier-setup:' . $courier, 10);
+        $lock = Cache::lock('courier-setup:'.$courier, 10);
         try {
             $lock->block(3);
         } catch (LockTimeoutException) {
@@ -117,7 +117,8 @@ class CourierAccounts
 
         try {
             return DB::transaction(function () use ($courier, $mode, $actor) {
-                if (CourierAccount::query()->withTrashed()->where('courier', $courier)->lockForUpdate()->exists()) {
+                // Trashed accounts do not count, as in forCourier().
+                if (CourierAccount::query()->where('courier', $courier)->lockForUpdate()->exists()) {
                     throw new CourierAccountException('This courier already has an account.');
                 }
 
@@ -193,7 +194,7 @@ class CourierAccounts
         }
         $options = array_column($field['options'] ?? [], 'value');
         if ($options !== [] && ! in_array($value, $options, true)) {
-            throw new CourierAccountException('The value must be one of: ' . implode(', ', $options) . '.');
+            throw new CourierAccountException('The value must be one of: '.implode(', ', $options).'.');
         }
 
         DB::transaction(function () use ($account, $key, $value, $field, $actor) {
@@ -226,7 +227,7 @@ class CourierAccounts
             throw new CourierAccountException('No such account.');
         }
         if (! in_array($mode, $modes, true)) {
-            throw new CourierAccountException("The mode for {$account->courier} must be one of: " . implode(', ', $modes) . '.');
+            throw new CourierAccountException("The mode for {$account->courier} must be one of: ".implode(', ', $modes).'.');
         }
 
         return DB::transaction(function () use ($account, $mode, $actor) {
@@ -327,7 +328,7 @@ class CourierAccounts
     public function setAllowLiveBooking(CourierAccount $account, bool $allow, ?array $actor = null): bool
     {
         if (! in_array($account->courier, ['lbc', 'spx'], true)) {
-            throw new CourierAccountException('Live booking is not switched per account for ' . $account->courier . '.');
+            throw new CourierAccountException('Live booking is not switched per account for '.$account->courier.'.');
         }
         if ((bool) $account->allow_live_booking === $allow) {
             return false;
@@ -387,9 +388,9 @@ class CourierAccounts
 
         $first = trim($first);
         $last = trim($last);
-        $digits = '/^[1-9]\d{0,' . (TrackingNumberSeriesService::MAX_DIGITS - 1) . '}$/';
+        $digits = '/^[1-9]\d{0,'.(TrackingNumberSeriesService::MAX_DIGITS - 1).'}$/';
         if (! preg_match($digits, $first) || ! preg_match($digits, $last)) {
-            throw new CourierAccountException('The first and last numbers must be whole numbers of at most ' . TrackingNumberSeriesService::MAX_DIGITS . ' digits.');
+            throw new CourierAccountException('The first and last numbers must be whole numbers of at most '.TrackingNumberSeriesService::MAX_DIGITS.' digits.');
         }
 
         try {

@@ -24,7 +24,7 @@
             <div class="ac-row__badges">
                 @if($account)
                     <x-ui.badge tone="cool">{{ $modeWords[$account->mode] ?? ucfirst($account->mode) }}</x-ui.badge>
-                    @if($account->status === 'inactive')
+                    @if(! $account->isActive())
                         <x-ui.badge>Inactive</x-ui.badge>
                     @endif
                     <x-ui.badge :tone="$check[1]">{{ $check[0] }}</x-ui.badge>

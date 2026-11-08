@@ -12,7 +12,8 @@ class CourierCards
     /** @return array<int, array{courier:string, name:string, account:?CourierAccount, inactive:?CourierAccount, active:int, delivered:int, cod_unpaid:string}> */
     public static function all(): array
     {
-        $accounts = CourierAccount::query()->where('status', 'active')->get()
+        [$accounts, $off] = CourierAccount::query()->orderBy('label')->get()->partition(fn (CourierAccount $a) => $a->isActive());
+        $accounts = $accounts
             ->sortBy(fn (CourierAccount $a) => [array_search($a->courier, array_keys(self::COURIERS), true) ?: 0, $a->label])
             ->values();
 
@@ -44,7 +45,7 @@ class CourierCards
         }
 
         $have = $accounts->pluck('courier')->all();
-        $inactive = CourierAccount::query()->where('status', '<>', 'active')->orderBy('label')->get()->groupBy('courier');
+        $inactive = $off->groupBy('courier');
         foreach (self::COURIERS as $key => $label) {
             if (! in_array($key, $have, true)) {
                 $cards[] = ['courier' => $key, 'name' => $label, 'account' => null, 'inactive' => $inactive[$key][0] ?? null, 'active' => 0, 'delivered' => 0, 'cod_unpaid' => '0.00'];

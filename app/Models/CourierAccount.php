@@ -29,6 +29,12 @@ class CourierAccount extends Model
         });
     }
 
+    /** The one "is this account switched on" predicate; any other status is inactive. */
+    public function isActive(): bool
+    {
+        return $this->status === 'active';
+    }
+
     protected function casts(): array
     {
         return [
