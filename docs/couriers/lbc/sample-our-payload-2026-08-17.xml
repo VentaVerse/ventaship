@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PickupRequestEntity xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <ShipmentMode>1</ShipmentMode>
+    <Origin>MMA</Origin>
+    <TrackingNo>2026081700001</TrackingNo>
+    <TransactionDate>08/17/2026 14:12:16</TransactionDate>
+    <ODZ>false</ODZ>
+    <ShipperAccountNo>2015062300003</ShipperAccountNo>
+    <Shipper>Paolo - New Gear Day</Shipper>
+    <ShipperStBldg>Blk 6 Lot 1, St James St. San Pedro 7, Novaliches</ShipperStBldg>
+    <ShipperBrgy>San Bartolome</ShipperBrgy>
+    <ShipperCityMuncipality>Quezon City</ShipperCityMuncipality>
+    <ShipperProvince>Metro Manila</ShipperProvince>
+    <ShipperContactNumber>09176210807</ShipperContactNumber>
+    <ShipperSendSMS>0</ShipperSendSMS>
+    <ShipperMobileNumber>09176210807</ShipperMobileNumber>
+    <ProductLine>2</ProductLine>
+    <ServiceMode>8</ServiceMode>
+    <CODAmount>0</CODAmount>
+    <PreferredDate>08/18/2026 10:00:00</PreferredDate>
+    <Consignee>Paolo - New Gear Day</Consignee>
+    <ConsigneeStBldg>Blk 6 Lot 1, St James St. San Pedro 7, Novaliches</ConsigneeStBldg>
+    <ConsigneeBrgy>San Bartolome</ConsigneeBrgy>
+    <ConsigneeCityMuncipality>Quezon City</ConsigneeCityMuncipality>
+    <ConsigneeProvince>Metro Manila</ConsigneeProvince>
+    <ConsigneeContactNumber>09176210807</ConsigneeContactNumber>
+    <ConsigneeSendSMS>1</ConsigneeSendSMS>
+    <ConsigneeMobileNumber>09176210807</ConsigneeMobileNumber>
+    <Quantity>1</Quantity>
+    <PKG>16</PKG>
+    <ACTWTkgs>0.5</ACTWTkgs>
+    <LengthCM>20</LengthCM>
+    <WidthCM>15</WidthCM>
+    <HeightCM>10</HeightCM>
+    <VolWTcbm>1</VolWTcbm>
+    <CBM>0</CBM>
+    <ChargeableWT>1</ChargeableWT>
+    <DeclaredValue>100</DeclaredValue>
+    <Description>NGD API INTEGRATION TEST - DO NOT PICK UP</Description>
+    <Commodity>1</Commodity>
+    <ForCrating>0</ForCrating>
+    <AttachmentNameOne>ORDERNO</AttachmentNameOne>
+    <ReferenceNoOne>NGD-TEST-20260817</ReferenceNoOne>
+    <AttachmentNameTwo>MODE</AttachmentNameTwo>
+    <ReferenceNoTwo>REGULAR</ReferenceNoTwo>
+    <AttachmentNameThree>0</AttachmentNameThree>
+    <ReferenceNoThree>0</ReferenceNoThree>
+    <AttachmentNameFour>0</AttachmentNameFour>
+    <ReferenceNoFour>0</ReferenceNoFour>
+    <DestinationCode>MMA</DestinationCode>
+    <Client>NGD</Client>
+</PickupRequestEntity>
