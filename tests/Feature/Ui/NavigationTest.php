@@ -39,8 +39,8 @@ class NavigationTest extends TestCase
 
         $routes = $this->routes();
 
-        $this->assertSame(['fulfillment', 'shipments.create', 'accounts.index', 'settings.edit'], $routes);
-        $this->assertNotContains('apps.index', $routes);
+        $this->assertSame(['fulfillment', 'shipments.create', 'accounts.index', 'apps.index', 'settings.edit'], $routes);
+        $this->assertNotContains('webhooks.index', $routes);
     }
 
     public function test_empty_groups_are_dropped(): void
@@ -50,7 +50,7 @@ class NavigationTest extends TestCase
 
         $labels = $this->labels();
 
-        $this->assertSame([null, 'Setup', null], $labels);
+        $this->assertSame([null, 'Setup', 'Developers', null], $labels);
     }
 
     public function test_group_order_and_labels_follow_the_plan(): void

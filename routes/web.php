@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Ui\CourierAccountsController;
 use App\Http\Controllers\Ui\FulfillmentController;
 use App\Http\Controllers\Ui\PhAddressController;
+use App\Http\Controllers\Ui\PlatformsController;
 use App\Http\Controllers\Ui\SettingsController;
 use App\Http\Controllers\Ui\ShipmentActionsController;
 use App\Http\Controllers\Ui\ShipmentsController;
@@ -37,6 +38,11 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
         Route::post('secrets/{key}/reveal', [CourierAccountsController::class, 'reveal'])
             ->where('key', '[a-z0-9_]+')->middleware('throttle:secret-reveals')->name('accounts.reveal');
     });
+    Route::get('platforms', [PlatformsController::class, 'index'])->name('apps.index');
+    Route::get('platforms/new', [PlatformsController::class, 'create'])->name('apps.create');
+    Route::post('platforms', [PlatformsController::class, 'store'])->name('apps.store');
+    Route::get('platforms/{app:public_id}', [PlatformsController::class, 'show'])->name('apps.show');
+    Route::put('platforms/{app:public_id}', [PlatformsController::class, 'update'])->name('apps.update');
     Route::get('ph/{level}', PhAddressController::class)->where('level', 'provinces|cities|districts|barangays')->name('ph.options');
     Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');
     Route::put('settings', [SettingsController::class, 'update'])->name('settings.update');
