@@ -7,13 +7,13 @@ use Illuminate\Support\Facades\Route;
 class Navigation
 {
     /**
-     * @return array<int, array{label: ?string, items: array<int, array{label: string, route: string, icon: string, badge?: int}>}>
+     * @return array<int, array{label: ?string, items: array<int, array{label: string, route: string, icon: string, badge?: int, match: array<int, string>}>}>
      */
     public static function groups(): array
     {
         $definition = [
             [null, [
-                ['Fulfillment', 'fulfillment', 'truck'],
+                ['Fulfillment', 'fulfillment', 'truck', ['fulfillment*']],
                 ['New shipment', 'shipments.create', 'plus'],
                 ['Import CSV', 'imports.create', 'upload'],
             ]],
@@ -39,11 +39,12 @@ class Navigation
         $groups = [];
 
         foreach ($definition as [$label, $entries]) {
+            $entries = array_map(fn (array $e) => $e + [3 => []], $entries);
             $items = [];
 
-            foreach ($entries as [$text, $route, $icon]) {
+            foreach ($entries as [$text, $route, $icon, $match]) {
                 if (Route::has($route)) {
-                    $items[] = ['label' => $text, 'route' => $route, 'icon' => $icon];
+                    $items[] = ['label' => $text, 'route' => $route, 'icon' => $icon, 'match' => $match];
                 }
             }
 
@@ -56,12 +57,10 @@ class Navigation
     }
 
     /**
-     * @param  array{route: string}  $item
+     * @param  array{route: string, match?: array<int, string>}  $item
      */
     public static function isActive(array $item): bool
     {
-        $prefix = preg_replace('/\.[^.]+$/', '', $item['route']);
-
-        return request()->routeIs($item['route'], $prefix === $item['route'] ? $item['route'] : $prefix.'.*');
+        return request()->routeIs($item['route'], ...($item['match'] ?? []));
     }
 }

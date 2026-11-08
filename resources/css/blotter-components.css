@@ -129,7 +129,7 @@
         margin-left: auto;
         padding: 1px 7px;
         border-radius: var(--bl-r-pill);
-        background: #5B45D6;
+        background: var(--bl-brand-btn);
         color: #fff;
         font-size: 11px;
         font-weight: 600;
