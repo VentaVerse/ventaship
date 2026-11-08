@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Ui;
 
 use App\Api\ApiError;
+use App\Couriers\CourierAccounts;
 use App\Couriers\CourierRegistry;
 use App\Fulfillment\Couriers;
 use App\Http\Controllers\Controller;
@@ -33,6 +34,9 @@ class ShipmentsController extends Controller
     private const DONE_PREFIX = 'shipment-form-done:';
 
     private const LOCK_SECONDS = 120;
+
+    /** The courier tiles, in this order. */
+    private const COURIERS = ['quadx', 'spx', 'lbc'];
 
     public function create(Request $request, Settings $settings): View
     {
@@ -221,7 +225,6 @@ class ShipmentsController extends Controller
     {
         $options = (array) $s->options;
         $recipient = (array) $s->recipient;
-        $pickup = (array) $s->pickup;
 
         return [
             'account_id' => $s->courierAccount?->public_id,
@@ -229,18 +232,13 @@ class ShipmentsController extends Controller
             'client_reference' => $s->client_reference,
             'insure' => (bool) ($options['insure'] ?? false),
             'recipient' => $recipient,
-            'pickup' => $pickup,
             'items' => array_map(fn ($i) => [
                 'name' => (string) ($i['name'] ?? ''),
                 'quantity' => (string) ($i['quantity'] ?? '1'),
                 'price' => (string) ($i['price'] ?? ''),
             ], array_values((array) $s->items)),
             'parcel' => (array) ($options['parcel'] ?? []),
-            'payment' => [
-                'method' => $s->payment_method === 'cod' ? 'cod' : 'prepaid',
-                'cod_amount' => $s->cod_amount,
-                'declared_value' => $s->declared_value,
-            ],
+            'payment' => ['method' => $s->payment_method === 'cod' ? 'cod' : 'prepaid'],
         ];
     }
 
@@ -308,26 +306,38 @@ class ShipmentsController extends Controller
         $this->audit($request, 'shipment.updated', $saved, array_values(array_diff(array_keys($saved->getChanges()), ['updated_at'])));
     }
 
-    /** The add form, or the edit form for $editing: its own account stays listed (marked inactive) even when not active. */
+    /**
+     * The add form, or the edit form for $editing. One tile per courier: its account from forCourier(), bookable when
+     * active. An edit keeps its own account on its courier's tile (marked inactive) even when it is not active.
+     */
     private function form(Request $request, Settings $settings, ?Shipment $editing): View
     {
-        $own = $editing?->courier_account_id;
-        $accounts = CourierAccount::query()
-            ->where(fn ($q) => $q->where('status', 'active')->when($own !== null, fn ($q) => $q->orWhere('id', $own)))
-            ->orderBy('courier')->orderBy('label')->get();
+        $own = $editing?->courierAccount;
+        $tiles = [];
+        $usable = new Collection;
+        foreach (self::COURIERS as $courier) {
+            $account = $own !== null && $own->courier === $courier ? $own : app(CourierAccounts::class)->forCourier($courier);
+            $ok = $account !== null && ($account->status === 'active' || $account->is($own));
+            if ($ok) {
+                $usable->push($account);
+            }
+            $tiles[] = [
+                'courier' => $courier,
+                'name' => Couriers::name($courier),
+                'id' => $ok ? $account->public_id : null,
+                'inactive' => $ok && $account->status !== 'active',
+            ];
+        }
 
         $token = (string) Str::uuid();
-        if ($accounts->isNotEmpty()) {
+        if ($usable->isNotEmpty()) {
             $this->rememberToken($request, $token, null);
         }
 
         return view('shipments.form', [
-            'accounts' => $accounts->map(fn (CourierAccount $a) => [
-                'id' => $a->public_id,
-                'label' => Couriers::name((string) $a->courier).' · '.$a->label.($a->status === 'active' ? '' : ' (inactive)'),
-            ])->all(),
-            'services' => $this->servicesFor($accounts),
-            'sender' => $settings->pickup() ?? [],
+            'tiles' => $tiles,
+            'services' => $this->servicesFor($usable),
+            'sender' => $editing === null ? $settings->pickup() : ((array) $editing->pickup ?: null),
             'token' => $token,
             'editing' => $editing !== null,
             'shipment' => $editing,

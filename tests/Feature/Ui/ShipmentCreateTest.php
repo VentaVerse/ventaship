@@ -77,7 +77,7 @@ class ShipmentCreateTest extends TestCase
         CourierAccount::factory()->create(['courier' => 'spx', 'label' => 'Second', 'status' => 'disabled']);
 
         $this->get('/shipments/new')->assertOk()
-            ->assertSeeText(['Add shipment', 'Courier', 'Customer', 'Items', 'Parcel', 'Payment', 'Sender', 'Order reference', 'QuadX · Main QUADX', 'Add item'])
+            ->assertSeeText(['Add shipment', 'Courier', 'Customer', 'Items', 'Parcel', 'Payment', 'Sender', 'Order reference', 'QuadX', 'Add item', 'Book shipment'])
             ->assertSee('value="Venta Warehouse"', false)
             ->assertSee('value="5 Shaw Blvd"', false)
             ->assertSee('role="radiogroup"', false)
@@ -122,17 +122,17 @@ class ShipmentCreateTest extends TestCase
 
     public function test_cod_amount_required_only_for_cod(): void
     {
-        $this->post('/shipments', $this->form(['payment' => ['method' => 'cod', 'cod_amount' => '']]))
-            ->assertSessionHasErrors('payment.cod_amount');
+        $this->post('/shipments', $this->form(['payment' => ['method' => 'cod'], 'items' => [['price' => '']]]))
+            ->assertSessionHasErrors(['payment.cod_amount' => 'Add item prices.']);
         $this->assertSame(0, Shipment::query()->count());
 
         $this->post('/shipments', $this->form(['payment' => ['method' => 'cod', 'cod_amount' => '1290.00']]))
             ->assertSessionHasNoErrors();
         $s = Shipment::query()->sole();
         $this->assertSame('cod', $s->payment_method);
-        $this->assertSame('1290.00', $s->cod_amount);
+        $this->assertSame('1000.00', $s->cod_amount);
 
-        $this->post('/shipments', $this->form(['payment' => ['method' => 'prepaid', 'cod_amount' => '']]))
+        $this->post('/shipments', $this->form(['payment' => ['method' => 'prepaid'], 'items' => [['price' => '']]]))
             ->assertSessionHasNoErrors();
     }
 

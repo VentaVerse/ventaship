@@ -396,9 +396,8 @@ class ShipmentEditDeleteTest extends TestCase
         $this->account->forceFill(['status' => 'disabled'])->save();
 
         $html = $this->get(route('shipments.edit', $s->public_id))->assertOk()->getContent();
-        $this->assertMatchesRegularExpression('#<option value="'.$this->account->public_id.'"\s+selected[^>]*>QuadX · Main QUADX \(inactive\)</option>#', $html);
-        $this->assertStringContainsString('value="'.$other->public_id.'"', $html);
-        $this->assertDoesNotMatchRegularExpression('#value="'.$other->public_id.'"\s+selected#', $html);
+        $this->assertMatchesRegularExpression('#type="radio" name="account_id" value="'.$this->account->public_id.'"[^>]*checked.*?Inactive#s', $html);
+        $this->assertDoesNotMatchRegularExpression('#value="'.$other->public_id.'"[^>]*checked#', $html);
 
         // Save keeps the account.
         $this->put(route('shipments.update', $s->public_id), $this->form(['client_reference' => 'REF-1', 'recipient' => ['first_name' => 'Pedro']]))

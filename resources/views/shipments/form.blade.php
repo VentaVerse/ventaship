@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('width', 'form')
+@section('width', 'wide')
 @section('title', $editing ? 'Edit shipment' : 'Add shipment')
 
 @section('crumb')
@@ -9,27 +9,22 @@
 
 @section('content')
 @php
+    use App\Http\Requests\Ui\ShipmentFormRequest;
+    use App\Support\Money;
+
     $personFields = [
         'first_name' => ['label' => 'First name', 'required' => true],
         'last_name' => ['label' => 'Last name'],
         'phone' => ['label' => 'Phone', 'type' => 'tel', 'required' => true, 'max' => 32],
         'email' => ['label' => 'Email', 'type' => 'email'],
-        'address_1' => ['label' => 'Address', 'required' => true],
-        'address_2' => ['label' => 'Address line 2'],
-        'barangay' => ['label' => 'Barangay'],
-        'city' => ['label' => 'City', 'required' => true],
-        'state' => ['label' => 'Province', 'required' => true],
-        'postcode' => ['label' => 'Postcode', 'class' => 'st-narrow', 'max' => 16],
+    ];
+    $streetFields = [
+        'address_1' => ['label' => 'Street', 'required' => true, 'class' => 'sh-span'],
+        'address_2' => ['label' => 'Unit / building', 'class' => 'sh-span'],
     ];
     $senderFields = [
         'contact_name' => ['label' => 'Name', 'required' => true],
         'contact_phone' => ['label' => 'Phone', 'type' => 'tel', 'required' => true, 'max' => 32],
-        'address_1' => ['label' => 'Address', 'required' => true],
-        'address_2' => ['label' => 'Address line 2'],
-        'barangay' => ['label' => 'Barangay'],
-        'city' => ['label' => 'City', 'required' => true],
-        'state' => ['label' => 'Province', 'required' => true],
-        'postcode' => ['label' => 'Postcode', 'class' => 'st-narrow', 'max' => 16],
     ];
     $v = fn (string $key, mixed $default = '') => old($key, data_get($prefill, $key, $default));
     $oldItems = $v('items');
@@ -42,59 +37,91 @@
             $itemErrors[$n][$f] = $errors->first("items.{$n}.{$f}");
         }
     }
+    $total = Money::peso(ShipmentFormRequest::itemsTotal($rows));
+    $count = array_sum(array_map(fn ($r) => ctype_digit($r['quantity']) ? (int) $r['quantity'] : 0, $rows));
     $method = $v('payment.method', 'prepaid');
-    $accountId = $v('account_id', $accounts[0]['id'] ?? '');
+    $insure = filter_var($v('insure'), FILTER_VALIDATE_BOOLEAN);
+    $usable = array_values(array_filter($tiles, fn ($t) => $t['id'] !== null));
+    $accountId = $v('account_id', $usable[0]['id'] ?? '');
+    $names = collect($usable)->mapWithKeys(fn ($t) => [$t['id'] => $t['name']])->all();
+    $recipient = (array) old('recipient', $prefill['recipient'] ?? []);
+    $pickup = (array) old('pickup', $sender ?? []);
+    $pickupErrors = collect($errors->keys())->contains(fn ($k) => str_starts_with($k, 'pickup.'));
+    $senderOpen = $sender === null || $pickupErrors;
+    $senderLine = collect([$pickup['address_1'] ?? '', $pickup['address_2'] ?? '', $pickup['barangay'] ?? '', $pickup['district'] ?? '', $pickup['city'] ?? '', $pickup['state'] ?? '', $pickup['postcode'] ?? ''])
+        ->map(fn ($p) => trim((string) $p))->filter()->implode(', ');
+    $sizeOpen = collect(['type', 'length_cm', 'width_cm', 'height_cm'])->contains(fn ($k) => (string) $v('parcel.'.$k) !== '' || $errors->has('parcel.'.$k));
+    $config = [
+        'services' => $services, 'account' => $accountId, 'service' => (string) $v('service'), 'names' => $names,
+        'rows' => $rows, 'errors' => $itemErrors, 'method' => $method, 'insure' => $insure,
+    ];
 @endphp
 
-@if($accounts === [])
+@if($usable === [])
     <section class="x-panel">
         <x-ui.empty title="No courier accounts" />
     </section>
 @else
-<section class="x-panel st-panel">
-    <form method="POST" action="{{ $editing ? route('shipments.update', $shipment->public_id) : route('shipments.store') }}" novalidate>
-        @csrf
-        @if($editing) @method('PUT') @endif
-        <input type="hidden" name="form_token" value="{{ $token }}">
+<form class="sh-form" method="POST" action="{{ $editing ? route('shipments.update', $shipment->public_id) : route('shipments.store') }}" novalidate x-data="shipmentForm(@js($config))">
+    @csrf
+    @if($editing) @method('PUT') @endif
+    <input type="hidden" name="form_token" value="{{ $token }}">
 
-        <div class="st-sec" x-data="serviceSelect(@js(['services' => $services, 'account' => $accountId, 'service' => (string) $v('service')]))">
-            <h2 class="st-h">Courier</h2>
-            <div class="st-row">
-                <x-ui.field label="Account" name="account_id" :required="true">
-                    <x-ui.select wrapClass="st-ctl" id="f-account-id" name="account_id" x-model="account">
-                        @foreach($accounts as $a)
-                            <option value="{{ $a['id'] }}" @selected($accountId === $a['id'])>{{ $a['label'] }}</option>
-                        @endforeach
-                    </x-ui.select>
-                </x-ui.field>
+    <div class="sh-main">
+        <section class="x-panel sh-sec" aria-labelledby="sec-courier">
+            <h2 class="st-h" id="sec-courier">Courier</h2>
+            <div class="sh-couriers" role="radiogroup" aria-labelledby="sec-courier">
+                @foreach($tiles as $t)
+                    <label class="sh-courier{{ $t['id'] === null ? ' is-off' : '' }}" data-courier="{{ $t['courier'] }}">
+                        @if($t['id'] !== null)
+                            <input type="radio" name="account_id" value="{{ $t['id'] }}" class="sh-courier__input" x-model="account" @checked($accountId === $t['id'])>
+                        @else
+                            <input type="radio" name="account_id" class="sh-courier__input" disabled>
+                        @endif
+                        <x-courier-tile :courier="$t['courier']" />
+                        <span class="sh-courier__text">
+                            <span class="sh-courier__name">{{ $t['name'] }}</span>
+                            @if($t['id'] === null)
+                                <span class="sh-courier__note">Not set up</span>
+                            @elseif($t['inactive'])
+                                <span class="sh-courier__note">Inactive</span>
+                            @endif
+                        </span>
+                        <span class="sh-courier__tick" aria-hidden="true"><x-ui.icon name="check" size="14" /></span>
+                    </label>
+                @endforeach
             </div>
-            <div class="st-row" x-show="options.length > 0" @if(($services[$accountId] ?? []) === []) x-cloak @endif>
+            @error('account_id')<div class="fm-error">{{ $message }}</div>@enderror
+            <div class="sh-grid" x-show="serviceOptions.length > 0" @if(($services[$accountId] ?? []) === []) x-cloak @endif>
                 <x-ui.field label="Service" name="service">
-                    <x-ui.select wrapClass="st-ctl" id="f-service" name="service" x-model="service">
+                    <x-ui.select id="f-service" name="service" x-model="service">
                         <option value="">Default</option>
-                        <template x-for="o in options" :key="o.value">
+                        <template x-for="o in serviceOptions" :key="o.value">
                             <option :value="o.value" x-text="o.label" :selected="o.value === service"></option>
                         </template>
                     </x-ui.select>
                 </x-ui.field>
             </div>
-        </div>
+        </section>
 
-        <div class="st-sec">
-            <h2 class="st-h">Customer</h2>
-            @include('shipments._form-fields', ['prefix' => 'recipient', 'fields' => $personFields, 'values' => $prefill['recipient'] ?? []])
-        </div>
+        <section class="x-panel sh-sec" aria-labelledby="sec-customer">
+            <h2 class="st-h" id="sec-customer">Customer</h2>
+            <div class="sh-grid">
+                @include('shipments._form-fields', ['prefix' => 'recipient', 'fields' => $personFields + $streetFields, 'values' => $recipient])
+            </div>
+            <x-ph-address prefix="recipient" :values="$recipient" />
+        </section>
 
-        <div class="st-sec" x-data="itemRows(@js(['rows' => $rows, 'errors' => $itemErrors]))">
-            <h2 class="st-h">Items</h2>
+        <section class="x-panel sh-sec" aria-labelledby="sec-items">
+            <h2 class="st-h" id="sec-items">Items</h2>
             @error('items')<div class="fm-error">{{ $message }}</div>@enderror
             <div class="sh-items">
                 <div class="sh-items__head" aria-hidden="true">
-                    <span>Name</span><span>Qty</span><span>Price</span><span></span>
+                    <span>Name</span><span>Qty</span><span>Unit price</span><span class="sh-num">Line total</span><span></span>
                 </div>
                 <template x-for="(row, n) in rows" :key="row.key">
                     <div class="sh-item">
-                        <div class="fm-field">
+                        <div class="fm-field sh-item__name">
                             <label class="x-sr" :for="'f-items-' + n + '-name'">Item name</label>
                             <input class="x-input" type="text" :id="'f-items-' + n + '-name'" :name="'items[' + n + '][name]'" x-model="row.name" maxlength="255" required autocomplete="off">
                             <div class="fm-error" x-show="row.errors.name" x-text="row.errors.name"></div>
@@ -105,99 +132,129 @@
                             <div class="fm-error" x-show="row.errors.quantity" x-text="row.errors.quantity"></div>
                         </div>
                         <div class="fm-field">
-                            <label class="x-sr" :for="'f-items-' + n + '-price'">Price</label>
+                            <label class="x-sr" :for="'f-items-' + n + '-price'">Unit price</label>
                             <input class="x-input" type="text" inputmode="decimal" :id="'f-items-' + n + '-price'" :name="'items[' + n + '][price]'" x-model="row.price" autocomplete="off">
                             <div class="fm-error" x-show="row.errors.price" x-text="row.errors.price"></div>
                         </div>
+                        <div class="sh-item__line sh-num" x-text="line(row)"></div>
                         <x-ui.button size="sm" class="sh-item__remove" ::disabled="rows.length === 1" @click="remove(n)" aria-label="Remove item">
-                            <x-ui.icon name="trash" size="14" /> Remove
+                            <x-ui.icon name="trash" size="14" />
                         </x-ui.button>
                     </div>
                 </template>
             </div>
-            <x-ui.button size="sm" @click="add()"><x-ui.icon name="plus" size="14" /> Add item</x-ui.button>
-        </div>
+            <div class="sh-items__foot">
+                <x-ui.button size="sm" @click="add()"><x-ui.icon name="plus" size="14" /> Add item</x-ui.button>
+                <div class="sh-total"><span>Total</span> <strong class="sh-num" x-text="total">{{ $total }}</strong></div>
+            </div>
+        </section>
 
-        <div class="st-sec">
-            <h2 class="st-h">Parcel</h2>
-            <div class="st-row">
+        <section class="x-panel sh-sec" aria-labelledby="sec-payment">
+            <h2 class="st-h" id="sec-payment">Payment</h2>
+            <div class="sh-seg" role="radiogroup" aria-labelledby="sec-payment">
+                @foreach(['cod' => 'COD', 'prepaid' => 'Prepaid'] as $value => $label)
+                    <label class="sh-seg__opt">
+                        <input type="radio" class="sh-seg__input" name="payment[method]" value="{{ $value }}" x-model="method" @checked($method === $value)>
+                        <span class="sh-seg__tick" aria-hidden="true"><x-ui.icon name="check" size="14" /></span>
+                        <span>{{ $label }}</span>
+                    </label>
+                @endforeach
+            </div>
+            @error('payment.method')<div class="fm-error">{{ $message }}</div>@enderror
+            <dl class="sh-derived" x-show="method === 'cod'" @if($method !== 'cod') x-cloak @endif>
+                <div class="sh-derived__row">
+                    <dt>Collect on delivery</dt>
+                    <dd class="sh-num" x-text="total">{{ $total }}</dd>
+                </div>
+            </dl>
+            @error('payment.cod_amount')<div class="fm-error">{{ $message }}</div>@enderror
+            <label class="sh-check">
+                <input type="hidden" name="insure" value="0">
+                <input type="checkbox" name="insure" value="1" x-model="insure" @checked($insure)>
+                <span>Insure</span>
+            </label>
+            <dl class="sh-derived" x-show="insure" @if(! $insure) x-cloak @endif>
+                <div class="sh-derived__row">
+                    <dt>Declared value</dt>
+                    <dd class="sh-num" x-text="total">{{ $total }}</dd>
+                </div>
+            </dl>
+            @error('payment.declared_value')<div class="fm-error">{{ $message }}</div>@enderror
+        </section>
+
+        <section class="x-panel sh-sec" aria-labelledby="sec-parcel">
+            <h2 class="st-h" id="sec-parcel">Parcel</h2>
+            <div class="sh-grid">
                 <x-ui.field label="Weight (kg)" name="parcel.weight_kg" :required="true">
-                    <x-ui.input type="text" inputmode="decimal" id="f-parcel-weight-kg" name="parcel[weight_kg]" class="st-ctl st-narrow" value="{{ $v('parcel.weight_kg') }}" required autocomplete="off" />
+                    <x-ui.input type="text" inputmode="decimal" id="f-parcel-weight-kg" name="parcel[weight_kg]" value="{{ $v('parcel.weight_kg') }}" required autocomplete="off" />
                 </x-ui.field>
             </div>
-            <div class="st-row">
-                <x-ui.field label="Type" name="parcel.type">
-                    <x-ui.input id="f-parcel-type" name="parcel[type]" class="st-ctl" value="{{ $v('parcel.type') }}" maxlength="64" autocomplete="off" />
-                </x-ui.field>
-            </div>
-            @foreach(['length_cm' => 'Length (cm)', 'width_cm' => 'Width (cm)', 'height_cm' => 'Height (cm)'] as $key => $label)
-                <div class="st-row">
-                    <x-ui.field :label="$label" :name="'parcel.'.$key">
-                        <x-ui.input type="text" inputmode="decimal" id="f-parcel-{{ str_replace('_', '-', $key) }}" name="parcel[{{ $key }}]" class="st-ctl st-narrow" value="{{ $v('parcel.'.$key) }}" autocomplete="off" />
+            <details class="sh-fold" @if($sizeOpen) open @endif>
+                <summary class="sh-fold__toggle"><x-ui.icon name="chevron-right" size="14" class="sh-fold__chev" /> Size</summary>
+                <div class="sh-grid sh-grid--4">
+                    <x-ui.field label="Type" name="parcel.type">
+                        <x-ui.input id="f-parcel-type" name="parcel[type]" value="{{ $v('parcel.type') }}" maxlength="64" autocomplete="off" />
                     </x-ui.field>
+                    @foreach(['length_cm' => 'Length (cm)', 'width_cm' => 'Width (cm)', 'height_cm' => 'Height (cm)'] as $key => $label)
+                        <x-ui.field :label="$label" :name="'parcel.'.$key">
+                            <x-ui.input type="text" inputmode="decimal" :id="'f-parcel-'.str_replace('_', '-', $key)" name="parcel[{{ $key }}]" value="{{ $v('parcel.'.$key) }}" autocomplete="off" />
+                        </x-ui.field>
+                    @endforeach
                 </div>
-            @endforeach
-        </div>
+            </details>
+        </section>
 
-        <div class="st-sec" x-data="{ method: @js($method) }">
-            <h2 class="st-h">Payment</h2>
-            <div class="st-row">
-                <div class="fm-field">
-                    <span class="fm-label" id="pay-method-label">Method</span>
-                    <div class="sh-radios" role="radiogroup" aria-labelledby="pay-method-label">
-                        @foreach(['prepaid' => 'Prepaid', 'cod' => 'COD'] as $value => $label)
-                            <label class="sh-radio">
-                                <input type="radio" name="payment[method]" value="{{ $value }}" x-model="method" @checked($method === $value)>
-                                <span>{{ $label }}</span>
-                            </label>
-                        @endforeach
+        <section class="x-panel sh-sec" aria-labelledby="sec-sender" x-data="{ open: {{ $senderOpen ? 'true' : 'false' }} }">
+            <h2 class="st-h" id="sec-sender">Sender</h2>
+            @if($sender !== null)
+                <div class="sh-sender__card" x-show="!open" @if($senderOpen) x-cloak @endif>
+                    <x-ui.icon name="map-pin" size="16" class="sh-sender__icon" />
+                    <div class="sh-sender__text">
+                        <div class="sh-sender__name">{{ $pickup['contact_name'] ?? '' }} <span class="sh-sender__phone">{{ $pickup['contact_phone'] ?? '' }}</span></div>
+                        <div class="sh-sender__addr">{{ $senderLine }}</div>
                     </div>
-                    @error('payment.method')<div class="fm-error">{{ $message }}</div>@enderror
+                    <x-ui.button size="sm" @click="open = true">Change</x-ui.button>
                 </div>
-            </div>
-            <div class="st-row" x-show="method === 'cod'" @if($method !== 'cod') x-cloak @endif>
-                <x-ui.field label="COD amount" name="payment.cod_amount" :required="true">
-                    <x-ui.input type="text" inputmode="decimal" id="f-payment-cod-amount" name="payment[cod_amount]" class="st-ctl st-narrow" value="{{ $v('payment.cod_amount') }}" x-bind:required="method === 'cod'" x-bind:disabled="method !== 'cod'" autocomplete="off" />
-                </x-ui.field>
-            </div>
-            <div class="st-row">
-                <x-ui.field label="Declared value" name="payment.declared_value">
-                    <x-ui.input type="text" inputmode="decimal" id="f-payment-declared-value" name="payment[declared_value]" class="st-ctl st-narrow" value="{{ $v('payment.declared_value') }}" autocomplete="off" />
-                </x-ui.field>
-            </div>
-            <div class="st-row">
-                <label class="sh-check">
-                    <input type="hidden" name="insure" value="0">
-                    <input type="checkbox" name="insure" value="1" @checked(filter_var($v('insure'), FILTER_VALIDATE_BOOLEAN))>
-                    <span>Insure</span>
-                </label>
-            </div>
-        </div>
-
-        <div class="st-sec">
-            <h2 class="st-h">Sender</h2>
-            @include('shipments._form-fields', ['prefix' => 'pickup', 'fields' => $senderFields, 'values' => $prefill['pickup'] ?? $sender])
-        </div>
-
-        <div class="st-sec">
-            <h2 class="st-h">Order reference</h2>
-            <div class="st-row">
-                <x-ui.field label="Reference" name="client_reference">
-                    <x-ui.input id="f-client-reference" name="client_reference" class="st-ctl x-mono" value="{{ $v('client_reference') }}" maxlength="64" autocomplete="off" />
-                </x-ui.field>
-            </div>
-        </div>
-
-        <div class="st-bar">
-            <x-ui.button :href="$editing ? route('shipments.show', $shipment->public_id) : route('fulfillment')">Cancel</x-ui.button>
-            @if($editing)
-                <x-ui.button type="submit">Save</x-ui.button>
-                <x-ui.button variant="primary" type="submit" name="book" value="1">Save and book</x-ui.button>
-            @else
-                <x-ui.button variant="primary" type="submit">Book shipment</x-ui.button>
             @endif
+            <div class="sh-sender__fields" x-show="open" @if(! $senderOpen) x-cloak @endif>
+                <div class="sh-grid">
+                    @include('shipments._form-fields', ['prefix' => 'pickup', 'fields' => $senderFields + $streetFields, 'values' => $pickup])
+                </div>
+                <x-ph-address prefix="pickup" :values="$pickup" />
+            </div>
+        </section>
+
+        <section class="x-panel sh-sec" aria-labelledby="sec-reference">
+            <h2 class="st-h" id="sec-reference">Order reference</h2>
+            <div class="sh-grid">
+                <x-ui.field label="Reference" name="client_reference">
+                    <x-ui.input id="f-client-reference" name="client_reference" class="x-mono" value="{{ $v('client_reference') }}" maxlength="64" autocomplete="off" />
+                </x-ui.field>
+            </div>
+        </section>
+    </div>
+
+    <aside class="sh-summary" aria-labelledby="sec-summary">
+        <div class="x-panel sh-summary__box">
+            <h2 class="st-h" id="sec-summary">Summary</h2>
+            <dl class="sh-sum">
+                <div><dt>Courier</dt><dd x-text="courierName">{{ $names[$accountId] ?? '—' }}</dd></div>
+                <div><dt>Items</dt><dd class="sh-num" x-text="count">{{ $count }}</dd></div>
+                <div><dt>Total</dt><dd class="sh-num" x-text="total">{{ $total }}</dd></div>
+                <div><dt>Payment</dt><dd x-text="method === 'cod' ? 'COD · ' + total : 'Prepaid'">{{ $method === 'cod' ? 'COD · '.$total : 'Prepaid' }}</dd></div>
+                <div><dt>Insured</dt><dd x-text="insure ? 'Yes' : 'No'">{{ $insure ? 'Yes' : 'No' }}</dd></div>
+            </dl>
+            <div class="sh-summary__actions">
+                @if($editing)
+                    <x-ui.button type="submit">Save</x-ui.button>
+                    <x-ui.button variant="primary" type="submit" name="book" value="1">Save and book</x-ui.button>
+                @else
+                    <x-ui.button variant="primary" type="submit">Book shipment</x-ui.button>
+                @endif
+                <x-ui.button :href="$editing ? route('shipments.show', $shipment->public_id) : route('fulfillment')">Cancel</x-ui.button>
+            </div>
         </div>
-    </form>
-</section>
+    </aside>
+</form>
 @endif
 @endsection

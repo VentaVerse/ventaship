@@ -243,6 +243,10 @@
         max-width: var(--bl-form-max);
     }
 
+    .x-content--wide {
+        max-width: var(--bl-wide-max);
+    }
+
     .x-page {
         display: flex;
         align-items: center;

@@ -1,6 +1,7 @@
 import './bootstrap';
 import Alpine from 'alpinejs';
 import { phCascade } from './phCascade';
+import { shipmentForm } from './shipmentForm';
 
 Alpine.data('confirmDialog', () => ({
     open: false,
@@ -36,45 +37,7 @@ Alpine.data('confirmDialog', () => ({
     },
 }));
 
-Alpine.data('serviceSelect', (config) => ({
-    account: config.account,
-    service: config.service,
-
-    get options() {
-        return config.services[this.account] ?? [];
-    },
-
-    init() {
-        this.$watch('account', () => {
-            if (!this.options.some((o) => o.value === this.service)) {
-                this.service = '';
-            }
-        });
-    },
-}));
-
-Alpine.data('itemRows', (config) => ({
-    rows: [],
-    seq: 0,
-
-    init() {
-        this.rows = config.rows.map((row, n) => this.make(row, config.errors[n] ?? {}));
-    },
-
-    make(row, errors = {}) {
-        return { key: ++this.seq, name: row.name, quantity: row.quantity, price: row.price, errors };
-    },
-
-    add() {
-        this.rows.push(this.make({ name: '', quantity: '1', price: '' }));
-    },
-
-    remove(n) {
-        if (this.rows.length > 1) {
-            this.rows.splice(n, 1);
-        }
-    },
-}));
+Alpine.data('shipmentForm', (config) => shipmentForm(config));
 
 Alpine.data('phAddress', (config) => phCascade(config));
 

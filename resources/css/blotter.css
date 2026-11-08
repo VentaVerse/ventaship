@@ -77,6 +77,7 @@
     --bl-gutter: 30px;
     --bl-content-max: 1240px;
     --bl-form-max: 880px;
+    --bl-wide-max: 1120px;
 }
 
 [data-theme='dark'] {
