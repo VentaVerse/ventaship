@@ -9,9 +9,9 @@ use App\Models\AuditEntry;
 use App\Models\ClientApp;
 use App\Models\CourierAccount;
 use App\Models\Shipment;
-use App\Shipments\Jobs\BookShipment;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Queue;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -23,6 +23,8 @@ class ShipmentActionsTest extends TestCase
 
     private CourierAccount $account;
 
+    private FakeCourier $courier;
+
     private ClientApp $client;
 
     protected function setUp(): void
@@ -33,7 +35,8 @@ class ShipmentActionsTest extends TestCase
         $this->actingAs($this->admin);
         $this->account = CourierAccount::factory()->create(['courier' => 'quadx', 'status' => 'active']);
         $this->client = ClientApp::factory()->create();
-        CourierRegistry::fake('quadx', FakeCourier::make('quadx')->label($this->pdf('a')));
+        $this->courier = FakeCourier::make('quadx')->label($this->pdf('a'));
+        CourierRegistry::fake('quadx', $this->courier);
     }
 
     protected function tearDown(): void
@@ -66,9 +69,8 @@ class ShipmentActionsTest extends TestCase
         return ['ids' => array_map(fn ($x) => $x->public_id, $s)];
     }
 
-    public function test_book_queues_drafts_and_skips_others(): void
+    public function test_book_books_drafts_synchronously_and_skips_others(): void
     {
-        Queue::fake();
         $a = $this->ship('draft', 'draft');
         $b = $this->ship('draft', 'draft');
         $booked = $this->ship('booked', 'to_handover');
@@ -76,43 +78,65 @@ class ShipmentActionsTest extends TestCase
 
         $this->post('/shipments/book', $this->ids($a, $b, $booked, $cancelled))
             ->assertRedirect()
-            ->assertSessionHas('status', '2 queued for booking · 2 skipped');
+            ->assertSessionHas('status', '2 booked · 2 skipped');
 
-        Queue::assertPushed(BookShipment::class, 2);
-        $this->assertSame('queued', $a->fresh()->state);
+        $this->assertSame('booked', $a->fresh()->state);
+        $this->assertSame('booked', $b->fresh()->state);
+        $this->assertNotNull($a->fresh()->tracking_number);
         $this->assertSame('booked', $booked->fresh()->state);
+        $this->assertSame(0, DB::table('jobs')->count());
     }
 
     public function test_book_reports_account_error_per_row(): void
     {
-        Queue::fake();
         $inactive = CourierAccount::factory()->create(['courier' => 'quadx', 'status' => 'disabled']);
         $bad = $this->ship('draft', 'draft', ['courier_account_id' => $inactive->id, 'courier_ref' => 'VS-BAD']);
         $good = $this->ship('draft', 'draft');
 
-        $res = $this->post('/shipments/book', $this->ids($bad, $good))
-            ->assertSessionHas('status', '1 queued for booking');
+        $this->post('/shipments/book', $this->ids($bad, $good))
+            ->assertSessionHas('status', '1 booked · 1 failed');
 
-        Queue::assertPushed(BookShipment::class, 1);
         $this->assertSame(['VS-BAD: This courier account cannot book shipments.'], session('errors')->getBag('default')->all());
         $this->assertSame('draft', $bad->fresh()->state);
+        $this->assertSame('booked', $good->fresh()->state);
+    }
+
+    public function test_book_reports_refusal_and_unknown_as_failed(): void
+    {
+        $refusing = CourierAccount::factory()->create(['courier' => 'spx', 'status' => 'active']);
+        CourierRegistry::fake('spx', FakeCourier::make('spx')->refusesWith('Barangay not serviceable'));
+        $timing = CourierAccount::factory()->create(['courier' => 'lbc', 'status' => 'active']);
+        CourierRegistry::fake('lbc', FakeCourier::make('lbc')->throws(new ConnectionException('timed out')));
+        $refused = $this->ship('draft', 'draft', ['courier' => 'spx', 'courier_account_id' => $refusing->id, 'courier_ref' => 'VS-R']);
+        $unknown = $this->ship('draft', 'draft', ['courier' => 'lbc', 'courier_account_id' => $timing->id, 'courier_ref' => '']);
+        $good = $this->ship('draft', 'draft');
+
+        $this->post('/shipments/book', $this->ids($refused, $unknown, $good))
+            ->assertRedirect()
+            ->assertSessionHas('status', '1 booked · 2 failed');
+
+        $this->assertSame([
+            'VS-R: Barangay not serviceable',
+            $unknown->public_id.': Booking result unknown',
+        ], session('errors')->getBag('default')->all());
+        $this->assertSame('failed', $refused->fresh()->state);
+        $this->assertSame('unknown', $unknown->fresh()->state);
+        $this->assertTrue($unknown->fresh()->needs_attention);
     }
 
     public function test_unknown_ids_count_as_skipped_and_not_cancellable(): void
     {
-        Queue::fake();
         $draft = $this->ship('draft', 'draft');
 
         $this->post('/shipments/book', ['ids' => [$draft->public_id, 'shp_nope', 'shp_gone']])
-            ->assertSessionHas('status', '1 queued for booking · 2 skipped');
+            ->assertSessionHas('status', '1 booked · 2 skipped');
 
         $this->post('/shipments/cancel', ['ids' => ['shp_nope']])
-            ->assertSessionHas('status', '0 cancelled or cancelling · 1 not cancellable');
+            ->assertSessionHas('status', '0 cancelled · 1 not cancellable');
     }
 
     public function test_cancel_mixed_states_one_failure_does_not_abort_rest(): void
     {
-        Queue::fake();
         $draft = $this->ship('draft', 'draft');
         $booked = $this->ship('booked', 'to_handover');
         $failed = $this->ship('failed', 'failed');
@@ -120,10 +144,24 @@ class ShipmentActionsTest extends TestCase
 
         $this->post('/shipments/cancel', $this->ids($failed, $draft, $booked, $done))
             ->assertRedirect()
-            ->assertSessionHas('status', '3 cancelled or cancelling · 1 not cancellable');
+            ->assertSessionHas('status', '3 cancelled · 1 not cancellable');
 
         $this->assertSame('cancelled', $draft->fresh()->state);
-        $this->assertSame('requested', $booked->fresh()->cancel_state);
+        $this->assertSame('cancelled', $booked->fresh()->state);
+        $this->assertSame('cancelled', $booked->fresh()->cancel_state);
+        $this->assertCount(1, $this->courier->callsTo('cancelShipment'));
+    }
+
+    public function test_cancel_refused_by_courier_is_not_cancellable(): void
+    {
+        $this->courier->cancels(false);
+        $booked = $this->ship('booked', 'to_handover');
+
+        $this->post('/shipments/cancel', $this->ids($booked))
+            ->assertSessionHas('status', '0 cancelled · 1 not cancellable');
+
+        $this->assertSame('booked', $booked->fresh()->state);
+        $this->assertSame('refused', $booked->fresh()->cancel_state);
     }
 
     public function test_labels_single_pdf(): void
@@ -165,12 +203,11 @@ class ShipmentActionsTest extends TestCase
 
     public function test_cancel_does_not_re_audit_unchanged_rows(): void
     {
-        Queue::fake();
         $done = $this->ship('cancelled', 'cancelled', ['cancel_state' => 'cancelled']);
         $draft = $this->ship('draft', 'draft');
 
         $this->post('/shipments/cancel', $this->ids($done, $draft))
-            ->assertSessionHas('status', '2 cancelled or cancelling · 0 not cancellable');
+            ->assertSessionHas('status', '2 cancelled');
 
         $this->assertSame([$draft->public_id], AuditEntry::query()->where('action', 'shipment.cancel_requested')->pluck('subject_id')->all());
     }
@@ -195,7 +232,6 @@ class ShipmentActionsTest extends TestCase
 
     public function test_actions_are_audited_with_admin_actor(): void
     {
-        Queue::fake();
         $d = $this->ship('draft', 'draft');
         $c = $this->ship('draft', 'draft');
 

@@ -77,10 +77,10 @@ class DisplayPhaseFlowTest extends TestCase
         $this->assertStringContainsString('form="book-'.$draft->public_id.'"', $row);
         $this->assertStringContainsString('id="book-'.$draft->public_id.'"', $html);
 
+        Queue::fake()->except(BookShipment::class); // the dashboard books in the request
         $this->post('/shipments/book', ['ids' => [$draft->public_id]])
-            ->assertRedirect()->assertSessionHas('status', '1 queued for booking');
-        $this->assertSame('queued', $draft->refresh()->state);
-        Queue::assertPushed(BookShipment::class);
+            ->assertRedirect()->assertSessionHas('status', '1 booked');
+        $this->assertSame('booked', $draft->refresh()->state);
     }
 
     public function test_queued_and_booking_rows_are_active_and_read_booking(): void
@@ -101,7 +101,7 @@ class DisplayPhaseFlowTest extends TestCase
             $this->assertStringNotContainsString('form="book-', $row);
         }
 
-        $this->post('/shipments/book', ['ids' => [$queued->public_id]])->assertSessionHas('status', '0 queued for booking · 1 skipped');
+        $this->post('/shipments/book', ['ids' => [$queued->public_id]])->assertSessionHas('status', '0 booked · 1 skipped');
     }
 
     public function test_failed_booking_is_active_and_reads_booking_failed(): void

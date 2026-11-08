@@ -19,7 +19,7 @@ class ShipmentActionsController extends Controller
     public function book(Request $request, ShipmentCreator $creator): RedirectResponse
     {
         [$shipments, $unknown] = $this->requested($request);
-        $queued = 0;
+        $booked = 0;
         $skipped = $unknown;
         $errors = [];
 
@@ -29,18 +29,33 @@ class ShipmentActionsController extends Controller
 
                 continue;
             }
+            $name = $s->courier_ref ?: $s->public_id;
             try {
-                $creator->submit($s);
+                $row = $creator->submit($s, now: true);
             } catch (ApiError $e) {
-                $errors[] = ($s->courier_ref ?: $s->public_id).': '.$e->getMessage();
+                if ($e->errorCode === 'not_draft') {
+                    $skipped++;
+                } else {
+                    $errors[] = "{$name}: {$e->getMessage()}";
+                }
 
                 continue;
             }
-            $queued++;
             $this->audit($request, 'shipment.book_requested', $s);
+
+            // `booking` is SPX accepting the parcel while it assigns the tracking number.
+            match ($row->state) {
+                'booked', 'booking' => $booked++,
+                'failed' => $errors[] = "{$name}: ".($row->error_message ?: 'The courier refused the booking.'),
+                'unknown' => $errors[] = "{$name}: Booking result unknown",
+                default => $errors[] = "{$name}: Booking did not start",
+            };
         }
 
-        $status = "{$queued} queued for booking".($skipped > 0 ? " · {$skipped} skipped" : '');
+        $failed = count($errors);
+        $status = "{$booked} booked"
+            .($failed > 0 ? " · {$failed} failed" : '')
+            .($skipped > 0 ? " · {$skipped} skipped" : '');
 
         return back()->with('status', $status)->withErrors($errors);
     }
@@ -54,23 +69,19 @@ class ShipmentActionsController extends Controller
         foreach ($shipments as $s) {
             $before = $s->cancel_state;
             try {
-                $row = $canceller->request($s);
+                $row = $canceller->request($s, now: true);
             } catch (ApiError) {
                 $refused++;
 
                 continue;
             }
-            if (in_array($row->cancel_state, ['requested', 'cancelled'], true)) {
-                $done++;
-                if ($row->cancel_state !== $before || $row->state !== $s->state) {
-                    $this->audit($request, 'shipment.cancel_requested', $s);
-                }
-            } else {
-                $refused++;
+            if ($row->cancel_state !== $before || $row->state !== $s->state) {
+                $this->audit($request, 'shipment.cancel_requested', $s);
             }
+            $row->cancel_state === 'cancelled' ? $done++ : $refused++;
         }
 
-        return back()->with('status', "{$done} cancelled or cancelling · {$refused} not cancellable");
+        return back()->with('status', "{$done} cancelled".($refused > 0 ? " · {$refused} not cancellable" : ''));
     }
 
     public function labels(Request $request, LabelBundle $bundles): Response|RedirectResponse

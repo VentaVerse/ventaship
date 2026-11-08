@@ -14,6 +14,7 @@ use Illuminate\Database\DeadlockException;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -41,7 +42,7 @@ final class ShipmentCreator
      *
      * @throws ApiError 422 account_not_found / account_misconfigured, 409 active_shipment_exists
      */
-    public function create(?ClientApp $app, array $data, string $source = 'api'): Shipment
+    public function create(?ClientApp $app, array $data, string $source = 'api', bool $now = false): Shipment
     {
         $account = AccountResolver::resolve($data['account_id'] ?? null, $data['courier'] ?? null);
         AccountResolver::assertBookable($account);
@@ -60,6 +61,10 @@ final class ShipmentCreator
 
         $shipment = $this->storeHoldingReference($app, $attributes);
 
+        if ($state === 'queued' && $now) {
+            return $this->bookNow($shipment->id);
+        }
+
         if ($state === 'queued') {
             BookShipment::dispatch($shipment->id)->afterCommit();
         }
@@ -69,10 +74,12 @@ final class ShipmentCreator
 
     /**
      * Moves a draft to queued and books it. Anything but a draft is refused: submitting twice must not book twice.
+     * With $now (dashboard requests: no queue worker runs) the booking runs in this request and the shipment comes
+     * back with its outcome: booked, failed, or unknown with attention.
      *
      * @throws ApiError 409 not_draft, 422 account_misconfigured
      */
-    public function submit(Shipment $draft): Shipment
+    public function submit(Shipment $draft, bool $now = false): Shipment
     {
         $shipment = DB::transaction(function () use ($draft) {
             $s = Shipment::query()->whereKey($draft->getKey())->lockForUpdate()->firstOrFail();
@@ -88,9 +95,33 @@ final class ShipmentCreator
             return $s;
         });
 
+        if ($now) {
+            return $this->bookNow($shipment->id);
+        }
+
         BookShipment::dispatch($shipment->id)->afterCommit();
 
         return $shipment;
+    }
+
+    /**
+     * Runs BookShipment in this request, so its lock and state guards are the only double-booking protection. The
+     * sync queue calls the job's failed() before rethrowing, exactly as a worker would, so an exception that escapes
+     * the job has already ended in `unknown` (or left a never-started booking `queued`); it is logged here and never
+     * reaches the caller.
+     */
+    private function bookNow(int $shipmentId): Shipment
+    {
+        // Runs at once outside a transaction; inside a caller's, only after it commits (the row is then still queued).
+        DB::afterCommit(function () use ($shipmentId) {
+            try {
+                BookShipment::dispatchSync($shipmentId);
+            } catch (Throwable $e) {
+                Log::error('Synchronous booking threw', ['shipment_id' => $shipmentId, 'exception' => $e::class]);
+            }
+        });
+
+        return Shipment::query()->with('courierAccount')->findOrFail($shipmentId);
     }
 
     /**
