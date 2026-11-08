@@ -12,7 +12,7 @@
             <span class="fl-card__logo">{{ Couriers::code($card['courier']) }}</span>
             <div class="fl-card__title">
                 <h2 class="fl-card__name">{{ Couriers::name($card['courier']) }}</h2>
-                <div class="fl-card__sub">{{ $card['name'] }} · {{ $modeWord }}</div>
+                <div class="fl-card__sub"><span class="fl-card__label">{{ $card['name'] }}</span><span class="fl-card__mode">· {{ $modeWord }}</span></div>
             </div>
             <x-ui.badge :tone="$check[1]" class="fl-card__badge">{{ $check[0] }}</x-ui.badge>
         </header>
