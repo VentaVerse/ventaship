@@ -72,7 +72,7 @@ class PlatformKeysTest extends TestCase
 
         $this->post(route('apps.keys.store', $app), ['key_name' => 'X'])->assertRedirect(route('login'));
         $this->post(route('apps.keys.revoke', [$app, $key->id]))->assertRedirect(route('login'));
-        $this->post(route('apps.reveal', [$app, 'key:'.$key->key_prefix]))->assertRedirect(route('login'));
+        $this->post(route('apps.reveal', [$app, 'key:'.$key->id]))->assertRedirect(route('login'));
         $this->post(route('apps.reveal', [$app, 'webhook']))->assertRedirect(route('login'));
         $this->post(route('apps.webhook.regenerate', $app))->assertRedirect(route('login'));
         $this->post(route('apps.ping', $app))->assertRedirect(route('login'));
@@ -87,13 +87,13 @@ class PlatformKeysTest extends TestCase
 
         $sessionAfterIssue = serialize(session()->all());
         $key = ApiKey::query()->sole();
-        $res->assertRedirect(route('apps.show', $app).'#keys')->assertSessionHas('issued_key', $key->key_prefix);
+        $res->assertRedirect(route('apps.show', $app).'#keys')->assertSessionHas('issued_key', $key->id);
         $this->assertSame('Storefront', $key->name);
 
-        $first = $this->reveal($app, 'key:'.$key->key_prefix)->assertOk();
+        $first = $this->reveal($app, 'key:'.$key->id)->assertOk();
         $this->assertStringContainsString('no-store', (string) $first->headers->get('Cache-Control'));
         $plainKey = $first->json('value');
-        $secret = $this->reveal($app, 'secret:'.$key->key_prefix)->assertOk()->json('value');
+        $secret = $this->reveal($app, 'secret:'.$key->id)->assertOk()->json('value');
         $this->assertStringStartsWith($key->key_prefix, $plainKey);
 
         // The session from the issue request holds no plaintext.
@@ -103,11 +103,11 @@ class PlatformKeysTest extends TestCase
         }
 
         // The redirected page asks for the reveal; its HTML has neither value.
-        $html = $this->withSession(['issued_key' => $key->key_prefix])->get(route('apps.show', $app))->assertOk()->getContent();
+        $html = $this->withSession(['issued_key' => $key->id])->get(route('apps.show', $app))->assertOk()->getContent();
         $this->assertStringNotContainsString($plainKey, $html);
         $this->assertStringNotContainsString($secret, $html);
         $this->assertStringContainsString('\u0022autoView\u0022:true', $html);
-        $this->assertStringContainsString($this->inJs(route('apps.reveal', [$app, 'key:'.$key->key_prefix])), $html);
+        $this->assertStringContainsString($this->inJs(route('apps.reveal', [$app, 'key:'.$key->id])), $html);
 
         $this->signedGet('/api/v1/ping', $plainKey, $secret)->assertOk();
         $this->assertSame(2, AuditEntry::query()->where('action', 'api_key.viewed')->count());
@@ -145,6 +145,8 @@ class PlatformKeysTest extends TestCase
             $this->assertStringNotContainsString($plain, $html);
         }
         $this->assertStringContainsString('Revoke key '.$issued['key']->key_prefix.'?', html_entity_decode($html));
+        $this->assertStringContainsString('data-label="Created"', $html);
+        $this->assertStringContainsString('data-label="Last used"', $html);
         $this->assertStringNotContainsString('Revoke key '.$gone['key']->key_prefix.'?', html_entity_decode($html));
         $this->assertStringNotContainsString('autoView\u0022:true', $html);
     }
@@ -159,9 +161,12 @@ class PlatformKeysTest extends TestCase
             ->assertDontSee('Signing secret')
             ->getContent();
         $this->assertStringContainsString('Revoke key '.$old->key_prefix.'?', html_entity_decode($html));
-        $this->assertStringNotContainsString($this->inJs(route('apps.reveal', [$app, 'key:'.$old->key_prefix])), $html);
+        $this->assertStringNotContainsString($this->inJs(route('apps.reveal', [$app, 'key:'.$old->id])), $html);
 
-        $this->reveal($app, 'key:'.$old->key_prefix)->assertStatus(422)->assertJson(['message' => 'Issued before keys were viewable.']);
+        $this->reveal($app, 'key:'.$old->id)->assertStatus(422)->assertJson(['message' => 'Issued before keys were viewable.']);
+        $res = $this->reveal($app, 'secret:'.$old->id)->assertStatus(422)->assertJson(['message' => 'Issued before keys were viewable.']);
+        $this->assertArrayNotHasKey('value', $res->json());
+        $this->assertSame(0, AuditEntry::query()->where('action', 'api_key.viewed')->count());
     }
 
     public function test_revoke_then_reveal_is_refused(): void
@@ -174,9 +179,9 @@ class PlatformKeysTest extends TestCase
             ->assertRedirect(route('apps.show', $app).'#keys')->assertSessionHas('status', 'Revoked');
         $this->assertNotNull($key->fresh()->revoked_at);
 
-        $res = $this->reveal($app, 'key:'.$key->key_prefix)->assertStatus(422);
+        $res = $this->reveal($app, 'key:'.$key->id)->assertStatus(422);
         $this->assertArrayNotHasKey('value', $res->json());
-        $this->reveal($app, 'secret:'.$key->key_prefix)->assertStatus(422);
+        $this->reveal($app, 'secret:'.$key->id)->assertStatus(422);
         $this->signedGet('/api/v1/ping', $issued['plaintext_key'], $issued['secret'])->assertUnauthorized();
 
         $this->actingAs($this->admin())->post(route('apps.keys.revoke', [$app, $key->id]))->assertSessionHasErrors('keys');
@@ -188,12 +193,43 @@ class PlatformKeysTest extends TestCase
         $other = ClientApp::factory()->create();
         $theirs = app(PlatformApps::class)->issueKey($other, 'Theirs')['key'];
 
-        $this->reveal($app, 'key:'.$theirs->key_prefix)->assertNotFound();
-        $this->reveal($app, 'secret:'.$theirs->key_prefix)->assertNotFound();
-        $this->reveal($app, 'key:nothing1')->assertNotFound();
+        $this->reveal($app, 'key:'.$theirs->id)->assertNotFound();
+        $this->reveal($app, 'secret:'.$theirs->id)->assertNotFound();
+        $this->reveal($app, 'key:999999')->assertNotFound();
+        $this->actingAs($this->admin())->post('/platforms/'.$app->public_id.'/reveal/key:'.$theirs->key_prefix)->assertNotFound();
         $this->actingAs($this->admin())->post(route('apps.keys.revoke', [$app, $theirs->id]))->assertNotFound();
         $this->assertNull($theirs->fresh()->revoked_at);
         $this->assertSame(0, AuditEntry::query()->where('action', 'api_key.viewed')->count());
+    }
+
+    public function test_keys_sharing_a_prefix_each_reveal_their_own(): void
+    {
+        $app = ClientApp::factory()->create();
+        $a = app(PlatformApps::class)->issueKey($app, 'A');
+        $b = app(PlatformApps::class)->issueKey($app, 'B');
+        DB::table('api_keys')->where('id', $b['key']->id)->update(['key_prefix' => $a['key']->key_prefix]);
+
+        $this->assertSame($a['plaintext_key'], $this->reveal($app, 'key:'.$a['key']->id)->assertOk()->json('value'));
+        $this->assertSame($a['secret'], $this->reveal($app, 'secret:'.$a['key']->id)->assertOk()->json('value'));
+        $this->assertSame($b['plaintext_key'], $this->reveal($app, 'key:'.$b['key']->id)->assertOk()->json('value'));
+        $this->assertSame($b['secret'], $this->reveal($app, 'secret:'.$b['key']->id)->assertOk()->json('value'));
+
+        $html = $this->actingAs($this->admin())->get(route('apps.show', $app))->getContent();
+        $this->assertStringContainsString($this->inJs(route('apps.reveal', [$app, 'key:'.$a['key']->id])), $html);
+        $this->assertStringContainsString($this->inJs(route('apps.reveal', [$app, 'key:'.$b['key']->id])), $html);
+    }
+
+    public function test_unset_webhook_secret_can_be_regenerated(): void
+    {
+        $app = ClientApp::factory()->create();
+        DB::table('client_apps')->where('id', $app->id)->update(['webhook_secret' => null]);
+
+        $html = $this->actingAs($this->admin())->get(route('apps.show', $app))->assertOk()->assertSee('Not set')->getContent();
+        $this->assertStringContainsString('Regenerate the webhook secret?', html_entity_decode($html));
+        $this->assertStringContainsString('id="regenerate-webhook"', $html);
+
+        $this->actingAs($this->admin())->post(route('apps.webhook.regenerate', $app))->assertSessionHas('status', 'Regenerated');
+        $this->reveal($app, 'webhook')->assertOk();
     }
 
     public function test_unknown_what_is_not_found(): void

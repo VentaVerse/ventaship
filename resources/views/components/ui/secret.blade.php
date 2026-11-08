@@ -16,7 +16,10 @@
 
 <x-ui.field :label="$label" :for="$id">
     @if($masked === null)
-        <div><x-ui.badge tone="attn">Not set</x-ui.badge></div>
+        <div class="ac-cred">
+            <x-ui.badge tone="attn">Not set</x-ui.badge>
+            @if($slot->isNotEmpty())<span class="ac-cred__acts">{{ $slot }}</span>@endif
+        </div>
     @else
         <div class="ac-cred" x-data="credentialField(@js($config))">
             <input type="text" id="{{ $id }}" class="x-input ac-cred__input" value="{{ $mask }}" readonly

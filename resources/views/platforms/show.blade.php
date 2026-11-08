@@ -66,8 +66,8 @@
                             <tr>
                                 <td class="pf-key__name">{{ $k->name }}</td>
                                 <td class="pf-key__mono">{{ $k->key_prefix }}</td>
-                                <td>{{ $k->created_at?->format('j M Y') }}</td>
-                                <td>{{ $k->last_used_at ? $k->last_used_at->diffForHumans() : 'Never' }}</td>
+                                <td data-label="Created">{{ $k->created_at?->format('j M Y') }}</td>
+                                <td data-label="Last used">{{ $k->last_used_at ? $k->last_used_at->diffForHumans() : 'Never' }}</td>
                                 <td>
                                     <x-ui.badge :tone="$row['active'] ? 'good' : 'mute'">{{ $row['active'] ? 'Active' : 'Revoked' }}</x-ui.badge>
                                 </td>
@@ -83,12 +83,12 @@
                                         @if($row['viewable'])
                                             <div class="st-row">
                                                 <x-ui.secret label="API key" :context="$k->key_prefix" :masked="$row['masked_key']"
-                                                    :revealUrl="route('apps.reveal', [$app, 'key:' . $k->key_prefix])"
+                                                    :revealUrl="route('apps.reveal', [$app, 'key:' . $k->id])"
                                                     :id="'f-key-' . $k->id" :autoView="$row['auto']" />
                                             </div>
                                             <div class="st-row">
                                                 <x-ui.secret label="Signing secret" :context="$k->key_prefix" :masked="$row['masked_secret']"
-                                                    :revealUrl="route('apps.reveal', [$app, 'secret:' . $k->key_prefix])"
+                                                    :revealUrl="route('apps.reveal', [$app, 'secret:' . $k->id])"
                                                     :id="'f-secret-' . $k->id" :autoView="$row['auto']" />
                                             </div>
                                         @else

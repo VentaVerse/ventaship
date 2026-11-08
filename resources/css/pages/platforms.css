@@ -158,5 +158,10 @@
         .pf-key__act {
             margin-left: auto;
         }
+
+        .pf-key td[data-label]::before {
+            content: attr(data-label) " ";
+            color: var(--bl-ink-3);
+        }
     }
 }

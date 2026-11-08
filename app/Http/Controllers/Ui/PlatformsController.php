@@ -7,6 +7,7 @@ use App\Models\ApiKey;
 use App\Models\ApiRequest;
 use App\Models\ClientApp;
 use App\Models\OutgoingEvent;
+use App\Platforms\KeyNotViewableException;
 use App\Platforms\PlatformAppException;
 use App\Platforms\PlatformApps;
 use Illuminate\Http\JsonResponse;
@@ -65,7 +66,7 @@ class PlatformsController extends Controller
     public function show(Request $request, ClientApp $app, PlatformApps $platforms): View
     {
         $keys = ApiKey::query()->where('client_app_id', $app->id)->orderBy('id')->get();
-        // Set by issueKey for one request: the new key's prefix only. The page then reveals it through apps.reveal.
+        // Set by issueKey for one request: the new key's id only. The page then reveals it through apps.reveal.
         $issued = $request->session()->get('issued_key');
 
         return view('platforms.show', [
@@ -76,7 +77,7 @@ class PlatformsController extends Controller
                 'viewable' => $key->getRawOriginal('key_encrypted') !== null,
                 'masked_key' => $key->revoked_at === null ? $this->maskedOf($key, 'key_encrypted', $platforms) : null,
                 'masked_secret' => $key->revoked_at === null ? $this->maskedOf($key, 'signing_secret', $platforms) : null,
-                'auto' => $issued !== null && $key->revoked_at === null && hash_equals((string) $key->key_prefix, (string) $issued),
+                'auto' => $issued !== null && $key->revoked_at === null && (int) $issued === (int) $key->id,
             ]),
             'nextKeyName' => 'Key '.($keys->count() + 1),
             'webhookSecret' => $this->maskedOf($app, 'webhook_secret', $platforms),
@@ -93,9 +94,9 @@ class PlatformsController extends Controller
             return back()->withInput()->withErrors(['key_name' => $e->getMessage()]);
         }
 
-        // The prefix only: the plaintext never goes into the session.
+        // The key's id only: the plaintext never goes into the session.
         return redirect(route('apps.show', $app).'#keys')
-            ->with('status', 'Issued')->with('issued_key', $issued['key']->key_prefix);
+            ->with('status', 'Issued')->with('issued_key', $issued['key']->id);
     }
 
     public function revokeKey(Request $request, ClientApp $app, int $key, PlatformApps $platforms): RedirectResponse
@@ -108,7 +109,10 @@ class PlatformsController extends Controller
             : $back->withErrors(['keys' => 'This key is already revoked.']);
     }
 
-    /** `key:{prefix}`, `secret:{prefix}` (a key of this app only) or `webhook`. Throttled, audited, never cached. */
+    /**
+     * `key:{id}`, `secret:{id}` (a key of this app only) or `webhook`. Throttled, audited, never cached. Keys are
+     * addressed by id: prefixes are short and may repeat within an app.
+     */
     public function reveal(Request $request, ClientApp $app, string $what, PlatformApps $platforms): JsonResponse
     {
         $actor = $this->actor($request);
@@ -117,11 +121,13 @@ class PlatformsController extends Controller
             if ($what === 'webhook') {
                 $value = $platforms->revealWebhookSecret($app, $actor);
             } else {
-                [$part, $prefix] = explode(':', $what, 2);
-                // Prefixes are short: on the rare clash within one app, the newest active key wins.
-                $key = ApiKey::query()->where('client_app_id', $app->id)->where('key_prefix', $prefix)
-                    ->orderByRaw('revoked_at IS NULL DESC')->orderByDesc('id')->first();
+                [$part, $id] = explode(':', $what, 2);
+                $key = ApiKey::query()->where('client_app_id', $app->id)->whereKey((int) $id)->first();
                 abort_if($key === null, 404);
+                // A key issued before keys were viewable offers neither part on screen, so neither is served.
+                if ($key->getRawOriginal('key_encrypted') === null) {
+                    throw new KeyNotViewableException('Issued before keys were viewable.');
+                }
                 $value = $platforms->revealKey($key, $part, $actor);
             }
         } catch (PlatformAppException $e) {
