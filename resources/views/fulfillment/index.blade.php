@@ -63,8 +63,18 @@
         </x-ui.select>
     </form>
 
-    <form id="bulk" method="POST">
+    <form id="bulk" method="POST" x-data="bulkSelect" @change="sync()">
         @csrf
+        @if(Route::has('shipments.labels'))
+            <div class="fl-bulk" x-show="count > 0" x-cloak>
+                <span><span class="x-num" x-text="count"></span> selected</span>
+                <span class="fl-bulk__sp"></span>
+                <x-ui.button size="sm" type="submit" formaction="{{ route('shipments.labels') }}">Print waybills</x-ui.button>
+                <x-ui.button size="sm" type="submit" formaction="{{ route('shipments.book') }}">Book</x-ui.button>
+                <x-ui.button size="sm" @click="$dispatch('confirm', { title: 'Cancel ' + count + ' ' + (count === 1 ? 'shipment' : 'shipments') + '?', confirm: 'Cancel shipments', form: 'bulk', submitter: 'bulk-cancel' })">Cancel</x-ui.button>
+                <button type="submit" id="bulk-cancel" formaction="{{ route('shipments.cancel') }}" hidden></button>
+            </div>
+        @endif
         @forelse($shipments as $shipment)
             @include('fulfillment._row', ['shipment' => $shipment])
         @empty

@@ -2,12 +2,11 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Api\ApiError;
 use App\Api\ClientContext;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\PrintLabelsRequest;
 use App\Models\Shipment;
-use App\Shipments\LabelMerger;
+use App\Shipments\LabelBundle;
 use App\Shipments\LabelStore;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
@@ -34,7 +33,7 @@ class LabelsController extends Controller
      * POST /labels: one PDF (or a ZIP when merging is not possible) of the caller's printable shipments. Ids that are
      * unknown, foreign, not booked or unfetchable are skipped, never errors: `Ventaship-Skipped` lists them.
      */
-    public function store(PrintLabelsRequest $request, LabelMerger $merger): Response
+    public function store(PrintLabelsRequest $request, LabelBundle $bundles): Response
     {
         $requested = $request->ids();
         $found = Shipment::query()
@@ -44,49 +43,18 @@ class LabelsController extends Controller
             ->get()
             ->keyBy('public_id');
 
-        $paths = [];
-        $courierFailed = false;
-        $retryable = false;
-        foreach ($requested as $id) {
-            if (($s = $found->get($id)) === null) {
-                continue;
-            }
-            try {
-                $paths[$id] = Storage::disk('local')->path($this->labels->get($s)->path);
-            } catch (ApiError $e) {
-                if ($e->status === 502) {
-                    $courierFailed = true;
-                    $retryable = $retryable || $e->retryable;
-                }
-            }
-        }
+        $bundle = $bundles->build(collect($requested)->map(fn ($id) => $found->get($id))->filter()->values());
 
-        if ($paths === []) {
-            throw $courierFailed
-                ? new ApiError(502, 'courier_unavailable', 'The labels could not be fetched from the courier.', $retryable)
-                : new ApiError(409, 'label_not_ready', 'None of these shipments has a waybill to print.');
-        }
-
+        $printed = array_diff($found->keys()->all(), $bundle['skipped']);
         $headers = [];
-        if (($skipped = array_values(array_diff($requested, array_keys($paths)))) !== []) {
+        if (($skipped = array_values(array_diff($requested, $printed))) !== []) {
             $headers['Ventaship-Skipped'] = implode(',', $skipped);
         }
 
-        if (count($paths) === 1) {
-            return $this->download((string) file_get_contents(reset($paths)), 'application/pdf', 'labels.pdf', $headers);
-        }
-
-        $merged = $merger->merge($paths);
-        try {
-            $bytes = (string) file_get_contents($merged['path']);
-        } finally {
-            @unlink($merged['path']);
-        }
-
         return $this->download(
-            $bytes,
-            $merged['type'] === 'pdf' ? 'application/pdf' : 'application/zip',
-            'labels.'.$merged['type'],
+            $bundle['bytes'],
+            $bundle['type'] === 'pdf' ? 'application/pdf' : 'application/zip',
+            'labels.'.$bundle['type'],
             $headers,
         );
     }

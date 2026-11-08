@@ -6,11 +6,13 @@ Alpine.data('confirmDialog', () => ({
     title: '',
     confirm: 'Confirm',
     form: null,
+    submitter: null,
 
     show(detail) {
         this.title = detail.title ?? '';
         this.confirm = detail.confirm ?? 'Confirm';
         this.form = detail.form ?? null;
+        this.submitter = detail.submitter ?? null;
         this.open = true;
         this.$nextTick(() => this.$refs.dialog.focus());
     },
@@ -18,14 +20,24 @@ Alpine.data('confirmDialog', () => ({
     close() {
         this.open = false;
         this.form = null;
+        this.submitter = null;
     },
 
     submit() {
         const form = this.form ? document.getElementById(this.form) : null;
+        const submitter = this.submitter ? document.getElementById(this.submitter) : null;
         this.close();
         if (form) {
-            form.requestSubmit();
+            form.requestSubmit(submitter ?? undefined);
         }
+    },
+}));
+
+Alpine.data('bulkSelect', () => ({
+    count: 0,
+
+    sync() {
+        this.count = this.$root.querySelectorAll('input[name="ids[]"]:checked').length;
     },
 }));
 
