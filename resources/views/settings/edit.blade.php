@@ -42,7 +42,7 @@
                 </div>
                 <div class="st-row">
                     <x-ui.field label="Phone" name="pickup_contact_phone">
-                        <x-ui.input type="tel" id="f-pickup-contact-phone" name="pickup_contact_phone" class="st-ctl" value="{{ old('pickup_contact_phone', $sender['pickup_contact_phone'] ?? '') }}" maxlength="255" autocomplete="off" />
+                        <x-ui.input type="tel" id="f-pickup-contact-phone" name="pickup_contact_phone" class="st-ctl" value="{{ old('pickup_contact_phone', $sender['pickup_contact_phone'] ?? '') }}" maxlength="32" autocomplete="off" />
                     </x-ui.field>
                 </div>
                 <div class="st-row">

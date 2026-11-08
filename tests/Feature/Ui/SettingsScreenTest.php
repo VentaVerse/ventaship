@@ -304,4 +304,23 @@ class SettingsScreenTest extends TestCase
             'postcode' => '1200', 'country' => 'PH',
         ], app(Settings::class)->pickup());
     }
+
+    public function test_empty_sender_writes_no_pickup_audit_rows(): void
+    {
+        $admin = $this->admin();
+        $this->actingAs($admin)->put('/settings', $this->general())->assertSessionHasNoErrors();
+        $this->actingAs($admin)->put('/settings', $this->general())->assertSessionHasNoErrors();
+
+        $this->assertSame(0, AuditEntry::query()->where('subject_id', 'like', 'pickup.%')->count());
+        $this->assertNull(app(Settings::class)->pickup());
+    }
+
+    public function test_pickup_helper_is_null_without_phone(): void
+    {
+        $settings = app(Settings::class);
+        foreach (['contact_name' => 'Ana', 'address_1' => '12 Rizal', 'city' => 'Makati', 'state' => 'NCR'] as $k => $v) {
+            $settings->set("pickup.{$k}", $v);
+        }
+        $this->assertNull($settings->pickup());
+    }
 }

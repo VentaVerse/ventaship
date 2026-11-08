@@ -48,7 +48,7 @@ class Settings
             $value = $this->get("pickup.{$field}");
             $pickup[$field] = is_string($value) && $value !== '' ? $value : null;
         }
-        if (in_array(null, [$pickup['contact_name'], $pickup['address_1'], $pickup['city'], $pickup['state']], true)) {
+        if (in_array(null, [$pickup['contact_name'], $pickup['contact_phone'], $pickup['address_1'], $pickup['city'], $pickup['state']], true)) {
             return null;
         }
 
