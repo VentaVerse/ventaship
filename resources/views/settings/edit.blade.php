@@ -33,6 +33,49 @@
                     </x-ui.field>
                 </div>
             </div>
+            <div class="st-sec">
+                <h2 class="st-h">Sender</h2>
+                <div class="st-row">
+                    <x-ui.field label="Name" name="pickup_contact_name">
+                        <x-ui.input id="f-pickup-contact-name" name="pickup_contact_name" class="st-ctl" value="{{ old('pickup_contact_name', $sender['pickup_contact_name'] ?? '') }}" maxlength="255" autocomplete="off" />
+                    </x-ui.field>
+                </div>
+                <div class="st-row">
+                    <x-ui.field label="Phone" name="pickup_contact_phone">
+                        <x-ui.input type="tel" id="f-pickup-contact-phone" name="pickup_contact_phone" class="st-ctl" value="{{ old('pickup_contact_phone', $sender['pickup_contact_phone'] ?? '') }}" maxlength="255" autocomplete="off" />
+                    </x-ui.field>
+                </div>
+                <div class="st-row">
+                    <x-ui.field label="Address" name="pickup_address_1">
+                        <x-ui.input id="f-pickup-address-1" name="pickup_address_1" class="st-ctl" value="{{ old('pickup_address_1', $sender['pickup_address_1'] ?? '') }}" maxlength="255" autocomplete="off" />
+                    </x-ui.field>
+                </div>
+                <div class="st-row">
+                    <x-ui.field label="Address line 2" name="pickup_address_2">
+                        <x-ui.input id="f-pickup-address-2" name="pickup_address_2" class="st-ctl" value="{{ old('pickup_address_2', $sender['pickup_address_2'] ?? '') }}" maxlength="255" autocomplete="off" />
+                    </x-ui.field>
+                </div>
+                <div class="st-row">
+                    <x-ui.field label="Barangay" name="pickup_barangay">
+                        <x-ui.input id="f-pickup-barangay" name="pickup_barangay" class="st-ctl" value="{{ old('pickup_barangay', $sender['pickup_barangay'] ?? '') }}" maxlength="255" autocomplete="off" />
+                    </x-ui.field>
+                </div>
+                <div class="st-row">
+                    <x-ui.field label="City" name="pickup_city">
+                        <x-ui.input id="f-pickup-city" name="pickup_city" class="st-ctl" value="{{ old('pickup_city', $sender['pickup_city'] ?? '') }}" maxlength="255" autocomplete="off" />
+                    </x-ui.field>
+                </div>
+                <div class="st-row">
+                    <x-ui.field label="Province" name="pickup_state">
+                        <x-ui.input id="f-pickup-state" name="pickup_state" class="st-ctl" value="{{ old('pickup_state', $sender['pickup_state'] ?? '') }}" maxlength="255" autocomplete="off" />
+                    </x-ui.field>
+                </div>
+                <div class="st-row">
+                    <x-ui.field label="Postcode" name="pickup_postcode">
+                        <x-ui.input id="f-pickup-postcode" name="pickup_postcode" class="st-ctl st-narrow" value="{{ old('pickup_postcode', $sender['pickup_postcode'] ?? '') }}" maxlength="16" autocomplete="off" />
+                    </x-ui.field>
+                </div>
+            </div>
             @include('settings._bar', ['tab' => 'general'])
         </form>
     @elseif($tab === 'couriers')

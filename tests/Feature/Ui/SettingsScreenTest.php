@@ -225,4 +225,83 @@ class SettingsScreenTest extends TestCase
         $this->assertStringNotContainsString('correct-horse-battery', $dump);
         $this->assertStringNotContainsString($admin->fresh()->password, $dump);
     }
+
+    /** @return array<string, string> */
+    private function general(array $extra = []): array
+    {
+        return ['tab' => 'general', 'shipments_reference_prefix' => 'VS', 'privacy_retention_days' => '180'] + $extra;
+    }
+
+    /** @return array<string, string> */
+    private function sender(array $over = []): array
+    {
+        return $over + [
+            'pickup_contact_name' => 'Ana Reyes', 'pickup_contact_phone' => '0917 123 4567',
+            'pickup_address_1' => '12 Rizal St', 'pickup_address_2' => 'Unit 4', 'pickup_barangay' => 'Poblacion',
+            'pickup_city' => 'Makati', 'pickup_state' => 'Metro Manila', 'pickup_postcode' => '1200',
+        ];
+    }
+
+    public function test_sender_section_saves_and_audits_changed_keys(): void
+    {
+        $admin = $this->admin();
+        $this->actingAs($admin)->get('/settings')->assertOk()->assertSee('Sender')->assertSee('Province');
+
+        $this->actingAs($admin)->put('/settings', $this->general($this->sender()))->assertRedirect('/settings?tab=general');
+
+        $settings = app(Settings::class);
+        $this->assertSame('Ana Reyes', $settings->get('pickup.contact_name'));
+        $this->assertSame('Metro Manila', $settings->get('pickup.state'));
+        $this->assertSame(8, AuditEntry::query()->where('action', 'setting.changed')->where('subject_id', 'like', 'pickup.%')->count());
+
+        $this->actingAs($admin)->put('/settings', $this->general($this->sender(['pickup_city' => 'Pasig'])));
+        $this->assertSame(
+            ['pickup.city'],
+            AuditEntry::query()->where('action', 'setting.changed')->where('subject_id', 'like', 'pickup.%')
+                ->orderByDesc('id')->limit(1)->pluck('subject_id')->all(),
+        );
+        $this->assertSame(9, AuditEntry::query()->where('subject_id', 'like', 'pickup.%')->count());
+
+        $this->actingAs($admin)->get('/settings')->assertSee('value="Pasig"', false);
+
+        $this->actingAs($admin)->put('/settings', $this->general())->assertSessionHasNoErrors();
+        $this->assertNull(app(Settings::class)->pickup());
+    }
+
+    public function test_general_saves_without_sender(): void
+    {
+        $this->actingAs($this->admin())->put('/settings', $this->general())
+            ->assertRedirect('/settings?tab=general')->assertSessionHasNoErrors();
+        $this->assertNull(app(Settings::class)->pickup());
+    }
+
+    public function test_sender_validation_messages(): void
+    {
+        $admin = $this->admin();
+        $this->actingAs($admin)->from('/settings')->put('/settings', $this->general(['pickup_address_2' => 'Unit 4']))
+            ->assertSessionHasErrors([
+                'pickup_contact_name' => 'Required.', 'pickup_contact_phone' => 'Required.', 'pickup_address_1' => 'Required.',
+                'pickup_city' => 'Required.', 'pickup_state' => 'Required.',
+            ]);
+
+        $this->actingAs($admin)->from('/settings')->put('/settings', $this->general($this->sender(['pickup_contact_phone' => '12345'])))
+            ->assertSessionHasErrors(['pickup_contact_phone' => 'Not a valid PH mobile number.']);
+        $this->actingAs($admin)->from('/settings')->put('/settings', $this->general($this->sender(['pickup_contact_name' => str_repeat('a', 256)])))
+            ->assertSessionHasErrors(['pickup_contact_name' => 'Too long.']);
+        $this->assertNull(app(Settings::class)->pickup());
+    }
+
+    public function test_pickup_helper_returns_api_shape(): void
+    {
+        $settings = app(Settings::class);
+        $this->assertNull($settings->pickup());
+
+        $this->actingAs($this->admin())->put('/settings', $this->general($this->sender(['pickup_address_2' => '', 'pickup_barangay' => ''])));
+
+        $this->assertSame([
+            'contact_name' => 'Ana Reyes', 'contact_phone' => '0917 123 4567', 'address_1' => '12 Rizal St',
+            'address_2' => null, 'barangay' => null, 'city' => 'Makati', 'state' => 'Metro Manila',
+            'postcode' => '1200', 'country' => 'PH',
+        ], app(Settings::class)->pickup());
+    }
 }

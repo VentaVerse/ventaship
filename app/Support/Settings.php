@@ -40,6 +40,21 @@ class Settings
         $this->cache[$key] = $stored;
     }
 
+    /** The default sender in the API's `pickup` input shape, or null until its required parts are all set. */
+    public function pickup(): ?array
+    {
+        $pickup = [];
+        foreach (['contact_name', 'contact_phone', 'address_1', 'address_2', 'barangay', 'city', 'state', 'postcode'] as $field) {
+            $value = $this->get("pickup.{$field}");
+            $pickup[$field] = is_string($value) && $value !== '' ? $value : null;
+        }
+        if (in_array(null, [$pickup['contact_name'], $pickup['address_1'], $pickup['city'], $pickup['state']], true)) {
+            return null;
+        }
+
+        return $pickup + ['country' => 'PH'];
+    }
+
     /** @return array<string, string|null> */
     private function all(): array
     {

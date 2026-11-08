@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Ui;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\AuditEntry;
+use App\Rules\PhPhone;
 use App\Support\Settings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -28,6 +29,20 @@ class SettingsController extends Controller
 
     private const DEFAULTS = ['shipments.reference_prefix' => 'VS', 'privacy.retention_days' => 180];
 
+    /** Sender form field => settings key. */
+    private const SENDER = [
+        'pickup_contact_name' => 'pickup.contact_name',
+        'pickup_contact_phone' => 'pickup.contact_phone',
+        'pickup_address_1' => 'pickup.address_1',
+        'pickup_address_2' => 'pickup.address_2',
+        'pickup_barangay' => 'pickup.barangay',
+        'pickup_city' => 'pickup.city',
+        'pickup_state' => 'pickup.state',
+        'pickup_postcode' => 'pickup.postcode',
+    ];
+
+    private const SENDER_REQUIRED = ['pickup_contact_name', 'pickup_contact_phone', 'pickup_address_1', 'pickup_city', 'pickup_state'];
+
     private const PASSWORD_ATTEMPTS = 5;
 
     private const PASSWORD_DECAY_SECONDS = 60;
@@ -43,6 +58,7 @@ class SettingsController extends Controller
             'prefix' => $settings->get('shipments.reference_prefix', 'VS'),
             'retention' => $settings->get('privacy.retention_days', 180),
             'switches' => collect(self::SWITCHES)->map(fn (string $key) => $settings->get($key) === true)->all(),
+            'sender' => collect(self::SENDER)->map(fn (string $key) => $settings->get($key))->all(),
             'admin' => $request->user(),
         ]);
     }
@@ -53,17 +69,36 @@ class SettingsController extends Controller
         $back = redirect()->route('settings.edit', ['tab' => $tab]);
 
         if ($tab === 'general') {
+            $filled = collect(self::SENDER)->keys()->contains(fn (string $field) => trim((string) $request->input($field)) !== '');
+            $max = ['string', 'max:255'];
+            $senderRules = [
+                'pickup_contact_name' => [$filled ? 'required' : 'nullable', ...$max],
+                'pickup_contact_phone' => [$filled ? 'required' : 'nullable', 'string', 'max:32', new PhPhone('Not a valid PH mobile number.')],
+                'pickup_address_1' => [$filled ? 'required' : 'nullable', ...$max],
+                'pickup_address_2' => ['nullable', ...$max],
+                'pickup_barangay' => ['nullable', ...$max],
+                'pickup_city' => [$filled ? 'required' : 'nullable', ...$max],
+                'pickup_state' => [$filled ? 'required' : 'nullable', ...$max],
+                'pickup_postcode' => ['nullable', 'string', 'max:16'],
+            ];
             $data = $request->validate([
                 'shipments_reference_prefix' => ['required', 'regex:/^[A-Z0-9]{1,8}\z/'],
                 'privacy_retention_days' => ['required', 'integer', 'between:30,3650'],
-            ], [
+            ] + $senderRules, [
                 'shipments_reference_prefix.*' => 'Use 1–8 capital letters or digits.',
                 'privacy_retention_days.*' => 'Between 30 and 3650 days.',
+                'pickup_*.required' => 'Required.',
+                'pickup_*.max' => 'Too long.',
+                'pickup_*.string' => 'Not valid.',
             ]);
             $new = [
                 'shipments.reference_prefix' => $data['shipments_reference_prefix'],
                 'privacy.retention_days' => (int) $data['privacy_retention_days'],
             ];
+            foreach (self::SENDER as $field => $key) {
+                $value = trim((string) ($data[$field] ?? ''));
+                $new[$key] = $value === '' ? null : $value;
+            }
         } else {
             // A switch is on only for an explicit "1"; an unchecked or absent field is a strict false.
             $new = [];

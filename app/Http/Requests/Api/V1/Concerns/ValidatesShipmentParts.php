@@ -2,8 +2,7 @@
 
 namespace App\Http\Requests\Api\V1\Concerns;
 
-use App\Couriers\Support\PhPhone;
-use Closure;
+use App\Rules\PhPhone;
 
 /**
  * The validation rules for the parts every courier request shares: addresses, parcel, payment, account choice.
@@ -29,7 +28,7 @@ trait ValidatesShipmentParts
         return [
             $prefix => ['required', 'array'],
             "{$prefix}.contact_name" => ['required', 'string', 'max:255'],
-            "{$prefix}.contact_phone" => ['required', 'string', 'max:32', $this->phPhone()],
+            "{$prefix}.contact_phone" => ['required', 'string', 'max:32', new PhPhone],
         ] + $this->addressRules($prefix);
     }
 
@@ -40,7 +39,7 @@ trait ValidatesShipmentParts
             $prefix => ['required', 'array'],
             "{$prefix}.first_name" => ['required', 'string', 'max:255'],
             "{$prefix}.last_name" => ['nullable', 'string', 'max:255'],
-            "{$prefix}.phone" => ['required', 'string', 'max:32', $this->phPhone()],
+            "{$prefix}.phone" => ['required', 'string', 'max:32', new PhPhone],
             "{$prefix}.email" => ['nullable', 'string', 'email', 'max:255'],
         ] + $this->addressRules($prefix);
     }
@@ -98,15 +97,5 @@ trait ValidatesShipmentParts
             "{$prefix}.codes.city" => ['nullable', 'string', 'max:32'],
             "{$prefix}.codes.barangay" => ['nullable', 'string', 'max:32'],
         ];
-    }
-
-    /** The port's one PH mobile rule, so a number that passes here is one every courier payload accepts. */
-    private function phPhone(): Closure
-    {
-        return function (string $attribute, mixed $value, Closure $fail) {
-            if (! is_string($value) || PhPhone::normalize($value) === null) {
-                $fail('The :attribute must be a Philippine mobile number, such as 09171234567.');
-            }
-        };
     }
 }
