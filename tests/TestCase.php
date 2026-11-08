@@ -19,6 +19,23 @@ abstract class TestCase extends BaseTestCase
         Http::preventStrayRequests();
     }
 
+    /**
+     * Each real request is a fresh process; in a test the app lives on. So the sanctum guard's resolved caller is
+     * forgotten before every request (else a second call is answered as the first caller), and the default guard that
+     * auth:sanctum switches to is put back afterwards (else the next admin request looks for a token).
+     */
+    public function call($method, $uri, $parameters = [], $cookies = [], $files = [], $server = [], $content = null)
+    {
+        $guard = config('auth.defaults.guard');
+        $this->app['auth']->guard('sanctum')->forgetUser();
+
+        try {
+            return parent::call($method, $uri, $parameters, $cookies, $files, $server, $content);
+        } finally {
+            $this->app['auth']->shouldUse($guard);
+        }
+    }
+
     protected function tearDown(): void
     {
         CourierRegistry::clearFakes();

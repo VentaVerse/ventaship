@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Docs;
 
-use App\Api\Signature;
 use App\Couriers\CourierOrder;
 use App\Couriers\CourierRegistry;
 use App\Couriers\FakeCourier;
@@ -20,7 +19,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Testing\TestResponse;
 use Tests\Concerns\BuildsCourierAccounts;
-use Tests\Concerns\SignsApiRequests;
+use Tests\Concerns\CallsClientApi;
 use Tests\TestCase;
 
 /**
@@ -34,11 +33,11 @@ use Tests\TestCase;
  */
 class ApiExamplesTest extends TestCase
 {
-    use BuildsCourierAccounts, RefreshDatabase, SignsApiRequests;
+    use BuildsCourierAccounts, RefreshDatabase, CallsClientApi;
 
     private const TOKEN = 'qx-docs-webhook-token-0123456789abcdefghij';
 
-    /** @var array{app: \App\Models\ClientApp, key: string, secret: string} */
+    /** @var array{app: \App\Models\ClientApp, key: string} */
     private array $client;
 
     protected function setUp(): void
@@ -54,10 +53,10 @@ class ApiExamplesTest extends TestCase
     {
         $account = $this->account();
 
-        $this->assertMatchesFixture('ping.response', $this->signed('GET', '/api/v1/ping')->assertOk());
-        $this->assertMatchesFixture('couriers.response', $this->signed('GET', '/api/v1/couriers')->assertOk());
-        $this->assertMatchesFixture('courier-accounts.response', $this->signed('GET', '/api/v1/courier-accounts')->assertOk());
-        $this->assertMatchesFixture('courier-account.response', $this->signed('GET', "/api/v1/courier-accounts/{$account->public_id}")->assertOk());
+        $this->assertMatchesFixture('ping.response', $this->api('GET', '/api/v1/ping')->assertOk());
+        $this->assertMatchesFixture('couriers.response', $this->api('GET', '/api/v1/couriers')->assertOk());
+        $this->assertMatchesFixture('courier-accounts.response', $this->api('GET', '/api/v1/courier-accounts')->assertOk());
+        $this->assertMatchesFixture('courier-account.response', $this->api('GET', "/api/v1/courier-accounts/{$account->public_id}")->assertOk());
     }
 
     public function test_coverage_and_quotes(): void
@@ -65,8 +64,8 @@ class ApiExamplesTest extends TestCase
         $this->account();
         Http::fake(['api.staging.quadx.xyz/v2/orders/estimates/rates' => Http::response($this->quadxFixture('rates'))]);
 
-        $this->assertMatchesFixture('coverage.response', $this->signed('POST', '/api/v1/coverage', $this->fixture('coverage.request'))->assertOk());
-        $this->assertMatchesFixture('quotes.response', $this->signed('POST', '/api/v1/quotes', $this->fixture('quotes.request'))->assertOk());
+        $this->assertMatchesFixture('coverage.response', $this->api('POST', '/api/v1/coverage', $this->fixture('coverage.request'))->assertOk());
+        $this->assertMatchesFixture('quotes.response', $this->api('POST', '/api/v1/quotes', $this->fixture('quotes.request'))->assertOk());
     }
 
     public function test_pickup_slots(): void
@@ -83,7 +82,7 @@ class ApiExamplesTest extends TestCase
         });
         CourierAccount::factory()->create(['courier' => 'lbc', 'label' => 'LBC', 'is_default' => true, 'default_slot' => 'lbc']);
 
-        $this->assertMatchesFixture('pickup-slots.response', $this->signed('POST', '/api/v1/pickup-slots', $this->fixture('pickup-slots.request'))->assertOk());
+        $this->assertMatchesFixture('pickup-slots.response', $this->api('POST', '/api/v1/pickup-slots', $this->fixture('pickup-slots.request'))->assertOk());
     }
 
     public function test_shipment_lifecycle_examples(): void
@@ -92,7 +91,7 @@ class ApiExamplesTest extends TestCase
         $request = $this->fixture('create-shipment.request');
 
         // Create: accepted and queued (the booking job has not run yet).
-        $created = $this->signed('POST', '/api/v1/shipments', $request, ['Idempotency-Key' => 'order-4211-create'])->assertStatus(202);
+        $created = $this->api('POST', '/api/v1/shipments', $request, ['Idempotency-Key' => 'order-4211-create'])->assertStatus(202);
         $this->assertSame('queued', $created->json('data.state'));
         $this->assertMatchesFixture('create-shipment.response', $created);
         $id = $created->json('data.id');
@@ -117,11 +116,11 @@ class ApiExamplesTest extends TestCase
             $this->call('POST', '/webhooks/quadx?token='.self::TOKEN, [], [], [], ['CONTENT_TYPE' => 'application/json'], $body)->assertOk();
         }
 
-        $this->assertMatchesFixture('shipment.response', $this->signed('GET', "/api/v1/shipments/{$id}")->assertOk());
-        $this->assertMatchesFixture('shipment-parties.response', $this->signed('GET', "/api/v1/shipments/{$id}?include=parties")->assertOk());
-        $this->assertMatchesFixture('shipments-list.response', $this->signed('GET', '/api/v1/shipments?client_reference=4211')->assertOk());
-        $this->assertMatchesFixture('shipment-events.response', $this->signed('GET', "/api/v1/shipments/{$id}/events")->assertOk());
-        $this->assertMatchesFixture('refresh.response', $this->signed('POST', "/api/v1/shipments/{$id}/refresh")->assertOk());
+        $this->assertMatchesFixture('shipment.response', $this->api('GET', "/api/v1/shipments/{$id}")->assertOk());
+        $this->assertMatchesFixture('shipment-parties.response', $this->api('GET', "/api/v1/shipments/{$id}?include=parties")->assertOk());
+        $this->assertMatchesFixture('shipments-list.response', $this->api('GET', '/api/v1/shipments?client_reference=4211')->assertOk());
+        $this->assertMatchesFixture('shipment-events.response', $this->api('GET', "/api/v1/shipments/{$id}/events")->assertOk());
+        $this->assertMatchesFixture('refresh.response', $this->api('POST', "/api/v1/shipments/{$id}/refresh")->assertOk());
 
         // Outgoing webhook envelopes, exactly as they are posted.
         $events = OutgoingEvent::query()->where('shipment_id', $shipment->id)->orderBy('sequence')->get()->keyBy('type');
@@ -132,7 +131,7 @@ class ApiExamplesTest extends TestCase
         $this->assertMatchesFixture('webhook-ping', $this->envelope($ping));
 
         // Cancel once out for delivery: refused without calling QuadX, settled at once, so 200.
-        $cancel = $this->signed('POST', "/api/v1/shipments/{$id}/cancel", [], ['Idempotency-Key' => 'order-4211-cancel'])->assertOk();
+        $cancel = $this->api('POST', "/api/v1/shipments/{$id}/cancel", [], ['Idempotency-Key' => 'order-4211-cancel'])->assertOk();
         $this->assertSame('refused', $cancel->json('data.cancel_state'));
         $this->assertMatchesFixture('cancel.response', $cancel);
     }
@@ -141,15 +140,15 @@ class ApiExamplesTest extends TestCase
     {
         $this->account();
 
-        $invalid = $this->signed('POST', '/api/v1/shipments', $this->fixture('create-shipment-invalid.request'), ['Idempotency-Key' => 'order-4212-create'])
+        $invalid = $this->api('POST', '/api/v1/shipments', $this->fixture('create-shipment-invalid.request'), ['Idempotency-Key' => 'order-4212-create'])
             ->assertStatus(422);
         $this->assertMatchesFixture('error-invalid-request.response', $invalid);
 
-        $this->signed('POST', '/api/v1/shipments', $this->fixture('create-shipment.request'), ['Idempotency-Key' => 'a'])->assertStatus(202);
-        $duplicate = $this->signed('POST', '/api/v1/shipments', $this->fixture('create-shipment.request'), ['Idempotency-Key' => 'b'])->assertStatus(409);
+        $this->api('POST', '/api/v1/shipments', $this->fixture('create-shipment.request'), ['Idempotency-Key' => 'a'])->assertStatus(202);
+        $duplicate = $this->api('POST', '/api/v1/shipments', $this->fixture('create-shipment.request'), ['Idempotency-Key' => 'b'])->assertStatus(409);
         $this->assertMatchesFixture('error-active-shipment-exists.response', $duplicate);
 
-        $unauthorized = $this->signed('GET', '/api/v1/ping', [], ['X-Signature' => 'sha256='.str_repeat('0', 64)])->assertStatus(401);
+        $unauthorized = $this->api('GET', '/api/v1/ping', [], ['Authorization' => 'Bearer 1|vsk_'.str_repeat('0', 48)])->assertStatus(401);
         $this->assertMatchesFixture('error-unauthorized.response', $unauthorized);
     }
 
@@ -184,11 +183,12 @@ class ApiExamplesTest extends TestCase
         $all = array_map(fn (string $f) => basename($f, '.json'), glob(base_path('tests/Fixtures/api/*.json')));
         $this->assertSame([], array_values(array_diff($all, $quoted)), 'fixtures not quoted in docs/api.md');
 
-        // The signing test vector in §2 is what the server computes.
-        $this->assertStringContainsString(
-            'X-Signature     '.Signature::sign('test-secret', 1794114300, 'GET', '/api/v1/ping', ''),
-            $doc,
-        );
+        // Requests are authenticated by bearer token only: request signing is described nowhere outside the webhook section.
+        $this->assertStringContainsString("Authorization: Bearer 12|vsk_", $doc);
+        $beforeWebhooks = substr($doc, 0, (int) strpos($doc, '## 11. Outgoing webhooks'));
+        foreach (['X-Signature', 'X-Timestamp', 'signing secret', 'Signing secret', 'signing_secret'] as $gone) {
+            $this->assertStringNotContainsString($gone, $beforeWebhooks);
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -204,9 +204,9 @@ class ApiExamplesTest extends TestCase
         ]);
     }
 
-    private function signed(string $method, string $uri, array $data = [], array $headers = []): TestResponse
+    private function api(string $method, string $uri, array $data = [], array $headers = []): TestResponse
     {
-        return $this->signedJson($method, $uri, $data, $headers + ['X-Timestamp' => $this->uniqueTimestamp()], $this->client);
+        return $this->apiJson($method, $uri, $data, $headers, $this->client);
     }
 
     /** The envelope exactly as DeliverEvent posts it. */

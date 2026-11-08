@@ -56,47 +56,34 @@
                             <th scope="col">Prefix</th>
                             <th scope="col">Created</th>
                             <th scope="col">Last used</th>
-                            <th scope="col">Status</th>
                             <th scope="col"><span class="x-sr">Actions</span></th>
                         </tr>
                     </thead>
                     @foreach($keys as $row)
                         @php $k = $row['key']; @endphp
-                        <tbody class="pf-key {{ $row['active'] ? '' : 'pf-key--off' }}">
+                        <tbody class="pf-key">
                             <tr>
                                 <td class="pf-key__name">{{ $k->name }}</td>
-                                <td class="pf-key__mono">{{ $k->key_prefix }}</td>
+                                <td class="pf-key__mono">{{ $k->prefix }}</td>
                                 <td data-label="Created">{{ $k->created_at?->format('j M Y') }}</td>
                                 <td data-label="Last used">{{ $k->last_used_at ? $k->last_used_at->diffForHumans() : 'Never' }}</td>
-                                <td>
-                                    <x-ui.badge :tone="$row['active'] ? 'good' : 'mute'">{{ $row['active'] ? 'Active' : 'Revoked' }}</x-ui.badge>
-                                </td>
                                 <td class="pf-key__act">
-                                    @if($row['active'])
-                                        <x-ui.button size="sm" x-on:click="$dispatch('confirm', {{ Js::from(['title' => 'Revoke key '.$k->key_prefix.'?', 'confirm' => 'Revoke key', 'dismiss' => 'Keep key', 'form' => 'revoke-key-'.$k->id]) }})" :aria-label="'Revoke key ' . $k->key_prefix">Revoke</x-ui.button>
+                                    <x-ui.button size="sm" x-on:click="$dispatch('confirm', {{ Js::from(['title' => 'Revoke key '.$k->prefix.'?', 'confirm' => 'Revoke key', 'dismiss' => 'Keep key', 'form' => 'revoke-key-'.$k->id]) }})" :aria-label="'Revoke key ' . $k->prefix">Revoke</x-ui.button>
+                                </td>
+                            </tr>
+                            <tr class="pf-key__creds">
+                                <td colspan="5">
+                                    @if($row['viewable'])
+                                        <div class="st-row">
+                                            <x-ui.secret label="API token" :context="$k->prefix" :masked="$row['masked']"
+                                                :revealUrl="route('apps.reveal', [$app, 'token:' . $k->id])"
+                                                :id="'f-token-' . $k->id" :autoView="$row['auto']" />
+                                        </div>
+                                    @else
+                                        <p class="pf-key__legacy">Issued before keys were viewable</p>
                                     @endif
                                 </td>
                             </tr>
-                            @if($row['active'])
-                                <tr class="pf-key__creds">
-                                    <td colspan="6">
-                                        @if($row['viewable'])
-                                            <div class="st-row">
-                                                <x-ui.secret label="API key" :context="$k->key_prefix" :masked="$row['masked_key']"
-                                                    :revealUrl="route('apps.reveal', [$app, 'key:' . $k->id])"
-                                                    :id="'f-key-' . $k->id" :autoView="$row['auto']" />
-                                            </div>
-                                            <div class="st-row">
-                                                <x-ui.secret label="Signing secret" :context="$k->key_prefix" :masked="$row['masked_secret']"
-                                                    :revealUrl="route('apps.reveal', [$app, 'secret:' . $k->id])"
-                                                    :id="'f-secret-' . $k->id" :autoView="$row['auto']" />
-                                            </div>
-                                        @else
-                                            <p class="pf-key__legacy">Issued before keys were viewable</p>
-                                        @endif
-                                    </td>
-                                </tr>
-                            @endif
                         </tbody>
                     @endforeach
                 </table>
@@ -144,9 +131,7 @@
 @push('forms')
     <form id="issue-key" method="POST" action="{{ route('apps.keys.store', $app) }}" novalidate>@csrf</form>
     @foreach($keys as $row)
-        @if($row['active'])
-            <form id="revoke-key-{{ $row['key']->id }}" method="POST" action="{{ route('apps.keys.revoke', [$app, $row['key']->id]) }}">@csrf</form>
-        @endif
+        <form id="revoke-key-{{ $row['key']->id }}" method="POST" action="{{ route('apps.keys.revoke', [$app, $row['key']->id]) }}">@csrf</form>
     @endforeach
     <form id="regenerate-webhook" method="POST" action="{{ route('apps.webhook.regenerate', $app) }}">@csrf</form>
     <form id="ping" method="POST" action="{{ route('apps.ping', $app) }}">@csrf</form>

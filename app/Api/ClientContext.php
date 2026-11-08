@@ -2,7 +2,7 @@
 
 namespace App\Api;
 
-use App\Models\ApiKey;
+use App\Models\ApiToken;
 use App\Models\ClientApp;
 use LogicException;
 
@@ -15,9 +15,9 @@ final class ClientContext
             ?? throw new LogicException('No authenticated client app on this request.');
     }
 
-    public static function key(): ApiKey
+    public static function token(): ApiToken
     {
-        return request()->attributes->get('api_key')
-            ?? throw new LogicException('No authenticated API key on this request.');
+        return request()->attributes->get('api_token')
+            ?? throw new LogicException('No authenticated API token on this request.');
     }
 }

@@ -7,12 +7,12 @@ use App\Models\IdempotencyKey;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use Tests\Concerns\SignsApiRequests;
+use Tests\Concerns\CallsClientApi;
 use Tests\TestCase;
 
 class IdempotencyTest extends TestCase
 {
-    use RefreshDatabase, SignsApiRequests;
+    use RefreshDatabase, CallsClientApi;
 
     private int $calls = 0;
 
@@ -42,7 +42,7 @@ class IdempotencyTest extends TestCase
 
     private function send(array $body, ?string $key = 'k1', ?array $client = null)
     {
-        return $this->signedJson('POST', '/api/v1/_test/echo', $body, array_filter(['Idempotency-Key' => $key, 'X-Timestamp' => $this->uniqueTimestamp()]), $client);
+        return $this->apiJson('POST', '/api/v1/_test/echo', $body, array_filter(['Idempotency-Key' => $key]), $client);
     }
 
     public function test_same_key_same_body_replays_with_header(): void

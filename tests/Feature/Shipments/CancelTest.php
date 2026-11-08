@@ -21,12 +21,12 @@ use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use RuntimeException;
 use Tests\Concerns\BuildsCourierAccounts;
-use Tests\Concerns\SignsApiRequests;
+use Tests\Concerns\CallsClientApi;
 use Tests\TestCase;
 
 class CancelTest extends TestCase
 {
-    use BuildsCourierAccounts, RefreshDatabase, SignsApiRequests;
+    use BuildsCourierAccounts, RefreshDatabase, CallsClientApi;
 
     private array $client;
 
@@ -403,7 +403,7 @@ class CancelTest extends TestCase
     {
         $s = $this->shipment(['state' => 'queued']);
 
-        $this->signedJson('POST', "/api/v1/shipments/{$s->public_id}/cancel", [], ['X-Timestamp' => (string) time()], $this->client)
+        $this->apiJson('POST', "/api/v1/shipments/{$s->public_id}/cancel", [], [], $this->client)
             ->assertStatus(422);
         $this->assertSame('queued', $s->refresh()->state);
     }
@@ -430,8 +430,8 @@ class CancelTest extends TestCase
 
     private function cancel(Shipment $s): TestResponse
     {
-        return $this->signedJson('POST', "/api/v1/shipments/{$s->public_id}/cancel", [],
-            ['Idempotency-Key' => (string) Str::uuid(), 'X-Timestamp' => $this->uniqueTimestamp()], $this->client);
+        return $this->apiJson('POST', "/api/v1/shipments/{$s->public_id}/cancel", [],
+            ['Idempotency-Key' => (string) Str::uuid()], $this->client);
     }
 
     private function shipment(array $attributes = []): Shipment

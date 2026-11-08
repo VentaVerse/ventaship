@@ -1,6 +1,6 @@
 # Staging runbook: QuadX end to end
 
-How to run Ventaship on the Pi against **QuadX staging** and walk one parcel through the whole loop: a signed create, the waybill, courier webhooks to delivered, and signed outgoing webhooks to the client app. The automated version of this run is `tests/Feature/EndToEnd/QuadXLifecycleTest.php`; the client contract is `docs/api.md`.
+How to run Ventaship on the Pi against **QuadX staging** and walk one parcel through the whole loop: an authenticated create, the waybill, courier webhooks to delivered, and signed outgoing webhooks to the client app. The automated version of this run is `tests/Feature/EndToEnd/QuadXLifecycleTest.php`; the client contract is `docs/api.md`.
 
 Run every command from `/home/ubuntu/ventaship`.
 
@@ -53,10 +53,9 @@ php artisan ventaship:app-create "VentaCart Pro" --webhook-url=http://127.0.0.1:
 #   App:            app_…
 #   Webhook secret: whsec_…
 
-# An API key and signing secret for it. Shown once.
+# An API token for it (also viewable later on the platform's page).
 php artisan ventaship:key-issue app_… --name=staging
-#   API key:        vsk_…
-#   Signing secret: …
+#   12|vsk_…
 
 # The QuadX staging account, default for "courier": "quadx". Prints the inbound webhook URL (it carries a secret token).
 php artisan ventaship:account-create quadx "QuadX staging" --mode=staging --default
@@ -80,47 +79,40 @@ There is no command yet to change an app's webhook URL or event filter after cre
 php artisan tinker --execute='App\Models\ClientApp::where("public_id","app_…")->update(["webhook_url" => "http://127.0.0.1:8000/ventaship/webhooks"]);'
 ```
 
-## 4. A signed create
+## 4. An authenticated create
 
 The request body used here is `tests/Fixtures/api/create-shipment.request.json` (COD ₱1,290.00, Makati). Edit the addresses to ones QuadX staging serves.
 
 ### curl (bash)
 
 ```bash
-KEY='vsk_…'
-SECRET='…'
+TOKEN='12|vsk_…'
 BASE='http://localhost:8040'
 
-signed() {  # signed METHOD TARGET [BODY_FILE|-] [extra curl args...]
-  local method=$1 target=$2 file=${3:--} ts sig
+api() {  # api METHOD TARGET [BODY_FILE|-] [extra curl args...]
+  local method=$1 target=$2 file=${3:--}
   shift $(( $# < 3 ? $# : 3 ))
-  ts=$(date +%s)
-  # The signed string is "{ts}.{METHOD} {target}\n" followed by the body file's exact bytes.
-  sig=$( { printf '%s.%s %s\n' "$ts" "$method" "$target"; [ "$file" != - ] && cat "$file"; } \
-        | openssl dgst -sha256 -hmac "$SECRET" -r | cut -d' ' -f1 )
   if [ "$file" != - ]; then set -- --data-binary "@$file" "$@"; fi
   curl -sS -X "$method" "$BASE$target" \
-    -H "Authorization: Bearer $KEY" -H "X-Timestamp: $ts" -H "X-Signature: sha256=$sig" \
+    -H "Authorization: Bearer $TOKEN" \
     -H 'Accept: application/json' -H 'Content-Type: application/json' "$@"
   echo
 }
 
-signed GET /api/v1/ping
-signed POST '/api/v1/shipments?wait=15' tests/Fixtures/api/create-shipment.request.json -H 'Idempotency-Key: staging-run-1'
-signed GET /api/v1/shipments/shp_…
-signed GET /api/v1/shipments/shp_…/label - -o waybill.pdf
+api GET /api/v1/ping
+api POST '/api/v1/shipments?wait=15' tests/Fixtures/api/create-shipment.request.json -H 'Idempotency-Key: staging-run-1'
+api GET /api/v1/shipments/shp_…
+api GET /api/v1/shipments/shp_…/label - -o waybill.pdf
 ```
 
 If `GET /label` answers `502 courier_unavailable` and `storage/logs/laravel.log` has `Label link refused: host not on the allow-list` (with the `host`), QuadX served the waybill from a host Ventaship does not trust. Nothing was downloaded. Check that the host really is QuadX's, then add it to the courier's list in `app/Couriers/Support/LabelHosts.php` (exact host, `https` only) and deploy; the next `GET /label` fetches it.
-
-`--data-binary @file` sends the file's bytes unchanged, and the signature is computed over the same bytes (trailing newline included). Each call signs with the current second: do not send two identical requests within the same second (the second is refused as a replay).
 
 ### PHP
 
 Use the `VentashipClient` class from `docs/api.md` §2:
 
 ```php
-$vs = new VentashipClient('http://localhost:8040', 'vsk_…', '…');
+$vs = new VentashipClient('http://localhost:8040', '12|vsk_…');
 $payload = json_decode(file_get_contents('tests/Fixtures/api/create-shipment.request.json'), true);
 $r = $vs->request('POST', '/api/v1/shipments?wait=15', $payload, ['Idempotency-Key' => 'staging-run-1']);
 echo $r['status'], "\n", $r['body'], "\n";

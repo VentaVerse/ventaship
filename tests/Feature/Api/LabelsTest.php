@@ -13,13 +13,13 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\DataProvider;
-use Tests\Concerns\SignsApiRequests;
+use Tests\Concerns\CallsClientApi;
 use Tests\TestCase;
 use ZipArchive;
 
 class LabelsTest extends TestCase
 {
-    use RefreshDatabase, SignsApiRequests;
+    use RefreshDatabase, CallsClientApi;
 
     private const URL = 'https://quadx-awb.s3.ap-southeast-1.amazonaws.com/staging/QX-1-zebra.pdf?X-Amz-Signature=ab';
 
@@ -325,11 +325,11 @@ class LabelsTest extends TestCase
 
     public function get($uri, array $headers = [])
     {
-        return $this->signedJson('GET', $uri, [], $headers + ['X-Timestamp' => $this->uniqueTimestamp()], $this->client);
+        return $this->apiJson('GET', $uri, [], $headers, $this->client);
     }
 
     public function post($uri, array $data = [], array $headers = [])
     {
-        return $this->signedJson('POST', $uri, $data, $headers + ['X-Timestamp' => $this->uniqueTimestamp()], $this->client);
+        return $this->apiJson('POST', $uri, $data, $headers, $this->client);
     }
 }

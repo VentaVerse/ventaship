@@ -10,12 +10,12 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\Concerns\BuildsShipments;
-use Tests\Concerns\SignsApiRequests;
+use Tests\Concerns\CallsClientApi;
 use Tests\TestCase;
 
 class CreateShipmentTest extends TestCase
 {
-    use BuildsShipments, RefreshDatabase, SignsApiRequests;
+    use BuildsShipments, RefreshDatabase, CallsClientApi;
 
     private array $client;
 
@@ -77,12 +77,12 @@ class CreateShipmentTest extends TestCase
         $this->fakeDefaultAccount();
         $id = $this->create($this->shipmentBody(['submit' => false]))->json('data.id');
 
-        $this->signed('POST', "/api/v1/shipments/{$id}/submit", [], ['Idempotency-Key' => 'submit-1'])
+        $this->api('POST', "/api/v1/shipments/{$id}/submit", [], ['Idempotency-Key' => 'submit-1'])
             ->assertStatus(202)
             ->assertJsonPath('data.state', 'queued');
         Queue::assertPushed(BookShipment::class, 1);
 
-        $this->signed('POST', "/api/v1/shipments/{$id}/submit", [], ['Idempotency-Key' => 'submit-2'])
+        $this->api('POST', "/api/v1/shipments/{$id}/submit", [], ['Idempotency-Key' => 'submit-2'])
             ->assertStatus(409)
             ->assertJsonPath('code', 'not_draft');
         Queue::assertPushed(BookShipment::class, 1);
@@ -227,7 +227,7 @@ class CreateShipmentTest extends TestCase
         $this->assertSame('Señora José', $s->recipient['first_name']);
         $this->assertSame('Ibáñez', $s->recipient['last_name']);
 
-        $this->signed('GET', "/api/v1/shipments/{$id}?include=parties")
+        $this->api('GET', "/api/v1/shipments/{$id}?include=parties")
             ->assertOk()
             ->assertJsonPath('data.recipient.address_1', $address)
             ->assertJsonPath('data.recipient.first_name', 'Señora José');
@@ -241,7 +241,7 @@ class CreateShipmentTest extends TestCase
         $this->fakeDefaultAccount();
         $id = $this->create($this->shipmentBody())->assertStatus(202)->json('data.id');
 
-        $body = json_decode((string) $this->signed('GET', "/api/v1/shipments/{$id}?include=parties")->assertOk()->getContent());
+        $body = json_decode((string) $this->api('GET', "/api/v1/shipments/{$id}?include=parties")->assertOk()->getContent());
 
         // recipient sent `codes: []`, pickup sent three codes: both are objects on the wire.
         $this->assertInstanceOf(\stdClass::class, $body->data->recipient->codes);
@@ -254,7 +254,7 @@ class CreateShipmentTest extends TestCase
         $this->fakeDefaultAccount();
         $id = $this->create($this->shipmentBody())->json('data.id');
 
-        $this->signed('GET', "/api/v1/shipments/{$id}")
+        $this->api('GET', "/api/v1/shipments/{$id}")
             ->assertOk()
             ->assertJsonPath('data.id', $id)
             ->assertJsonMissingPath('data.recipient')
@@ -265,13 +265,13 @@ class CreateShipmentTest extends TestCase
     {
         $theirs = Shipment::factory()->create();
 
-        $this->signed('GET', "/api/v1/shipments/{$theirs->public_id}")
+        $this->api('GET', "/api/v1/shipments/{$theirs->public_id}")
             ->assertNotFound()
             ->assertExactJson(['error' => 'Not found', 'code' => 'not_found', 'retryable' => false, 'errors' => []]);
 
-        $this->signed('GET', '/api/v1/shipments/shp_doesnotexist')->assertNotFound()->assertJsonPath('code', 'not_found');
-        $this->signed('GET', '/api/v1/nothing-here')->assertNotFound()->assertJsonPath('code', 'not_found');
-        $this->signed('DELETE', '/api/v1/couriers')->assertStatus(405)->assertJsonPath('code', 'method_not_allowed');
+        $this->api('GET', '/api/v1/shipments/shp_doesnotexist')->assertNotFound()->assertJsonPath('code', 'not_found');
+        $this->api('GET', '/api/v1/nothing-here')->assertNotFound()->assertJsonPath('code', 'not_found');
+        $this->api('DELETE', '/api/v1/couriers')->assertStatus(405)->assertJsonPath('code', 'method_not_allowed');
     }
 
     public function test_misconfigured_account_is_422(): void
@@ -310,19 +310,19 @@ class CreateShipmentTest extends TestCase
     {
         $this->fakeDefaultAccount();
 
-        $this->signed('POST', '/api/v1/shipments', $this->shipmentBody())
+        $this->api('POST', '/api/v1/shipments', $this->shipmentBody())
             ->assertStatus(422)
             ->assertJsonValidationErrors(['Idempotency-Key'], 'errors');
     }
 
     private function create(array $body, ?string $key = null): TestResponse
     {
-        return $this->signed('POST', '/api/v1/shipments', $body, ['Idempotency-Key' => $key ?? (string) Str::uuid()]);
+        return $this->api('POST', '/api/v1/shipments', $body, ['Idempotency-Key' => $key ?? (string) Str::uuid()]);
     }
 
     /** Every call gets its own timestamp, so identical bodies are never a replay. */
-    private function signed(string $method, string $uri, array $data = [], array $headers = []): TestResponse
+    private function api(string $method, string $uri, array $data = [], array $headers = []): TestResponse
     {
-        return $this->signedJson($method, $uri, $data, $headers + ['X-Timestamp' => $this->uniqueTimestamp()], $this->client);
+        return $this->apiJson($method, $uri, $data, $headers, $this->client);
     }
 }

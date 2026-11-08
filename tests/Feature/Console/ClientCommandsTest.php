@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Console;
 
-use App\Models\ApiKey;
+use App\Models\ApiToken;
 use App\Models\ClientApp;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -24,41 +24,44 @@ class ClientCommandsTest extends TestCase
         $this->assertSame('active', $app->status);
     }
 
-    public function test_key_issue_prints_key_once_and_stores_hash_only(): void
+    public function test_key_issue_prints_the_token_only_and_stores_its_hash(): void
     {
         $app = ClientApp::factory()->create();
 
         $this->assertSame(0, \Illuminate\Support\Facades\Artisan::call('ventaship:key-issue', ['app' => $app->public_id, '--name' => 'Prod']));
         $output = \Illuminate\Support\Facades\Artisan::output();
 
-        preg_match('/API key:\s+(vsk_[A-Za-z0-9]{40})/', $output, $m);
-        $this->assertNotEmpty($m, 'key printed');
-        preg_match('/Signing secret:\s+(\S+)/', $output, $s);
+        $this->assertMatchesRegularExpression('/^\d+\|vsk_[A-Za-z0-9]{48}\n$/', $output);
+        $plain = trim($output);
+        [$id, $secret] = explode('|', $plain, 2);
 
-        $key = ApiKey::query()->sole();
-        $this->assertSame(hash('sha256', $m[1]), $key->key_hash);
-        $this->assertSame(substr($m[1], 0, 8), $key->key_prefix);
-        $this->assertSame($s[1], $key->signing_secret);
-        $this->assertNotSame($s[1], $key->getRawOriginal('signing_secret'));
-        $this->assertStringNotContainsString($m[1], json_encode($key->getRawOriginal()));
+        $key = ApiToken::query()->sole();
+        $this->assertSame((int) $id, $key->id);
+        $this->assertTrue($key->tokenable->is($app));
+        $this->assertSame(hash('sha256', $secret), $key->token);
+        $this->assertSame(substr($secret, 0, 8), $key->prefix);
+        $this->assertSame($plain, $key->token_encrypted);
+        $this->assertStringNotContainsString($secret, json_encode($key->getRawOriginal()));
         $this->assertSame('Prod', $key->name);
+
+        $this->getJson('/api/v1/ping', ['Authorization' => 'Bearer '.$plain])->assertOk();
     }
 
     public function test_key_issue_unknown_app_fails(): void
     {
         $this->artisan('ventaship:key-issue', ['app' => 'app_nope'])->assertFailed();
-        $this->assertSame(0, ApiKey::count());
+        $this->assertSame(0, ApiToken::count());
     }
 
-    public function test_key_revoke_sets_revoked_at(): void
+    public function test_key_revoke_deletes_the_token(): void
     {
         $app = ClientApp::factory()->create();
         $this->artisan('ventaship:key-issue', ['app' => $app->public_id])->assertSuccessful();
-        $key = ApiKey::query()->sole();
+        $key = ApiToken::query()->sole();
 
-        $this->artisan('ventaship:key-revoke', ['prefix' => $key->key_prefix])->assertSuccessful();
+        $this->artisan('ventaship:key-revoke', ['prefix' => $key->prefix])->assertSuccessful();
 
-        $this->assertNotNull($key->fresh()->revoked_at);
+        $this->assertNull($key->fresh());
         $this->artisan('ventaship:key-revoke', ['prefix' => 'vsk_zzzz'])->assertFailed();
     }
 }

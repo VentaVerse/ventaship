@@ -14,6 +14,5 @@ Schedule::command('ventaship:couriers-poll')->cron("*/{$pollMinutes} * * * *")->
 Schedule::command('ventaship:shipments-sweep')->everyMinute()->withoutOverlapping();
 Schedule::command('ventaship:events-deliver')->everyMinute()->withoutOverlapping();
 Schedule::command('ventaship:receipts-reprocess')->everyMinute()->withoutOverlapping();
-Schedule::command('ventaship:logs-prune --signatures-only')->hourly()->withoutOverlapping();
 Schedule::command('ventaship:logs-prune')->daily()->withoutOverlapping();
 Schedule::command('ventaship:pii-purge')->daily()->withoutOverlapping();

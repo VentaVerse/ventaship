@@ -2,12 +2,14 @@
 
 namespace App\Providers;
 
+use App\Models\ApiToken;
 use App\Support\Settings;
 use App\Support\Vault\CredentialVault;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Sanctum\Sanctum;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -25,11 +27,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Sanctum::usePersonalAccessTokenModel(ApiToken::class);
         $this->configureRateLimits();
     }
 
     /**
-     * Per API key, per minute (base plan §2). Every limiter runs after AuthenticateClient, so the key is always the
+     * Per API token, per minute (base plan §2). Every limiter runs after AuthenticateClient, so the token is always the
      * authenticated one; the IP fallback only covers a route someone mounts without client.auth.
      */
     private function configureRateLimits(): void
@@ -38,13 +41,13 @@ class AppServiceProvider extends ServiceProvider
 
         foreach ($limits as $name => $perMinute) {
             RateLimiter::for($name, function (Request $request) use ($perMinute) {
-                $key = $request->attributes->get('api_key');
+                $token = $request->attributes->get('api_token');
 
-                return Limit::perMinute($perMinute)->by($key !== null ? (string) $key->getKey() : 'ip:' . $request->ip());
+                return Limit::perMinute($perMinute)->by($token !== null ? 'token:' . $token->getKey() : 'ip:' . $request->ip());
             });
         }
 
-        // Courier webhooks carry no API key: per IP.
+        // Courier webhooks carry no API token: per IP.
         RateLimiter::for('courier-webhooks', fn (Request $request) => Limit::perMinute(300)->by('courier-webhooks:ip:' . $request->ip()));
 
         // Viewing a courier secret: per admin.

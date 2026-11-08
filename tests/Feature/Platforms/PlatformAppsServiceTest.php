@@ -2,8 +2,7 @@
 
 namespace Tests\Feature\Platforms;
 
-use App\Api\Signature;
-use App\Models\ApiKey;
+use App\Models\ApiToken;
 use App\Models\AuditEntry;
 use App\Models\ClientApp;
 use App\Models\OutgoingEvent;
@@ -36,16 +35,9 @@ class PlatformAppsServiceTest extends TestCase
         $this->apps = app(PlatformApps::class);
     }
 
-    private function signedGet(string $uri, string $key, string $secret): TestResponse
+    private function bearerGet(string $uri, string $token): TestResponse
     {
-        $ts = time();
-
-        return $this->call('GET', $uri, [], [], [], $this->transformHeadersToServerVars([
-            'Authorization' => 'Bearer '.$key,
-            'X-Timestamp' => (string) $ts,
-            'X-Signature' => Signature::sign($secret, $ts, 'GET', $uri, ''),
-            'Accept' => 'application/json',
-        ]));
+        return $this->call('GET', $uri, [], [], [], ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
     }
 
     /** Every audit row's columns as one string, for leak checks. */
@@ -127,78 +119,94 @@ class PlatformAppsServiceTest extends TestCase
         $app = $this->apps->create('Shop', null, null);
         $issued = $this->apps->issueKey($app, 'Prod', self::ADMIN);
 
-        $this->assertStringStartsWith('vsk_', $issued['plaintext_key']);
         $key = $issued['key'];
-        $this->assertSame(hash('sha256', $issued['plaintext_key']), $key->key_hash);
-        $this->assertSame(substr($issued['plaintext_key'], 0, 8), $key->key_prefix);
+        $this->assertSame($key->id.'|', substr($issued['plaintext_key'], 0, strlen($key->id.'|')));
+        [, $secret] = explode('|', $issued['plaintext_key'], 2);
+        $this->assertMatchesRegularExpression('/^vsk_[A-Za-z0-9]{48}$/', $secret);
+        $this->assertTrue($key->tokenable->is($app));
+        $this->assertSame(hash('sha256', $secret), $key->token);
+        $this->assertSame(substr($secret, 0, 8), $key->prefix);
         $raw = json_encode($key->fresh()->getRawOriginal());
-        $this->assertStringNotContainsString($issued['plaintext_key'], $raw);
-        $this->assertStringNotContainsString($issued['secret'], $raw);
-        $this->assertArrayNotHasKey('key_encrypted', $key->fresh()->toArray());
-        $this->assertArrayNotHasKey('signing_secret', $key->fresh()->toArray());
+        $this->assertStringNotContainsString($secret, $raw);
+        $this->assertArrayNotHasKey('token_encrypted', $key->fresh()->toArray());
+        $this->assertArrayNotHasKey('token', $key->fresh()->toArray());
 
-        $revealedKey = $this->apps->revealKey($key->fresh(), 'key', self::ADMIN);
-        $revealedSecret = $this->apps->revealKey($key->fresh(), 'secret', self::ADMIN);
-        $this->assertSame($issued['plaintext_key'], $revealedKey);
-        $this->assertSame($issued['secret'], $revealedSecret);
+        $revealed = $this->apps->revealKey($key->fresh(), self::ADMIN);
+        $this->assertSame($issued['plaintext_key'], $revealed);
 
-        $this->signedGet('/api/v1/ping', $revealedKey, $revealedSecret)->assertOk();
+        $this->bearerGet('/api/v1/ping', $revealed)->assertOk();
 
         $issuedRow = AuditEntry::query()->where('action', 'api_key.issued')->sole();
-        $this->assertSame($key->key_prefix, $issuedRow->changes['key_prefix']);
-        $viewed = AuditEntry::query()->where('action', 'api_key.viewed')->orderBy('id')->get();
-        $this->assertSame(['key', 'secret'], $viewed->pluck('changes.part')->all());
-        $this->assertSame($key->key_prefix, $viewed[0]->changes['key_prefix']);
-        $this->assertSame('admin', $viewed[0]->actor_type);
+        $this->assertSame($key->prefix, $issuedRow->changes['key_prefix']);
+        $viewed = AuditEntry::query()->where('action', 'api_key.viewed')->sole();
+        $this->assertSame(['key_prefix' => $key->prefix], $viewed->changes);
+        $this->assertSame('admin', $viewed->actor_type);
+        $this->assertSame($app->public_id, $viewed->subject_id);
 
-        $this->assertTrue($this->apps->revokeKey($key->fresh(), self::ADMIN));
-        $this->assertFalse($this->apps->revokeKey($key->fresh(), self::ADMIN));
+        $this->assertTrue($this->apps->revokeKey($key, self::ADMIN));
+        $this->assertFalse($this->apps->revokeKey($key, self::ADMIN));
         $this->assertSame(1, AuditEntry::query()->where('action', 'api_key.revoked')->count());
+        $this->assertNull(ApiToken::query()->find($key->id));
 
-        foreach (['key', 'secret'] as $part) {
-            try {
-                $this->apps->revealKey($key->fresh(), $part, self::ADMIN);
-                $this->fail('a revoked key was revealed');
-            } catch (PlatformAppException) {
-            }
+        try {
+            $this->apps->revealKey($key, self::ADMIN);
+            $this->fail('a revoked key was revealed');
+        } catch (PlatformAppException) {
         }
-        $this->signedGet('/api/v1/ping', $revealedKey, $revealedSecret)->assertUnauthorized();
+        $this->bearerGet('/api/v1/ping', $revealed)->assertUnauthorized();
 
         $dump = $this->auditDump();
-        $this->assertStringNotContainsString($issued['plaintext_key'], $dump);
-        $this->assertStringNotContainsString($issued['secret'], $dump);
-        $this->assertSame(2, AuditEntry::query()->where('action', 'api_key.viewed')->count());
+        $this->assertStringNotContainsString($secret, $dump);
+        $this->assertSame(1, AuditEntry::query()->where('action', 'api_key.viewed')->count());
     }
 
-    public function test_key_issued_before_keys_were_viewable_refuses_key_but_shows_secret(): void
+    public function test_key_moved_without_an_encrypted_copy_is_not_viewable(): void
     {
         $app = $this->apps->create('Shop', null, null);
         $plain = 'vsk_'.Str::random(40);
-        $old = ApiKey::query()->create([
-            'client_app_id' => $app->id, 'name' => 'Old', 'key_prefix' => substr($plain, 0, 8),
-            'key_hash' => hash('sha256', $plain), 'signing_secret' => 'old-signing-secret-0123456789',
+        $old = $app->tokens()->create([
+            'name' => 'Old', 'prefix' => substr($plain, 0, 8), 'token' => hash('sha256', $plain), 'abilities' => ['*'],
         ]);
 
         try {
-            $this->apps->revealKey($old->fresh(), 'key', self::ADMIN);
+            $this->apps->revealKey($old->fresh(), self::ADMIN);
             $this->fail('expected a refusal');
         } catch (KeyNotViewableException $e) {
             $this->assertInstanceOf(PlatformAppException::class, $e);
         }
-        $this->assertSame('old-signing-secret-0123456789', $this->apps->revealKey($old->fresh(), 'secret', self::ADMIN));
-
-        $this->expectException(PlatformAppException::class);
-        $this->apps->revealKey($old->fresh(), 'hash', self::ADMIN);
+        $this->bearerGet('/api/v1/ping', $plain)->assertOk();
     }
 
-    public function test_reveal_refuses_an_undecryptable_key_cleanly(): void
+    public function test_moved_key_with_an_encrypted_copy_reveals_the_bare_key(): void
+    {
+        $app = $this->apps->create('Shop', null, null);
+        $plain = 'vsk_'.Str::random(40);
+        $old = $app->tokens()->create([
+            'name' => 'Old', 'prefix' => substr($plain, 0, 8), 'token' => hash('sha256', $plain), 'abilities' => ['*'],
+            'token_encrypted' => $plain,
+        ]);
+
+        $this->assertSame($plain, $this->apps->revealKey($old->fresh(), self::ADMIN));
+    }
+
+    public function test_reveal_refuses_an_undecryptable_or_mismatched_key_cleanly(): void
     {
         $app = $this->apps->create('Shop', null, null);
         $key = $this->apps->issueKey($app, 'Prod', null)['key'];
-        DB::table('api_keys')->where('id', $key->id)->update(['key_encrypted' => 'garbage']);
+        $other = $this->apps->issueKey($app, 'Other', null);
 
+        // Another token's value stored against this one: refused, never served.
+        DB::table('personal_access_tokens')->where('id', $key->id)
+            ->update(['token_encrypted' => DB::table('personal_access_tokens')->where('id', $other['key']->id)->value('token_encrypted')]);
+        try {
+            $this->apps->revealKey($key->fresh(), self::ADMIN);
+            $this->fail('a mismatched key was revealed');
+        } catch (PlatformAppException) {
+        }
+
+        DB::table('personal_access_tokens')->where('id', $key->id)->update(['token_encrypted' => 'garbage']);
         $this->expectException(PlatformAppException::class);
-        $this->apps->revealKey($key->fresh(), 'key', self::ADMIN);
+        $this->apps->revealKey($key->fresh(), self::ADMIN);
     }
 
     public function test_issue_key_refuses_blank_name(): void
@@ -292,10 +300,10 @@ class PlatformAppsServiceTest extends TestCase
         $app = $this->apps->create('Shop', null, null);
         $key = $this->apps->issueKey($app, 'Prod', null)['key'];
         $stale = $key->fresh();
-        DB::table('api_keys')->where('id', $key->id)->update(['revoked_at' => now()]);
+        DB::table('personal_access_tokens')->where('id', $key->id)->delete();
 
         $this->expectException(PlatformAppException::class);
-        $this->apps->revealKey($stale, 'key', self::ADMIN);
+        $this->apps->revealKey($stale, self::ADMIN);
     }
 
     public function test_ping_without_url_or_disabled_sends_nothing_and_never_throws(): void

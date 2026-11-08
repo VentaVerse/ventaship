@@ -10,8 +10,9 @@ use App\Http\Controllers\Api\V1\QuotesController;
 use App\Http\Controllers\Api\V1\ShipmentsController;
 use Illuminate\Support\Facades\Route;
 
-// client.auth runs first (it sits in the framework's auth priority slot), so every limiter is keyed by the API key.
-Route::middleware(['client.auth', 'throttle:api'])->group(function () {
+// auth:sanctum then client.auth run first (both sit in the framework's auth priority slot), so every limiter is
+// keyed by the authenticated token.
+Route::middleware(['auth:sanctum', 'client.auth', 'throttle:api'])->group(function () {
     Route::get('ping', PingController::class);
 
     Route::get('couriers', [CouriersController::class, 'index']);

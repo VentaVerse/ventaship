@@ -3,11 +3,10 @@
 namespace App\Http\Controllers\Ui;
 
 use App\Http\Controllers\Controller;
-use App\Models\ApiKey;
+use App\Models\ApiToken;
 use App\Models\ApiRequest;
 use App\Models\ClientApp;
 use App\Models\OutgoingEvent;
-use App\Platforms\KeyNotViewableException;
 use App\Platforms\PlatformAppException;
 use App\Platforms\PlatformApps;
 use Illuminate\Http\JsonResponse;
@@ -20,7 +19,7 @@ class PlatformsController extends Controller
 {
     public function index(): View
     {
-        $apps = ClientApp::query()->withCount(['apiKeys as active_keys_count' => fn ($q) => $q->whereNull('revoked_at')])
+        $apps = ClientApp::query()->withCount('tokens as active_keys_count')
             ->orderBy('name')->orderBy('id')->get();
         $ids = $apps->modelKeys();
 
@@ -65,19 +64,17 @@ class PlatformsController extends Controller
 
     public function show(Request $request, ClientApp $app, PlatformApps $platforms): View
     {
-        $keys = ApiKey::query()->where('client_app_id', $app->id)->orderBy('id')->get();
+        $keys = $app->tokens()->orderBy('id')->get();
         // Set by issueKey for one request: the new key's id only. The page then reveals it through apps.reveal.
         $issued = $request->session()->get('issued_key');
 
         return view('platforms.show', [
             'app' => $app,
-            'keys' => $keys->map(fn (ApiKey $key) => [
+            'keys' => $keys->map(fn (ApiToken $key) => [
                 'key' => $key,
-                'active' => $key->revoked_at === null,
-                'viewable' => $key->getRawOriginal('key_encrypted') !== null,
-                'masked_key' => $key->revoked_at === null ? $this->maskedOf($key, 'key_encrypted', $platforms) : null,
-                'masked_secret' => $key->revoked_at === null ? $this->maskedOf($key, 'signing_secret', $platforms) : null,
-                'auto' => $issued !== null && $key->revoked_at === null && (int) $issued === (int) $key->id,
+                'viewable' => $key->getRawOriginal('token_encrypted') !== null,
+                'masked' => $this->maskedOf($key, 'token_encrypted', $platforms),
+                'auto' => $issued !== null && (int) $issued === (int) $key->id,
             ]),
             'nextKeyName' => 'Key '.($keys->count() + 1),
             'webhookSecret' => $this->maskedOf($app, 'webhook_secret', $platforms),
@@ -101,7 +98,7 @@ class PlatformsController extends Controller
 
     public function revokeKey(Request $request, ClientApp $app, int $key, PlatformApps $platforms): RedirectResponse
     {
-        $apiKey = ApiKey::query()->where('client_app_id', $app->id)->whereKey($key)->firstOrFail();
+        $apiKey = $app->tokens()->whereKey($key)->firstOrFail();
         $back = redirect(route('apps.show', $app).'#keys');
 
         return $platforms->revokeKey($apiKey, $this->actor($request))
@@ -110,8 +107,8 @@ class PlatformsController extends Controller
     }
 
     /**
-     * `key:{id}`, `secret:{id}` (a key of this app only) or `webhook`. Throttled, audited, never cached. Keys are
-     * addressed by id: prefixes are short and may repeat within an app.
+     * `token:{id}` (a token of this app only) or `webhook`. Throttled, audited, never cached. Tokens are addressed by
+     * id: prefixes are short and may repeat within an app.
      */
     public function reveal(Request $request, ClientApp $app, string $what, PlatformApps $platforms): JsonResponse
     {
@@ -121,14 +118,10 @@ class PlatformsController extends Controller
             if ($what === 'webhook') {
                 $value = $platforms->revealWebhookSecret($app, $actor);
             } else {
-                [$part, $id] = explode(':', $what, 2);
-                $key = ApiKey::query()->where('client_app_id', $app->id)->whereKey((int) $id)->first();
+                abort_unless(preg_match('/^token:(\d{1,19})$/', $what, $m) === 1, 404);
+                $key = $app->tokens()->whereKey((int) $m[1])->first();
                 abort_if($key === null, 404);
-                // A key issued before keys were viewable offers neither part on screen, so neither is served.
-                if ($key->getRawOriginal('key_encrypted') === null) {
-                    throw new KeyNotViewableException('Issued before keys were viewable.');
-                }
-                $value = $platforms->revealKey($key, $part, $actor);
+                $value = $platforms->revealKey($key, $actor);
             }
         } catch (PlatformAppException $e) {
             return $this->noStore(response()->json(['message' => $e->getMessage()], 422));
@@ -184,7 +177,7 @@ class PlatformsController extends Controller
      *
      * @return array{length: int, last4: string}|null
      */
-    private function maskedOf(ApiKey|ClientApp $model, string $column, PlatformApps $platforms): ?array
+    private function maskedOf(ApiToken|ClientApp $model, string $column, PlatformApps $platforms): ?array
     {
         if ($model->getRawOriginal($column) === null) {
             return null;

@@ -4,6 +4,7 @@ use App\Api\ApiError;
 use App\Http\Middleware\AuthenticateClient;
 use App\Http\Middleware\EnforceIdempotency;
 use App\Http\Middleware\LogApiRequest;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -38,6 +39,16 @@ return Application::configure(basePath: dirname(__DIR__))
         // Every answer under api/* uses the one error body; nothing else (stack traces, HTML) ever leaves.
         $exceptions->render(function (ApiError $e, Request $request) {
             return $request->is('api/*') ? $e->toResponse() : null;
+        });
+        // auth:sanctum refused the bearer token (missing, unknown, expired or revoked): the one 401, never a redirect,
+        // and never a reason.
+        $exceptions->render(function (AuthenticationException $e, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+            $request->attributes->set('api_error', 'unauthorized');
+
+            return (new ApiError(401, 'unauthorized', 'Unauthorized'))->toResponse();
         });
         $exceptions->render(function (ValidationException $e, Request $request) {
             return $request->is('api/*')

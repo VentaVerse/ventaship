@@ -15,7 +15,6 @@ class ScheduleTest extends TestCase
             'ventaship:shipments-sweep' => ['* * * * *', true],
             'ventaship:events-deliver' => ['* * * * *', true],
             'ventaship:receipts-reprocess' => ['* * * * *', true],
-            'ventaship:logs-prune --signatures-only' => ['0 * * * *', true],
             'ventaship:logs-prune' => ['0 0 * * *', true],
             'ventaship:pii-purge' => ['0 0 * * *', true],
         ];

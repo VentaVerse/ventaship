@@ -3,7 +3,6 @@
 namespace Tests\Feature\Api;
 
 use App\Couriers\AccountSettings;
-use App\Models\ApiKey;
 use App\Models\CourierAccount;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -11,12 +10,12 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Testing\TestResponse;
 use Tests\Concerns\BuildsCourierAccounts;
 use Tests\Concerns\BuildsShipments;
-use Tests\Concerns\SignsApiRequests;
+use Tests\Concerns\CallsClientApi;
 use Tests\TestCase;
 
 class ReadEndpointsTest extends TestCase
 {
-    use BuildsCourierAccounts, BuildsShipments, RefreshDatabase, SignsApiRequests;
+    use BuildsCourierAccounts, BuildsShipments, RefreshDatabase, CallsClientApi;
 
     private array $client;
 
@@ -28,7 +27,7 @@ class ReadEndpointsTest extends TestCase
 
     public function test_couriers_lists_capabilities(): void
     {
-        $res = $this->signed('GET', '/api/v1/couriers')->assertOk();
+        $res = $this->api('GET', '/api/v1/couriers')->assertOk();
 
         $byKey = collect($res->json('data'))->keyBy('key');
         $this->assertSame(['lbc', 'quadx', 'spx'], $byKey->keys()->sort()->values()->all());
@@ -55,8 +54,8 @@ class ReadEndpointsTest extends TestCase
         ]);
         $spx = CourierAccount::factory()->create(['courier' => 'spx', 'label' => 'SPX without keys']);
 
-        $list = $this->signed('GET', '/api/v1/courier-accounts')->assertOk();
-        $one = $this->signed('GET', "/api/v1/courier-accounts/{$account->public_id}")->assertOk();
+        $list = $this->api('GET', '/api/v1/courier-accounts')->assertOk();
+        $one = $this->api('GET', "/api/v1/courier-accounts/{$account->public_id}")->assertOk();
 
         $one->assertJsonPath('data.id', $account->public_id)
             ->assertJsonPath('data.courier', 'quadx')
@@ -79,7 +78,7 @@ class ReadEndpointsTest extends TestCase
 
     public function test_unknown_courier_account_is_404(): void
     {
-        $this->signed('GET', '/api/v1/courier-accounts/acc_nope')->assertNotFound()->assertJsonPath('code', 'not_found');
+        $this->api('GET', '/api/v1/courier-accounts/acc_nope')->assertNotFound()->assertJsonPath('code', 'not_found');
     }
 
     public function test_coverage_uses_cache(): void
@@ -88,8 +87,8 @@ class ReadEndpointsTest extends TestCase
         $account = $this->quadxAccount();
         $body = $this->coverageBody(['account_id' => $account->public_id]);
 
-        $first = $this->signed('POST', '/api/v1/coverage', $body)->assertOk();
-        $second = $this->signed('POST', '/api/v1/coverage', $body)->assertOk();
+        $first = $this->api('POST', '/api/v1/coverage', $body)->assertOk();
+        $second = $this->api('POST', '/api/v1/coverage', $body)->assertOk();
 
         $first->assertJsonPath('data.0.ref', 'a')->assertJsonPath('data.0.verdict', 'serviceable');
         $this->assertSame($first->json('data'), $second->json('data'));
@@ -102,9 +101,9 @@ class ReadEndpointsTest extends TestCase
         $account = $this->quadxAccount();
         $body = $this->coverageBody(['account_id' => $account->public_id]);
 
-        $this->signed('POST', '/api/v1/coverage', $body)->assertOk();
+        $this->api('POST', '/api/v1/coverage', $body)->assertOk();
         AccountSettings::for($account)->write('quadx_default_service', 'same_day');
-        $this->signed('POST', '/api/v1/coverage', $body)->assertOk();
+        $this->api('POST', '/api/v1/coverage', $body)->assertOk();
 
         Http::assertSentCount(2);
     }
@@ -115,7 +114,7 @@ class ReadEndpointsTest extends TestCase
         $body = $this->coverageBody();
         $body['destinations'] = array_fill(0, 11, $body['destinations'][0]);
 
-        $this->signed('POST', '/api/v1/coverage', $body)
+        $this->api('POST', '/api/v1/coverage', $body)
             ->assertStatus(422)
             ->assertJsonValidationErrors(['destinations'], 'errors');
     }
@@ -124,7 +123,7 @@ class ReadEndpointsTest extends TestCase
     {
         $this->fakeDefaultAccount();
 
-        $this->signed('POST', '/api/v1/coverage', $this->coverageBody())
+        $this->api('POST', '/api/v1/coverage', $this->coverageBody())
             ->assertOk()
             ->assertJsonPath('data.0.verdict', 'serviceable')
             ->assertJsonPath('data.0.reason', null);
@@ -135,7 +134,7 @@ class ReadEndpointsTest extends TestCase
         $account = $this->fakeDefaultAccount();
         $body = $this->shipmentBody(['account_id' => $account->public_id]);
 
-        $this->signed('POST', '/api/v1/quotes', [
+        $this->api('POST', '/api/v1/quotes', [
             'account_id' => $account->public_id, 'pickup' => $body['pickup'], 'recipient' => $body['recipient'],
             'parcel' => $body['parcel'], 'payment' => $body['payment'],
         ])->assertOk()->assertExactJson(['data' => null]);
@@ -147,7 +146,7 @@ class ReadEndpointsTest extends TestCase
         $account = $this->quadxAccount();
         $body = $this->shipmentBody();
 
-        $this->signed('POST', '/api/v1/quotes', [
+        $this->api('POST', '/api/v1/quotes', [
             'account_id' => $account->public_id, 'pickup' => $body['pickup'], 'recipient' => $body['recipient'],
             'parcel' => $body['parcel'], 'payment' => $body['payment'],
         ])->assertOk()
@@ -159,7 +158,7 @@ class ReadEndpointsTest extends TestCase
     {
         $lbc = CourierAccount::factory()->create(['courier' => 'lbc']);
 
-        $res = $this->signed('POST', '/api/v1/pickup-slots', [
+        $res = $this->api('POST', '/api/v1/pickup-slots', [
             'account_id' => $lbc->public_id, 'pickup' => $this->shipmentBody()['pickup'],
         ])->assertOk();
 
@@ -171,32 +170,37 @@ class ReadEndpointsTest extends TestCase
     public function test_coverage_is_rate_limited_per_key(): void
     {
         $this->fakeDefaultAccount();
-        $keyId = ApiKey::query()->where('client_app_id', $this->client['app']->id)->value('id');
+        $tokenId = $this->client['app']->tokens()->value('id');
         for ($i = 0; $i < 60; $i++) {
-            RateLimiter::hit(md5('api-coverage'.$keyId), 60);
+            RateLimiter::hit(md5('api-coverage'.'token:'.$tokenId), 60);
         }
 
-        $res = $this->signed('POST', '/api/v1/coverage', $this->coverageBody())
+        $res = $this->api('POST', '/api/v1/coverage', $this->coverageBody())
             ->assertStatus(429)
             ->assertJsonPath('code', 'rate_limited')
             ->assertJsonPath('retryable', true);
         $this->assertNotNull($res->headers->get('Retry-After'));
 
-        // Another key has its own budget.
+        // Another token has its own budget.
         $this->client = $this->makeClient();
-        $this->signed('POST', '/api/v1/coverage', $this->coverageBody())->assertOk();
+        $this->api('POST', '/api/v1/coverage', $this->coverageBody())->assertOk();
     }
 
-    public function test_unsigned_calls_do_not_spend_a_keys_budget(): void
+    public function test_refused_calls_do_not_spend_a_budget(): void
     {
-        $keyId = ApiKey::query()->where('client_app_id', $this->client['app']->id)->value('id');
+        $tokenId = $this->client['app']->tokens()->value('id');
+        [, $secret] = explode('|', $this->client['key'], 2);
 
-        $this->call('GET', '/api/v1/couriers', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$this->client['key']])
+        $this->call('GET', '/api/v1/couriers', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$tokenId.'|'.strrev($secret)])
             ->assertStatus(401);
+        $this->call('GET', '/api/v1/couriers')->assertStatus(401);
 
         // The limiter never ran: the 401 came first.
-        $this->assertSame(0, RateLimiter::attempts(md5('api'.$keyId)));
+        $this->assertSame(0, RateLimiter::attempts(md5('api'.'token:'.$tokenId)));
         $this->assertSame(0, RateLimiter::attempts(md5('api'.'ip:127.0.0.1')));
+
+        $this->call('GET', '/api/v1/couriers', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$this->client['key']])->assertOk();
+        $this->assertSame(1, RateLimiter::attempts(md5('api'.'token:'.$tokenId)));
     }
 
     private function coverageBody(array $overrides = []): array
@@ -224,8 +228,8 @@ class ReadEndpointsTest extends TestCase
         }
     }
 
-    private function signed(string $method, string $uri, array $data = [], array $headers = []): TestResponse
+    private function api(string $method, string $uri, array $data = [], array $headers = []): TestResponse
     {
-        return $this->signedJson($method, $uri, $data, $headers + ['X-Timestamp' => $this->uniqueTimestamp()], $this->client);
+        return $this->apiJson($method, $uri, $data, $headers, $this->client);
     }
 }

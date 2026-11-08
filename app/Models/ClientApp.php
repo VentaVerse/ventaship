@@ -7,10 +7,11 @@ use App\Support\Vault\VaultEncrypted;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Laravel\Sanctum\HasApiTokens;
 
 class ClientApp extends Model
 {
-    use HasFactory, HasPublicId;
+    use HasApiTokens, HasFactory, HasPublicId;
 
     public const PUBLIC_PREFIX = 'app_';
 
@@ -21,11 +22,6 @@ class ClientApp extends Model
     protected function casts(): array
     {
         return ['webhook_secret' => VaultEncrypted::class, 'webhook_events' => 'array'];
-    }
-
-    public function apiKeys(): HasMany
-    {
-        return $this->hasMany(ApiKey::class);
     }
 
     public function shipments(): HasMany

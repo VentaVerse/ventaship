@@ -47,8 +47,6 @@ class MaintenanceCommandsTest extends TestCase
             ['client_app_id' => $app->id, 'key' => 'stuck', 'request_hash' => str_repeat('a', 64), 'status' => 'processing', 'created_at' => $now->copy()->subHours(2)],
             ['client_app_id' => $app->id, 'key' => 'stuck-older', 'request_hash' => str_repeat('a', 64), 'status' => 'processing', 'created_at' => $now->copy()->subDays(9)],
         ]);
-        $this->signatures($now);
-
         $this->artisan('ventaship:logs-prune')
             ->expectsOutputToContain('2 idempotency keys still processing after an hour')
             ->assertExitCode(0);
@@ -58,18 +56,6 @@ class MaintenanceCommandsTest extends TestCase
         $this->assertEqualsCanonicalizing(['new', 'new-unrouted'], DB::table('webhook_receipts')->pluck('body')->all());
         $this->assertSame([200], DB::table('outgoing_attempts')->pluck('status_code')->map(fn ($v) => (int) $v)->all());
         $this->assertEqualsCanonicalizing(['done-new', 'stuck', 'stuck-older'], DB::table('idempotency_keys')->pluck('key')->all());
-        $this->assertSame([str_repeat('2', 64)], DB::table('request_signatures')->pluck('signature_hash')->all());
-    }
-
-    public function test_signatures_only_prunes_nothing_else(): void
-    {
-        DB::table('api_requests')->insert(['method' => 'GET', 'path' => 'old', 'status' => 200, 'created_at' => now()->subDays(31)]);
-        $this->signatures(now());
-
-        $this->artisan('ventaship:logs-prune', ['--signatures-only' => true])->assertExitCode(0);
-
-        $this->assertSame(1, DB::table('api_requests')->count());
-        $this->assertSame(1, DB::table('request_signatures')->count());
     }
 
     public function test_pii_purge_clears_personal_data_after_the_retention_window(): void
@@ -137,15 +123,5 @@ class MaintenanceCommandsTest extends TestCase
         $this->artisan('ventaship:pii-purge')->assertExitCode(0);
 
         $this->assertNotNull($s->refresh()->pii_purged_at);
-    }
-
-    /** One signature past the 600 s keep window and one inside it. */
-    private function signatures(\DateTimeInterface $now): void
-    {
-        $now = \Carbon\CarbonImmutable::instance($now);
-        DB::table('request_signatures')->insert([
-            ['signature_hash' => str_repeat('1', 64), 'created_at' => $now->subSeconds(601)],
-            ['signature_hash' => str_repeat('2', 64), 'created_at' => $now->subSeconds(590)],
-        ]);
     }
 }

@@ -12,17 +12,17 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use Tests\Concerns\BuildsCourierAccounts;
 use Tests\Concerns\BuildsShipments;
-use Tests\Concerns\SignsApiRequests;
+use Tests\Concerns\CallsClientApi;
 use Tests\TestCase;
 
 /**
- * The POC loop, end to end, with the real QuadX adapter and only HTTP faked: a signed client books a COD parcel,
+ * The POC loop, end to end, with the real QuadX adapter and only HTTP faked: an authenticated client books a COD parcel,
  * prints its waybill, QuadX reports picked up → in transit → delivered by webhook, and the client receives every
  * change as a signed outgoing webhook, in sequence order. Every queue runs synchronously.
  */
 class QuadXLifecycleTest extends TestCase
 {
-    use BuildsCourierAccounts, BuildsShipments, RefreshDatabase, SignsApiRequests;
+    use BuildsCourierAccounts, BuildsShipments, RefreshDatabase, CallsClientApi;
 
     private const HOOK_URL = 'https://client.test/hooks';
 
@@ -60,8 +60,8 @@ class QuadXLifecycleTest extends TestCase
             'webhook_token_hash' => hash('sha256', self::WEBHOOK_TOKEN),
         ]);
 
-        // 3. A signed create, COD ₱1,290.00: accepted for booking.
-        $created = $this->signed($client, 'POST', '/api/v1/shipments', $this->shipmentBody(), ['Idempotency-Key' => 'order-4211-create'])
+        // 3. An authenticated create, COD ₱1,290.00: accepted for booking.
+        $created = $this->api($client, 'POST', '/api/v1/shipments', $this->shipmentBody(), ['Idempotency-Key' => 'order-4211-create'])
             ->assertStatus(202);
         $id = $created->json('data.id');
         $this->assertMatchesRegularExpression('/^shp_[0-9a-z]{26}$/', $id);
@@ -78,7 +78,7 @@ class QuadXLifecycleTest extends TestCase
             && $r['reference_id'] === 'VS000001');
 
         // 5. The waybill.
-        $label = $this->signed($client, 'GET', "/api/v1/shipments/{$id}/label")->assertOk();
+        $label = $this->api($client, 'GET', "/api/v1/shipments/{$id}/label")->assertOk();
         $this->assertStringStartsWith('application/pdf', $label->headers->get('Content-Type'));
         $this->assertSame($pdf, $label->getContent());
 
@@ -133,19 +133,19 @@ class QuadXLifecycleTest extends TestCase
         $this->assertSame('delivered', $envelopes[5]['data']['shipment']['phase']);
 
         // 9. The final read.
-        $final = $this->signed($client, 'GET', "/api/v1/shipments/{$id}")->assertOk();
+        $final = $this->api($client, 'GET', "/api/v1/shipments/{$id}")->assertOk();
         $this->assertSame('delivered', $final->json('data.phase'));
         $this->assertSame('cod_collected', $final->json('data.payment_state'));
         $this->assertSame('delivered', $final->json('data.courier_status'));
         $this->assertSame('booked', $final->json('data.state'));
 
-        $events = $this->signed($client, 'GET', "/api/v1/shipments/{$id}/events")->assertOk();
+        $events = $this->api($client, 'GET', "/api/v1/shipments/{$id}/events")->assertOk();
         $this->assertSame(['for_pickup', 'picked_up', 'in_transit', 'delivered'], array_column($events->json('data'), 'courier_status'));
     }
 
     /** @param  array{app: \App\Models\ClientApp, key: string, secret: string}  $client */
-    private function signed(array $client, string $method, string $uri, array $data = [], array $headers = []): TestResponse
+    private function api(array $client, string $method, string $uri, array $data = [], array $headers = []): TestResponse
     {
-        return $this->signedJson($method, $uri, $data, $headers + ['X-Timestamp' => $this->uniqueTimestamp()], $client);
+        return $this->apiJson($method, $uri, $data, $headers, $client);
     }
 }

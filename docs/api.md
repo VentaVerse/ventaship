@@ -2,14 +2,14 @@
 
 Ventaship is a courier gateway. A client app (a shop, a storefront, an ERP) sends it a shipment; Ventaship books the parcel with a courier (QuadX, SPX or LBC), keeps the waybill, follows the parcel through the courier's webhooks and status polls, and tells the client app about every change through signed webhooks.
 
-One Ventaship install serves many client apps. There are no workspaces or tenants. Each client app has its own API keys, its own webhook URL and secret, and sees only its own shipments. Courier accounts belong to the install: every client app can book with every courier account.
+One Ventaship install serves many client apps. There are no workspaces or tenants. Each client app has its own API tokens, its own webhook URL and secret, and sees only its own shipments. Courier accounts belong to the install: every client app can book with every courier account.
 
 This document is the whole contract. Everything here is checked against the code by the test suite: every JSON example in this file is a file in `tests/Fixtures/api/`, and a test checks that each one has the shape the server sends today.
 
 Contents:
 
 1. [Basics](#1-basics)
-2. [Authentication and request signing](#2-authentication-and-request-signing)
+2. [Authentication](#2-authentication)
 3. [Idempotency](#3-idempotency)
 4. [Errors](#4-errors)
 5. [Rate limits](#5-rate-limits)
@@ -94,38 +94,19 @@ Keys that are not in this table are dropped.
 
 ---
 
-## 2. Authentication and request signing
+## 2. Authentication
 
-Every API request is authenticated by an API key **and** signed with that key's signing secret. Both are issued by the Ventaship owner (`ventaship:key-issue`) and shown once. A client app may hold several keys; each key has its own signing secret.
-
-| Header | Value |
-|---|---|
-| `Authorization` | `Bearer vsk_…` (the API key) |
-| `X-Timestamp` | the current time in unix seconds, e.g. `1794114300` |
-| `X-Signature` | `sha256=` followed by the lowercase hex HMAC described below |
-
-### The signature
+Every API request carries an API token in the `Authorization` header. Nothing else is needed: no signature, no timestamp.
 
 ```
-X-Signature = "sha256=" + hex( HMAC_SHA256( signing_secret, "{X-Timestamp}.{METHOD} {target}\n{body}" ) )
+Authorization: Bearer 12|vsk_…
 ```
 
-- `{X-Timestamp}` is the header value, a plain integer of unix seconds with no leading zeros, sign, spaces or decimals (the server signs the integer it parses, so `0179…` would not match).
-- `{METHOD}` is the HTTP method in capitals: `GET`, `POST`.
-- `{target}` is the path **and** the raw query string exactly as sent, starting at `/api/v1`: `/api/v1/shipments?state=booked&cursor=abc`. No host, no scheme. If there is no query string there is no `?`.
-- Percent-encode query values yourself **before** signing (`encodeURIComponent` in JS, `rawurlencode`/`http_build_query` in PHP), and send that exact string. Unencoded characters may be rewritten on the way (Node's `URL`/`fetch` normalise spaces and other characters), and the signature would no longer match. A literal `+` in a query value is read by the server as a space, so an offset such as `+08:00` must be sent as `%2B08:00`.
-- Links the API returns (`links.next` in `GET /shipments`) are absolute URLs. Sign only their path and query (`/api/v1/shipments?cursor=…`), never the scheme and host.
-- `\n` is one line feed character.
-- `{body}` is the raw request body, byte for byte as sent. For a request without a body (every `GET`) it is the empty string, so the signed string ends with the line feed.
-
-The rules the server applies:
-
-- `X-Timestamp` must be within **±300 seconds** of the server clock. Keep your clock in sync (NTP).
-- **Each signature is accepted once.** A replayed request is refused. Two requests with the same method, target and body signed in the same second produce the same signature, so the second is refused: when you retry or repeat a request, sign it again with a fresh timestamp.
-- No other header is signed. `Idempotency-Key` in particular is not part of the signature, so two requests that differ only in their `Idempotency-Key` still collide if signed in the same second.
-- Sign the exact bytes you send. Do not re-encode the JSON between signing and sending.
-- A missing, unknown, revoked or expired key, a timestamp outside the window, a wrong signature and a reused signature are all answered the same way: `401` with code `unauthorized`. The reason is not disclosed.
-- A correctly signed request from a disabled client app is answered `403 app_disabled`.
+- The Ventaship owner issues tokens, on the platform's page in the dashboard or with `ventaship:key-issue`. A client app may hold several tokens. Send the token exactly as given, including the number and `|` in front.
+- Older tokens look like `vsk_…`, without a number in front. They keep working; send them as they are.
+- A missing, unknown, revoked or expired token is answered `401` with code `unauthorized`. The reason is not disclosed.
+- A valid token of a disabled client app is answered `403 app_disabled`.
+- Use HTTPS outside your own network: the token is a password.
 
 ### PHP
 
@@ -135,27 +116,18 @@ The rules the server applies:
 final class VentashipClient
 {
     public function __construct(
-        private string $baseUrl,       // e.g. "http://localhost:8040" (no trailing slash, no /api/v1)
-        private string $apiKey,        // "vsk_…"
-        private string $signingSecret,
+        private string $baseUrl,   // e.g. "http://localhost:8040" (no trailing slash, no /api/v1)
+        private string $token,     // "12|vsk_…"
     ) {}
-
-    public static function sign(string $secret, int $ts, string $method, string $target, string $body): string
-    {
-        return 'sha256='.hash_hmac('sha256', "{$ts}.{$method} {$target}\n{$body}", $secret);
-    }
 
     /** @return array{status: int, headers: array<string, string>, body: string} */
     public function request(string $method, string $target, ?array $json = null, array $headers = []): array
     {
         $method = strtoupper($method);
         $body = $json === null ? '' : json_encode($json, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
-        $ts = time();
 
         $headers += [
-            'Authorization' => 'Bearer '.$this->apiKey,
-            'X-Timestamp' => (string) $ts,
-            'X-Signature' => self::sign($this->signingSecret, $ts, $method, $target, $body),
+            'Authorization' => 'Bearer '.$this->token,
             'Accept' => 'application/json',
         ];
         if ($body !== '') {
@@ -187,7 +159,7 @@ final class VentashipClient
     }
 }
 
-// $vs = new VentashipClient('http://localhost:8040', 'vsk_…', '…');
+// $vs = new VentashipClient('http://localhost:8040', '12|vsk_…');
 // $vs->request('GET', '/api/v1/ping');
 // $vs->request('POST', '/api/v1/shipments', $payload, ['Idempotency-Key' => 'order-4211-create']);
 ```
@@ -195,48 +167,26 @@ final class VentashipClient
 ### Node (18+)
 
 ```js
-import crypto from 'node:crypto';
-
-export function sign(secret, ts, method, target, body) {
-  return 'sha256=' + crypto.createHmac('sha256', secret)
-    .update(`${ts}.${method} ${target}\n${body}`)
-    .digest('hex');
-}
-
-export async function ventaship(baseUrl, apiKey, signingSecret, method, target, json = null, headers = {}) {
-  method = method.toUpperCase();
-  const body = json === null ? '' : JSON.stringify(json);
-  const ts = Math.floor(Date.now() / 1000);
-
-  const res = await fetch(baseUrl + target, {
-    method,
-    body: body === '' ? undefined : body,
+export async function ventaship(baseUrl, token, method, target, json = null, headers = {}) {
+  return fetch(baseUrl + target, {
+    method: method.toUpperCase(),
+    body: json === null ? undefined : JSON.stringify(json),
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'X-Timestamp': String(ts),
-      'X-Signature': sign(signingSecret, ts, method, target, body),
+      'Authorization': `Bearer ${token}`,
       'Accept': 'application/json',
-      ...(body === '' ? {} : { 'Content-Type': 'application/json' }),
+      ...(json === null ? {} : { 'Content-Type': 'application/json' }),
       ...headers,
     },
   });
-  return res;
 }
 
-// await ventaship('http://localhost:8040', 'vsk_…', '…', 'GET', '/api/v1/ping');
+// await ventaship('http://localhost:8040', '12|vsk_…', 'GET', '/api/v1/ping');
 ```
 
-### Test vector
+### curl
 
-```
-signing_secret  test-secret
-X-Timestamp     1794114300
-method          GET
-target          /api/v1/ping
-body            (empty)
-
-signed string   "1794114300.GET /api/v1/ping\n"
-X-Signature     sha256=aa4dc60a25a3131a9915aef8ed34cd3307c6f3ebb765d24c13e7eb8772d71cdd
+```bash
+curl -H "Authorization: Bearer $VENTASHIP_TOKEN" -H "Accept: application/json" http://localhost:8040/api/v1/ping
 ```
 
 ---
@@ -255,7 +205,7 @@ How it works:
 
 - Keys are scoped to your client app. Two apps can use the same key without meeting.
 - The first request with a key is processed and its answer (status and body) is stored.
-- A repeat with the same key and the **same request** (same method, same path and query, same body bytes) gets the stored answer again, with the header `Idempotent-Replayed: true`. Nothing is done twice. (It must still be signed afresh: see [2](#2-authentication-and-request-signing).)
+- A repeat with the same key and the **same request** (same method, same path and query, same body bytes) gets the stored answer again, with the header `Idempotent-Replayed: true`. Nothing is done twice.
 - The same key with a **different** request is `422 idempotency_key_reused`.
 - The query string is part of the request: reusing a key with a different `?wait` (or `?wait` added or dropped) is `422 idempotency_key_reused`. Retry with exactly the URL you sent first.
 - While the first request is still running, a repeat is `409 idempotency_in_progress` (`retryable: true`): wait a moment and retry.
@@ -333,7 +283,7 @@ Every code the API can answer:
 
 | HTTP | `code` | `retryable` | When | `errors` |
 |---|---|---|---|---|
-| 401 | `unauthorized` | false | Missing, unknown, revoked or expired API key; timestamp outside ±300 s; wrong signature; signature already used | `{}` |
+| 401 | `unauthorized` | false | Missing, unknown, revoked or expired API token | `{}` |
 | 403 | `app_disabled` | false | The client app is disabled by the owner | `{}` |
 | 404 | `not_found` | false | Unknown route, or a shipment or courier account that does not exist. Another app's shipment is also a 404 | `{}` |
 | 405 | `method_not_allowed` | false | Wrong HTTP method for the route (see the `Allow` header) | `{}` |
@@ -357,7 +307,7 @@ Booking outcomes are **not** API errors: `POST /shipments` answers 202 and the c
 
 ## 5. Rate limits
 
-Limits are per API key, per minute. Each response carries `X-RateLimit-Limit` and `X-RateLimit-Remaining`; a `429 rate_limited` carries `Retry-After` (seconds).
+Limits are per API token, per minute. Each response carries `X-RateLimit-Limit` and `X-RateLimit-Remaining`; a `429 rate_limited` carries `Retry-After` (seconds).
 
 | Bucket | Limit | Applies to |
 |---|---|---|
@@ -407,7 +357,7 @@ At least one is required. If you send both, the account must belong to that cour
 
 ### `GET /ping`
 
-Checks your key and signature. No side effects.
+Checks your token. No side effects.
 
 <!-- fixture: ping.response -->
 ```json
@@ -1070,7 +1020,7 @@ Your shipments, newest first, 50 per page. Every filter is optional; they combin
 | `updated_since` | a timestamp; shipments whose `updated_at` is at or after it. Send ISO-8601 with an offset (`2026-11-08T13:00:00+08:00`) |
 | `cursor` | the `meta.next_cursor` of the previous page |
 
-Pagination is by cursor: follow `links.next` (or pass `meta.next_cursor` as `cursor`) until it is `null`. `links.next` is an absolute URL: sign only its path and query string (see [2](#2-authentication-and-request-signing)). Percent-encode `updated_since` (`+08:00` is `%2B08:00`).
+Pagination is by cursor: follow `links.next` (or pass `meta.next_cursor` as `cursor`) until it is `null`. `links.next` is an absolute URL: request it as is, with the same `Authorization` header. Percent-encode `updated_since` (`+08:00` is `%2B08:00`).
 
 For reconciliation (say, after your webhook endpoint was down), list with `updated_since` set to the last time you were sure you were in sync.
 
@@ -1997,16 +1947,15 @@ php artisan ventaship:app-create "My Shop" --webhook-url=https://shop.example.co
 #   App:            app_…
 #   Webhook secret: whsec_…           (shown once)
 php artisan ventaship:key-issue app_… --name=production
-#   API key:        vsk_…             (shown once)
-#   Signing secret: …                 (shown once)
+#   12|vsk_…
 ```
 
-and give you the app id, webhook secret, API key and signing secret. Store the secrets as secrets.
+and give you the app id, webhook secret and API token. Store the secrets as secrets.
 
 **2. Ping.**
 
 ```php
-$vs = new VentashipClient('http://localhost:8040', 'vsk_…', $signingSecret);
+$vs = new VentashipClient('http://localhost:8040', '12|vsk_…');
 $r = $vs->request('GET', '/api/v1/ping');   // 200 {"app":{"id":"app_…","name":"My Shop"}}
 ```
 

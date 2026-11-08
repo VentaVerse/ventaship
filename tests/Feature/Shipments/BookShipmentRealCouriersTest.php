@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsCourierAccounts;
 use Tests\Concerns\BuildsShipments;
-use Tests\Concerns\SignsApiRequests;
+use Tests\Concerns\CallsClientApi;
 use Tests\TestCase;
 
 /**
@@ -22,7 +22,7 @@ use Tests\TestCase;
  */
 class BookShipmentRealCouriersTest extends TestCase
 {
-    use BuildsCourierAccounts, BuildsShipments, RefreshDatabase, SignsApiRequests;
+    use BuildsCourierAccounts, BuildsShipments, RefreshDatabase, CallsClientApi;
 
     private const QUADX_CREATE = 'api.staging.quadx.xyz/v2/orders';
 
@@ -113,13 +113,13 @@ class BookShipmentRealCouriersTest extends TestCase
         config(['queue.connections.couriers' => ['driver' => 'sync']]);
         $this->quadxAccount(attributes: ['is_default' => true, 'default_slot' => 'quadx']);
 
-        $insured = $this->signedJson('POST', '/api/v1/shipments', $this->shipmentBody([
+        $insured = $this->apiJson('POST', '/api/v1/shipments', $this->shipmentBody([
             'insure' => true,
             'payment' => ['method' => 'prepaid', 'cod_amount' => null, 'declared_value' => 800.00],
         ]), ['Idempotency-Key' => 'insured-create'], $client)->assertStatus(202);
         $this->assertTrue($insured->json('data.insure'));
 
-        $this->signedJson('POST', '/api/v1/shipments', $this->shipmentBody([
+        $this->apiJson('POST', '/api/v1/shipments', $this->shipmentBody([
             'client_reference' => '4212',
             'payment' => ['method' => 'prepaid', 'cod_amount' => null, 'declared_value' => 800.00],
         ]), ['Idempotency-Key' => 'uninsured-create'], $client)->assertStatus(202)->assertJsonPath('data.insure', false);
@@ -155,7 +155,7 @@ class BookShipmentRealCouriersTest extends TestCase
         config(['queue.connections.couriers' => ['driver' => 'sync']]);
         $this->quadxAccount(attributes: ['is_default' => true, 'default_slot' => 'quadx']);
 
-        $this->signedJson('POST', '/api/v1/shipments', $this->shipmentBody(['recipient' => ['phone' => '+63 917 123 4567']]), [
+        $this->apiJson('POST', '/api/v1/shipments', $this->shipmentBody(['recipient' => ['phone' => '+63 917 123 4567']]), [
             'Idempotency-Key' => 'phone-create',
         ], $client)->assertStatus(202);
 

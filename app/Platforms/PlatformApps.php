@@ -2,7 +2,7 @@
 
 namespace App\Platforms;
 
-use App\Models\ApiKey;
+use App\Models\ApiToken;
 use App\Models\AuditEntry;
 use App\Models\ClientApp;
 use App\Models\OutgoingAttempt;
@@ -113,52 +113,51 @@ class PlatformApps
     }
 
     /**
+     * A new Sanctum token for the app. plaintext_key is what the client sends: `{id}|vsk_…`. It is stored
+     * vault-encrypted so the admin screen can show it again; the token itself is stored as its SHA-256 only.
+     *
      * @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor
-     * @return array{key: ApiKey, plaintext_key: string, secret: string}
+     * @return array{key: ApiToken, plaintext_key: string}
      */
     public function issueKey(ClientApp $app, string $name, ?array $actor = null): array
     {
         $name = $this->validName($name);
-        $plain = 'vsk_'.Str::random(40);
-        $secret = Str::random(48);
+        $secret = $app->generateTokenString();
 
-        $key = DB::transaction(function () use ($app, $name, $plain, $secret, $actor) {
-            $key = ApiKey::query()->create([
-                'client_app_id' => $app->getKey(),
+        return DB::transaction(function () use ($app, $name, $secret, $actor) {
+            /** @var ApiToken $token */
+            $token = $app->tokens()->create([
                 'name' => $name,
-                'key_prefix' => substr($plain, 0, 8),
-                'key_hash' => hash('sha256', $plain),
-                'key_encrypted' => $plain,
-                'signing_secret' => $secret,
+                'token' => hash('sha256', $secret),
+                'abilities' => ['*'],
+                'prefix' => substr($secret, 0, 8),
             ]);
+            $plain = $token->getKey().'|'.$secret;
+            $token->update(['token_encrypted' => $plain]);
 
             $this->audit($actor, 'api_key.issued', 'client_app', $app->public_id, [
-                'name' => $name, 'key_prefix' => $key->key_prefix,
+                'name' => $name, 'key_prefix' => $token->prefix,
             ]);
 
-            return $key;
+            return ['key' => $token, 'plaintext_key' => $plain];
         });
-
-        return ['key' => $key, 'plaintext_key' => $plain, 'secret' => $secret];
     }
 
     /**
-     * Returns false when the key was already revoked.
+     * Deletes the token: it can no longer authenticate or be shown. Returns false when it was already gone.
      *
      * @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor
      */
-    public function revokeKey(ApiKey $key, ?array $actor = null): bool
+    public function revokeKey(ApiToken $key, ?array $actor = null): bool
     {
         return DB::transaction(function () use ($key, $actor) {
-            $revoked = ApiKey::query()->whereKey($key->getKey())->whereNull('revoked_at')
-                ->update(['revoked_at' => now(), 'updated_at' => now()]);
-            if ($revoked === 0) {
+            $app = $key->tokenable;
+            if (ApiToken::query()->whereKey($key->getKey())->delete() === 0) {
                 return false;
             }
-            $key->refresh();
 
-            $this->audit($actor, 'api_key.revoked', 'client_app', (string) $key->clientApp?->public_id, [
-                'name' => $key->name, 'key_prefix' => $key->key_prefix,
+            $this->audit($actor, 'api_key.revoked', 'client_app', $app instanceof ClientApp ? $app->public_id : '', [
+                'name' => $key->name, 'key_prefix' => $key->prefix,
             ]);
 
             return true;
@@ -166,36 +165,33 @@ class PlatformApps
     }
 
     /**
-     * The key itself (`key`) or its signing secret (`secret`). Refuses a revoked key, and the `key` part of a key
-     * issued before keys were stored encrypted (KeyNotViewableException).
+     * The token exactly as the client sends it. Refuses a revoked token, and one issued before keys were stored
+     * encrypted (KeyNotViewableException).
      *
      * @param  array{type: string, id: mixed, ip: ?string}  $actor
      */
-    public function revealKey(ApiKey $key, string $part, array $actor): string
+    public function revealKey(ApiToken $key, array $actor): string
     {
-        if (! in_array($part, ['key', 'secret'], true)) {
-            throw new PlatformAppException('Unknown key part.');
-        }
         // Fresh from the database: the caller's model may predate a revoke.
-        $key = ApiKey::query()->with('clientApp')->find($key->getKey());
-        if ($key === null || $key->revoked_at !== null) {
+        $key = ApiToken::query()->find($key->getKey());
+        if ($key === null) {
             throw new PlatformAppException('This key is revoked.');
         }
-
-        $column = $part === 'key' ? 'key_encrypted' : 'signing_secret';
-        if ($key->getRawOriginal($column) === null) {
-            throw $part === 'key'
-                ? new KeyNotViewableException('Issued before keys were viewable.')
-                : new PlatformAppException('Not set.');
+        if ($key->getRawOriginal('token_encrypted') === null) {
+            throw new KeyNotViewableException('Issued before keys were viewable.');
         }
 
-        $value = $this->decrypted($key, $column);
-        if ($part === 'key' && ! hash_equals((string) $key->key_hash, hash('sha256', $value))) {
+        $value = $this->decrypted($key, 'token_encrypted');
+        // `{id}|secret` for a Sanctum token, the bare secret for a key moved from before Sanctum.
+        $secret = str_contains($value, '|') ? explode('|', $value, 2)[1] : $value;
+        if (! hash_equals((string) $key->token, hash('sha256', $secret))
+            || (str_contains($value, '|') && explode('|', $value, 2)[0] !== (string) $key->getKey())) {
             throw new PlatformAppException('This key could not be read.');
         }
 
-        $this->audit($actor, 'api_key.viewed', 'client_app', (string) $key->clientApp?->public_id, [
-            'part' => $part, 'key_prefix' => $key->key_prefix,
+        $app = $key->tokenable;
+        $this->audit($actor, 'api_key.viewed', 'client_app', $app instanceof ClientApp ? $app->public_id : '', [
+            'key_prefix' => $key->prefix,
         ]);
 
         return $value;
@@ -365,7 +361,7 @@ class PlatformApps
     }
 
     /** Decrypts a vault column, turning a bad ciphertext into a refusal instead of an error page. */
-    private function decrypted(ApiKey|ClientApp $model, string $column): string
+    private function decrypted(ApiToken|ClientApp $model, string $column): string
     {
         try {
             return (string) $model->{$column};

@@ -11,7 +11,7 @@ class KeyIssue extends Command
 {
     protected $signature = 'ventaship:key-issue {app} {--name=}';
 
-    protected $description = 'Issue an API key and signing secret for a client app (shown once)';
+    protected $description = 'Issue an API token for a client app and print it';
 
     public function handle(PlatformApps $apps): int
     {
@@ -29,12 +29,8 @@ class KeyIssue extends Command
 
             return self::FAILURE;
         }
-        $key = $issued['plaintext_key'];
-        $secret = $issued['secret'];
 
-        $this->line("API key:        {$key}");
-        $this->line("Signing secret: {$secret}");
-        $this->warn('These are shown once. Store them now.');
+        $this->line($issued['plaintext_key']);
 
         return self::SUCCESS;
     }

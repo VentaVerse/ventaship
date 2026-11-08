@@ -15,12 +15,12 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Tests\Concerns\BuildsShipments;
-use Tests\Concerns\SignsApiRequests;
+use Tests\Concerns\CallsClientApi;
 use Tests\TestCase;
 
 class ShipmentQueriesTest extends TestCase
 {
-    use BuildsShipments, RefreshDatabase, SignsApiRequests;
+    use BuildsShipments, RefreshDatabase, CallsClientApi;
 
     private array $client;
 
@@ -123,8 +123,7 @@ class ShipmentQueriesTest extends TestCase
         $this->assertSame([['QX-1']], array_column($fake->callsTo('getTracking'), 'args'));
         $this->assertGreaterThan(0, OutgoingEvent::query()->where('type', 'shipment.status_changed')->count());
 
-        // A new timestamp: the same signature twice is refused as a replay.
-        $this->post("/api/v1/shipments/{$s->public_id}/refresh", [], ['X-Timestamp' => $this->uniqueTimestamp()])
+        $this->post("/api/v1/shipments/{$s->public_id}/refresh")
             ->assertStatus(429)
             ->assertJsonPath('code', 'rate_limited')
             ->assertJsonPath('retryable', true)
@@ -161,9 +160,8 @@ class ShipmentQueriesTest extends TestCase
         $account = $this->fakeDefaultAccount();
         CourierRegistry::fake('quadx', FakeCourier::make()->booksAs('QX-WAIT'));
 
-        $res = $this->signedJson('POST', '/api/v1/shipments?wait=20', $this->shipmentBody(['account_id' => $account->public_id]), [
+        $res = $this->apiJson('POST', '/api/v1/shipments?wait=20', $this->shipmentBody(['account_id' => $account->public_id]), [
             'Idempotency-Key' => (string) Str::uuid(),
-            'X-Timestamp' => $this->uniqueTimestamp(),
         ], $this->client);
 
         $res->assertStatus(202)
@@ -177,9 +175,8 @@ class ShipmentQueriesTest extends TestCase
         Sleep::fake();
         $this->fakeDefaultAccount();
 
-        $res = $this->signedJson('POST', '/api/v1/shipments?wait=999', $this->shipmentBody(), [
+        $res = $this->apiJson('POST', '/api/v1/shipments?wait=999', $this->shipmentBody(), [
             'Idempotency-Key' => (string) Str::uuid(),
-            'X-Timestamp' => $this->uniqueTimestamp(),
         ], $this->client);
 
         $res->assertStatus(202)->assertJsonPath('data.state', 'queued');
@@ -217,11 +214,11 @@ class ShipmentQueriesTest extends TestCase
 
     public function get($uri, array $headers = [])
     {
-        return $this->signedJson('GET', $uri, [], $headers + ['X-Timestamp' => $this->uniqueTimestamp()], $this->client);
+        return $this->apiJson('GET', $uri, [], $headers, $this->client);
     }
 
     public function post($uri, array $data = [], array $headers = [])
     {
-        return $this->signedJson('POST', $uri, $data, $headers + ['X-Timestamp' => $this->uniqueTimestamp()], $this->client);
+        return $this->apiJson('POST', $uri, $data, $headers, $this->client);
     }
 }

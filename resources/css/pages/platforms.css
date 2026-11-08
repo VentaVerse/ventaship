@@ -85,11 +85,6 @@
         overflow-wrap: anywhere;
     }
 
-    .pf-key--off .pf-key__name,
-    .pf-key--off td {
-        color: var(--bl-ink-2);
-    }
-
     .pf-key__mono,
     .pf-url {
         font: 500 13px var(--font-mono);

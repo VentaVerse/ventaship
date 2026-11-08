@@ -110,8 +110,7 @@ class PlatformsPagesTest extends TestCase
         $this->assertMatchesRegularExpression('/<main[^>]*class="x-content x-content--form"/', $html);
         $this->assertStringNotContainsString($app->webhook_secret, $html);
         $this->assertStringNotContainsString('whsec_', $html);
-        $this->assertStringNotContainsString($issued['plaintext_key'], $html);
-        $this->assertStringNotContainsString($issued['secret'], $html);
+        $this->assertStringNotContainsString(explode('|', $issued['plaintext_key'], 2)[1], $html);
     }
 
     public function test_update_and_disable(): void

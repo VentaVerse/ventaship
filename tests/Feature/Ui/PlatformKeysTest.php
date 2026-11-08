@@ -2,9 +2,8 @@
 
 namespace Tests\Feature\Ui;
 
-use App\Api\Signature;
 use App\Models\Admin;
-use App\Models\ApiKey;
+use App\Models\ApiToken;
 use App\Models\AuditEntry;
 use App\Models\ClientApp;
 use App\Platforms\PlatformApps;
@@ -32,16 +31,9 @@ class PlatformKeysTest extends TestCase
         return Admin::query()->firstOrCreate(['email' => 'ana@example.com'], ['name' => 'Ana', 'password' => 'correct-horse-battery']);
     }
 
-    private function signedGet(string $uri, string $key, string $secret): TestResponse
+    private function bearerGet(string $uri, string $token): TestResponse
     {
-        $ts = time();
-
-        return $this->call('GET', $uri, [], [], [], $this->transformHeadersToServerVars([
-            'Authorization' => 'Bearer '.$key,
-            'X-Timestamp' => (string) $ts,
-            'X-Signature' => Signature::sign($secret, $ts, 'GET', $uri, ''),
-            'Accept' => 'application/json',
-        ]));
+        return $this->call('GET', $uri, [], [], [], ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
     }
 
     private function reveal(ClientApp $app, string $what): TestResponse
@@ -55,13 +47,13 @@ class PlatformKeysTest extends TestCase
         return str_replace('/', '\\\\\\/', $value);
     }
 
-    private function legacyKey(ClientApp $app): ApiKey
+    /** A key moved from before Sanctum without an encrypted copy: only its hash exists. */
+    private function legacyKey(ClientApp $app): ApiToken
     {
         $plain = 'vsk_'.str_repeat('L', 40);
 
-        return ApiKey::query()->create([
-            'client_app_id' => $app->id, 'name' => 'Old', 'key_prefix' => substr($plain, 0, 8),
-            'key_hash' => hash('sha256', $plain), 'signing_secret' => str_repeat('S', 48),
+        return $app->tokens()->create([
+            'name' => 'Old', 'prefix' => substr($plain, 0, 8), 'token' => hash('sha256', $plain), 'abilities' => ['*'],
         ]);
     }
 
@@ -72,48 +64,45 @@ class PlatformKeysTest extends TestCase
 
         $this->post(route('apps.keys.store', $app), ['key_name' => 'X'])->assertRedirect(route('login'));
         $this->post(route('apps.keys.revoke', [$app, $key->id]))->assertRedirect(route('login'));
-        $this->post(route('apps.reveal', [$app, 'key:'.$key->id]))->assertRedirect(route('login'));
+        $this->post(route('apps.reveal', [$app, 'token:'.$key->id]))->assertRedirect(route('login'));
         $this->post(route('apps.reveal', [$app, 'webhook']))->assertRedirect(route('login'));
         $this->post(route('apps.webhook.regenerate', $app))->assertRedirect(route('login'));
         $this->post(route('apps.ping', $app))->assertRedirect(route('login'));
-        $this->assertNull($key->fresh()->revoked_at);
+        $this->assertNotNull($key->fresh());
     }
 
-    public function test_issue_flags_prefix_only_and_revealed_key_passes_the_api(): void
+    public function test_issue_flags_id_only_and_revealed_token_passes_the_api(): void
     {
         $app = ClientApp::factory()->create();
 
         $res = $this->actingAs($this->admin())->post(route('apps.keys.store', $app), ['key_name' => 'Storefront']);
 
         $sessionAfterIssue = serialize(session()->all());
-        $key = ApiKey::query()->sole();
+        $key = ApiToken::query()->sole();
         $res->assertRedirect(route('apps.show', $app).'#keys')->assertSessionHas('issued_key', $key->id);
         $this->assertSame('Storefront', $key->name);
 
-        $first = $this->reveal($app, 'key:'.$key->id)->assertOk();
+        $first = $this->reveal($app, 'token:'.$key->id)->assertOk();
         $this->assertStringContainsString('no-store', (string) $first->headers->get('Cache-Control'));
-        $plainKey = $first->json('value');
-        $secret = $this->reveal($app, 'secret:'.$key->id)->assertOk()->json('value');
-        $this->assertStringStartsWith($key->key_prefix, $plainKey);
+        $plain = $first->json('value');
+        $this->assertStringStartsWith($key->id.'|'.$key->prefix, $plain);
+        $secretPart = explode('|', $plain, 2)[1];
 
         // The session from the issue request holds no plaintext.
         foreach ([$sessionAfterIssue, serialize(session()->all())] as $session) {
-            $this->assertStringNotContainsString($plainKey, $session);
-            $this->assertStringNotContainsString($secret, $session);
+            $this->assertStringNotContainsString($secretPart, $session);
         }
 
-        // The redirected page asks for the reveal; its HTML has neither value.
+        // The redirected page asks for the reveal; its HTML has no token.
         $html = $this->withSession(['issued_key' => $key->id])->get(route('apps.show', $app))->assertOk()->getContent();
-        $this->assertStringNotContainsString($plainKey, $html);
-        $this->assertStringNotContainsString($secret, $html);
+        $this->assertStringNotContainsString($secretPart, $html);
         $this->assertStringContainsString('\u0022autoView\u0022:true', $html);
-        $this->assertStringContainsString($this->inJs(route('apps.reveal', [$app, 'key:'.$key->id])), $html);
+        $this->assertStringContainsString($this->inJs(route('apps.reveal', [$app, 'token:'.$key->id])), $html);
 
-        $this->signedGet('/api/v1/ping', $plainKey, $secret)->assertOk();
-        $this->assertSame(2, AuditEntry::query()->where('action', 'api_key.viewed')->count());
+        $this->bearerGet('/api/v1/ping', $plain)->assertOk()->assertJsonPath('app.id', $app->public_id);
+        $this->assertSame(1, AuditEntry::query()->where('action', 'api_key.viewed')->count());
         $audits = json_encode(DB::table('audit_entries')->get()->all());
-        $this->assertStringNotContainsString($plainKey, $audits);
-        $this->assertStringNotContainsString($secret, $audits);
+        $this->assertStringNotContainsString($secretPart, $audits);
     }
 
     public function test_issue_name_defaults_to_key_n(): void
@@ -123,10 +112,10 @@ class PlatformKeysTest extends TestCase
 
         $this->actingAs($this->admin())->get(route('apps.show', $app))->assertOk()->assertSee('value="Key 2"', false);
         $this->actingAs($this->admin())->post(route('apps.keys.store', $app), ['key_name' => ''])->assertSessionHasErrors('key_name');
-        $this->assertSame(1, ApiKey::query()->count());
+        $this->assertSame(1, ApiToken::query()->count());
     }
 
-    public function test_page_lists_keys_masked_without_plaintext(): void
+    public function test_page_lists_tokens_masked_without_plaintext(): void
     {
         $this->travelTo('2026-11-09 12:00:00');
         $app = ClientApp::factory()->create(['webhook_url' => 'https://shop.test/hook']);
@@ -136,18 +125,19 @@ class PlatformKeysTest extends TestCase
         $webhookSecret = app(PlatformApps::class)->revealWebhookSecret($app, self::ACTOR);
 
         $html = $this->actingAs($this->admin())->get(route('apps.show', $app))->assertOk()
-            ->assertSeeInOrder(['Keys', 'Storefront', $issued['key']->key_prefix, 'Active', 'API key', 'Signing secret', 'Gone', 'Revoked', 'Webhook', 'Secret', 'Send test'])
+            ->assertSeeInOrder(['Keys', 'Storefront', $issued['key']->prefix, 'API token', 'Webhook', 'Secret', 'Send test'])
             ->assertSee('Issue key')
             ->assertSee(substr($issued['plaintext_key'], -4))
+            ->assertDontSee('Signing secret')
+            ->assertDontSee('Gone')
             ->getContent();
 
-        foreach ([$issued['plaintext_key'], $issued['secret'], $gone['plaintext_key'], $gone['secret'], $webhookSecret] as $plain) {
+        foreach ([explode('|', $issued['plaintext_key'])[1], explode('|', $gone['plaintext_key'])[1], $webhookSecret] as $plain) {
             $this->assertStringNotContainsString($plain, $html);
         }
-        $this->assertStringContainsString('Revoke key '.$issued['key']->key_prefix.'?', html_entity_decode($html));
+        $this->assertStringContainsString('Revoke key '.$issued['key']->prefix.'?', html_entity_decode($html));
         $this->assertStringContainsString('data-label="Created"', $html);
         $this->assertStringContainsString('data-label="Last used"', $html);
-        $this->assertStringNotContainsString('Revoke key '.$gone['key']->key_prefix.'?', html_entity_decode($html));
         $this->assertStringNotContainsString('autoView\u0022:true', $html);
     }
 
@@ -158,15 +148,18 @@ class PlatformKeysTest extends TestCase
 
         $html = $this->actingAs($this->admin())->get(route('apps.show', $app))->assertOk()
             ->assertSee('Issued before keys were viewable')
-            ->assertDontSee('Signing secret')
+            ->assertDontSee('API token')
             ->getContent();
-        $this->assertStringContainsString('Revoke key '.$old->key_prefix.'?', html_entity_decode($html));
-        $this->assertStringNotContainsString($this->inJs(route('apps.reveal', [$app, 'key:'.$old->id])), $html);
+        $this->assertStringContainsString('Revoke key '.$old->prefix.'?', html_entity_decode($html));
+        $this->assertStringNotContainsString($this->inJs(route('apps.reveal', [$app, 'token:'.$old->id])), $html);
 
-        $this->reveal($app, 'key:'.$old->id)->assertStatus(422)->assertJson(['message' => 'Issued before keys were viewable.']);
-        $res = $this->reveal($app, 'secret:'.$old->id)->assertStatus(422)->assertJson(['message' => 'Issued before keys were viewable.']);
+        $res = $this->reveal($app, 'token:'.$old->id)->assertStatus(422)->assertJson(['message' => 'Issued before keys were viewable.']);
         $this->assertArrayNotHasKey('value', $res->json());
         $this->assertSame(0, AuditEntry::query()->where('action', 'api_key.viewed')->count());
+
+        $this->bearerGet('/api/v1/ping', 'vsk_'.str_repeat('L', 40))->assertOk();
+        $this->actingAs($this->admin())->post(route('apps.keys.revoke', [$app, $old->id]))->assertSessionHas('status', 'Revoked');
+        $this->bearerGet('/api/v1/ping', 'vsk_'.str_repeat('L', 40))->assertUnauthorized();
     }
 
     public function test_revoke_then_reveal_is_refused(): void
@@ -174,49 +167,50 @@ class PlatformKeysTest extends TestCase
         $app = ClientApp::factory()->create();
         $issued = app(PlatformApps::class)->issueKey($app, 'K');
         $key = $issued['key'];
+        $this->bearerGet('/api/v1/ping', $issued['plaintext_key'])->assertOk();
 
         $this->actingAs($this->admin())->post(route('apps.keys.revoke', [$app, $key->id]))
             ->assertRedirect(route('apps.show', $app).'#keys')->assertSessionHas('status', 'Revoked');
-        $this->assertNotNull($key->fresh()->revoked_at);
+        $this->assertNull($key->fresh());
 
-        $res = $this->reveal($app, 'key:'.$key->id)->assertStatus(422);
-        $this->assertArrayNotHasKey('value', $res->json());
-        $this->reveal($app, 'secret:'.$key->id)->assertStatus(422);
-        $this->signedGet('/api/v1/ping', $issued['plaintext_key'], $issued['secret'])->assertUnauthorized();
+        $res = $this->reveal($app, 'token:'.$key->id)->assertNotFound();
+        $this->assertArrayNotHasKey('value', $res->json() ?? []);
+        $this->bearerGet('/api/v1/ping', $issued['plaintext_key'])->assertUnauthorized()->assertJsonPath('code', 'unauthorized');
 
-        $this->actingAs($this->admin())->post(route('apps.keys.revoke', [$app, $key->id]))->assertSessionHasErrors('keys');
+        $this->actingAs($this->admin())->post(route('apps.keys.revoke', [$app, $key->id]))->assertNotFound();
+        $revoked = AuditEntry::query()->where('action', 'api_key.revoked')->sole();
+        $this->assertSame(['name' => 'K', 'key_prefix' => $key->prefix], $revoked->changes);
     }
 
-    public function test_other_apps_keys_are_not_found(): void
+    public function test_other_apps_tokens_are_not_found(): void
     {
         $app = ClientApp::factory()->create();
         $other = ClientApp::factory()->create();
         $theirs = app(PlatformApps::class)->issueKey($other, 'Theirs')['key'];
 
-        $this->reveal($app, 'key:'.$theirs->id)->assertNotFound();
-        $this->reveal($app, 'secret:'.$theirs->id)->assertNotFound();
-        $this->reveal($app, 'key:999999')->assertNotFound();
-        $this->actingAs($this->admin())->post('/platforms/'.$app->public_id.'/reveal/key:'.$theirs->key_prefix)->assertNotFound();
+        $this->reveal($app, 'token:'.$theirs->id)->assertNotFound();
+        $this->reveal($app, 'token:999999')->assertNotFound();
+        $this->actingAs($this->admin())->post('/platforms/'.$app->public_id.'/reveal/token:'.$theirs->prefix)->assertNotFound();
+        $this->actingAs($this->admin())->post('/platforms/'.$app->public_id.'/reveal/key:'.$theirs->id)->assertNotFound();
+        $this->actingAs($this->admin())->post('/platforms/'.$app->public_id.'/reveal/secret:'.$theirs->id)->assertNotFound();
         $this->actingAs($this->admin())->post(route('apps.keys.revoke', [$app, $theirs->id]))->assertNotFound();
-        $this->assertNull($theirs->fresh()->revoked_at);
+        $this->assertNotNull($theirs->fresh());
         $this->assertSame(0, AuditEntry::query()->where('action', 'api_key.viewed')->count());
     }
 
-    public function test_keys_sharing_a_prefix_each_reveal_their_own(): void
+    public function test_tokens_sharing_a_prefix_each_reveal_their_own(): void
     {
         $app = ClientApp::factory()->create();
         $a = app(PlatformApps::class)->issueKey($app, 'A');
         $b = app(PlatformApps::class)->issueKey($app, 'B');
-        DB::table('api_keys')->where('id', $b['key']->id)->update(['key_prefix' => $a['key']->key_prefix]);
+        DB::table('personal_access_tokens')->where('id', $b['key']->id)->update(['prefix' => $a['key']->prefix]);
 
-        $this->assertSame($a['plaintext_key'], $this->reveal($app, 'key:'.$a['key']->id)->assertOk()->json('value'));
-        $this->assertSame($a['secret'], $this->reveal($app, 'secret:'.$a['key']->id)->assertOk()->json('value'));
-        $this->assertSame($b['plaintext_key'], $this->reveal($app, 'key:'.$b['key']->id)->assertOk()->json('value'));
-        $this->assertSame($b['secret'], $this->reveal($app, 'secret:'.$b['key']->id)->assertOk()->json('value'));
+        $this->assertSame($a['plaintext_key'], $this->reveal($app, 'token:'.$a['key']->id)->assertOk()->json('value'));
+        $this->assertSame($b['plaintext_key'], $this->reveal($app, 'token:'.$b['key']->id)->assertOk()->json('value'));
 
         $html = $this->actingAs($this->admin())->get(route('apps.show', $app))->getContent();
-        $this->assertStringContainsString($this->inJs(route('apps.reveal', [$app, 'key:'.$a['key']->id])), $html);
-        $this->assertStringContainsString($this->inJs(route('apps.reveal', [$app, 'key:'.$b['key']->id])), $html);
+        $this->assertStringContainsString($this->inJs(route('apps.reveal', [$app, 'token:'.$a['key']->id])), $html);
+        $this->assertStringContainsString($this->inJs(route('apps.reveal', [$app, 'token:'.$b['key']->id])), $html);
     }
 
     public function test_unset_webhook_secret_can_be_regenerated(): void
@@ -236,7 +230,7 @@ class PlatformKeysTest extends TestCase
     {
         $app = ClientApp::factory()->create();
         $this->actingAs($this->admin())->post(route('apps.reveal', [$app, 'nope']))->assertNotFound();
-        $this->actingAs($this->admin())->post('/platforms/'.$app->public_id.'/reveal/key:')->assertNotFound();
+        $this->actingAs($this->admin())->post('/platforms/'.$app->public_id.'/reveal/token:')->assertNotFound();
     }
 
     public function test_webhook_secret_reveal_and_regenerate(): void

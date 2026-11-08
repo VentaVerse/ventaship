@@ -47,7 +47,7 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
         Route::post('keys', [PlatformsController::class, 'issueKey'])->name('apps.keys.store');
         Route::post('keys/{key}/revoke', [PlatformsController::class, 'revokeKey'])->whereNumber('key')->name('apps.keys.revoke');
         Route::post('reveal/{what}', [PlatformsController::class, 'reveal'])
-            ->where('what', '(key|secret):\d{1,19}|webhook')->middleware('throttle:secret-reveals')->name('apps.reveal');
+            ->where('what', 'token:\d{1,19}|webhook')->middleware('throttle:secret-reveals')->name('apps.reveal');
         Route::post('webhook-secret', [PlatformsController::class, 'regenerateWebhookSecret'])->name('apps.webhook.regenerate');
         Route::post('ping', [PlatformsController::class, 'ping'])->name('apps.ping');
     });

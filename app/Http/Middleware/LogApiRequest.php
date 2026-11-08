@@ -27,7 +27,7 @@ class LogApiRequest
 
         ApiRequest::query()->create([
             'client_app_id' => $request->attributes->get('client_app')?->getKey(),
-            'api_key_id' => $request->attributes->get('api_key')?->getKey(),
+            'token_id' => $request->attributes->get('api_token')?->getKey(),
             'method' => $request->getMethod(),
             'path' => Str::limit($request->getPathInfo(), 255, ''),
             'status' => $response->getStatusCode(),
