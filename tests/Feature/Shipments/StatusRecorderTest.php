@@ -129,4 +129,41 @@ class StatusRecorderTest extends TestCase
         $this->assertSame(0, $s->refresh()->event_sequence);
         $this->assertSame('in_transit', $s->phase);
     }
+
+    public function test_late_delivered_still_collects_payment_and_sets_terminal(): void
+    {
+        $s = $this->cod();
+
+        $this->recorder()->record($s, 'in_transit', $this->at('10:00:00'), 'poll');
+        $this->recorder()->record($s, 'delivered', $this->at('09:00:00'), 'webhook');
+
+        $s->refresh();
+        $this->assertSame('in_transit', $s->phase);
+        $this->assertSame('in_transit', $s->courier_status);
+        $this->assertTrue($s->last_event_at->eq($this->at('10:00:00')));
+        $this->assertSame('cod_collected', $s->payment_state);
+        $this->assertTrue($s->terminal_at->eq($this->at('09:00:00')));
+        $this->assertTrue(OutgoingEvent::where('shipment_id', $s->id)->where('type', 'shipment.payment_state_changed')->exists());
+    }
+
+    public function test_unique_key_loss_returns_null_without_side_effects(): void
+    {
+        $s = $this->cod();
+        ShipmentEvent::create(['shipment_id' => $s->id, 'source' => 'poll', 'courier_status' => 'delivered', 'phase' => 'delivered', 'occurred_at' => $this->at('10:00:00')->setTimezone(config('app.timezone'))]);
+
+        $blind = new class(app(\App\Shipments\PhaseResolver::class)) extends StatusRecorder {
+            protected function eventExists(Shipment $shipment, string $courierStatus, \Carbon\CarbonInterface $occurredAt): bool
+            {
+                return false;
+            }
+        };
+
+        $this->assertNull($blind->record($s, 'delivered', $this->at('10:00:00'), 'webhook'));
+
+        $s->refresh();
+        $this->assertSame(0, $s->event_sequence);
+        $this->assertSame(0, OutgoingEvent::count());
+        $this->assertSame('cod_unpaid', $s->payment_state);
+        $this->assertSame(1, ShipmentEvent::where('shipment_id', $s->id)->count());
+    }
 }

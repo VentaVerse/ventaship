@@ -7,6 +7,7 @@ use App\Models\Shipment;
 use App\Models\ShipmentEvent;
 use App\Webhooks\Outbound\Outbox;
 use Carbon\CarbonInterface;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -14,7 +15,7 @@ use InvalidArgumentException;
  * The one place a courier status becomes shipment state: webhook, poll and refresh all land here. One transaction,
  * shipment row locked, so concurrent reports of the same status cannot double-write and sequences stay gapless.
  */
-final class StatusRecorder
+class StatusRecorder
 {
     private const RAW_LIMIT = 8192;
 
@@ -35,30 +36,29 @@ final class StatusRecorder
         return DB::transaction(function () use ($s, $courierStatus, $occurredAt, $source, $remarks, $raw, $receiptId) {
             $shipment = Shipment::query()->whereKey($s->getKey())->lockForUpdate()->firstOrFail();
 
-            $duplicate = ShipmentEvent::query()
-                ->where('shipment_id', $shipment->id)
-                ->where('courier_status', $courierStatus)
-                ->where('occurred_at', $occurredAt)
-                ->exists();
-
-            if ($duplicate) {
+            if ($this->eventExists($shipment, $courierStatus, $occurredAt)) {
                 return null;
             }
 
             $courier = (string) $shipment->courier;
             $phase = $this->phases->phase($courier, $courierStatus);
 
-            $event = ShipmentEvent::create([
-                'shipment_id' => $shipment->id,
-                'source' => $source,
-                'courier_status' => $courierStatus,
-                'label' => $this->phases->label($courier, $courierStatus),
-                'phase' => $phase,
-                'occurred_at' => $occurredAt,
-                'remarks' => $remarks,
-                'raw' => $this->trimRaw($raw),
-                'receipt_id' => $receiptId,
-            ]);
+            try {
+                // Savepoint: a unique-key loss must not poison the caller's transaction.
+                $event = DB::transaction(fn () => ShipmentEvent::create([
+                    'shipment_id' => $shipment->id,
+                    'source' => $source,
+                    'courier_status' => $courierStatus,
+                    'label' => $this->phases->label($courier, $courierStatus),
+                    'phase' => $phase,
+                    'occurred_at' => $occurredAt,
+                    'remarks' => $remarks,
+                    'raw' => $this->trimRaw($raw),
+                    'receipt_id' => $receiptId,
+                ]));
+            } catch (UniqueConstraintViolationException) {
+                return null;
+            }
 
             $paymentBefore = $this->currentPaymentState($shipment);
             $paymentAfter = $paymentBefore;
@@ -69,12 +69,13 @@ final class StatusRecorder
                 $shipment->courier_status = $courierStatus;
                 $shipment->phase = $phase;
                 $shipment->last_event_at = $occurredAt;
+            }
 
-                $paymentAfter = PaymentState::after($shipment, $phase);
+            // Money and finality are facts about the parcel, not about which report was newest: they apply from any new event.
+            $paymentAfter = PaymentState::after($shipment, $phase);
 
-                if ($shipment->terminal_at === null && $this->isTerminal($courier, $courierStatus)) {
-                    $shipment->terminal_at = $occurredAt;
-                }
+            if ($shipment->terminal_at === null && $this->isTerminal($courier, $courierStatus)) {
+                $shipment->terminal_at = $occurredAt;
             }
 
             $shipment->payment_state = $paymentAfter;
@@ -100,6 +101,15 @@ final class StatusRecorder
 
             return $event;
         });
+    }
+
+    protected function eventExists(Shipment $shipment, string $courierStatus, CarbonInterface $occurredAt): bool
+    {
+        return ShipmentEvent::query()
+            ->where('shipment_id', $shipment->id)
+            ->where('courier_status', $courierStatus)
+            ->where('occurred_at', $occurredAt)
+            ->exists();
     }
 
     private function currentPaymentState(Shipment $s): string
