@@ -236,7 +236,7 @@ class LiveGuardTest extends TestCase
         return [$courier, CourierOrder::fromApi($shipment), ['pickup' => PickupPoint::fromArray([
             'contact_name' => 'Warehouse Team', 'contact_phone' => '09171112222', 'address_1' => '456 Warehouse Ave',
             'barangay' => 'Bel-Air', 'city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1200',
-        ]), 'parcel' => 'small']];
+        ]), 'parcel' => 'small', 'weight_kg' => 1]];
     }
 
     private function fakeSpx(): void

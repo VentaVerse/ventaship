@@ -104,10 +104,10 @@ class SpxFulfillmentTest extends TestCase
         return CourierOrder::fromApi($this->makeShipment($recipient, $attributes));
     }
 
-    /** Booking options with the pickup point the client sent. */
+    /** Booking options with the pickup point the client sent and the parcel weight typed. */
     private function opts(array $opts = []): array
     {
-        return $opts + ['pickup' => $this->pickup()];
+        return $opts + ['pickup' => $this->pickup(), 'weight_kg' => 1.2];
     }
 
     private function doneCreateResultResponse(string $trackingNo, int $batchNo = 207982800897461, array $extra = []): array
@@ -199,11 +199,11 @@ class SpxFulfillmentTest extends TestCase
                 && $o['fulfillment_info']['cod_collection'] === 0
                 && !array_key_exists('cod_amount', $o['fulfillment_info'])
                 && $o['fulfillment_info']['collect_type'] === 2
-                // parcel_info dims come from the "Medium" pouch preset (T1's default: 35x25x15cm/5kg).
+                // parcel_info dims come from the "Medium" pouch preset (35x25x15cm); the weight is the typed one.
                 && (float) $o['parcel_info']['parcel_length'] === 35.0
                 && (float) $o['parcel_info']['parcel_width'] === 25.0
                 && (float) $o['parcel_info']['parcel_height'] === 15.0
-                && (float) $o['parcel_info']['parcel_weight'] === 5.0
+                && (float) $o['parcel_info']['parcel_weight'] === 1.2
                 && (int) $o['parcel_info']['express_insured_value'] === 0
                 && $o['parcel_info']['parcel_item_type'] === 'General merchandise';
         });

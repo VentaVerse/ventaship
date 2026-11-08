@@ -910,7 +910,7 @@ Request fields:
 | `order_label` | optional, string ≤ 64, a display label (e.g. `#4211`) |
 | `submit` | optional boolean, default `true`. `false` saves a **draft** (`201`), booked later with `POST /shipments/{id}/submit` |
 | `method` | optional, `pickup` (default) or `dropoff` |
-| `pickup_date` | optional, `YYYY-MM-DD`, today or later (Manila) |
+| `pickup_date` | optional, `YYYY-MM-DD`, today or later (Manila). **LBC** books its pickup on this date when no `pickup_slot` is sent (Monday to Saturday, from the next business day; else the next business day) |
 | `pickup_slot` | optional string ≤ 255: a `value` from `POST /pickup-slots` |
 | `service` | optional string ≤ 64: a `service_types` value from `GET /couriers`; the account's default when omitted |
 | `insure` | optional boolean, default `false`. `true` asks the courier to insure the parcel at `payment.declared_value` (or `total`). `false` sends no insurance, except at **LBC**, which always insures a COD parcel |

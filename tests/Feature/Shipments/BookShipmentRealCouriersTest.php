@@ -135,7 +135,7 @@ class BookShipmentRealCouriersTest extends TestCase
         Http::fake([self::SPX_CREATE => Http::response(['ret_code' => 11001, 'message' => 'invalid deliver_post_code', 'data' => null])]);
         $account = $this->spxAccount();
 
-        $insured = $this->shipment($account, ['courier' => 'spx', 'declared_value' => 800, 'options' => ['insure' => true]]);
+        $insured = $this->shipment($account, ['courier' => 'spx', 'declared_value' => 800, 'options' => ['insure' => true, 'parcel' => ['weight_kg' => 1]]]);
         Bus::dispatchSync(new BookShipment($insured->id));
 
         $plain = $this->shipment($account, [
@@ -212,6 +212,7 @@ class BookShipmentRealCouriersTest extends TestCase
                 'codes' => [],
             ],
             'items' => [['name' => 'Blue Tee', 'quantity' => 1, 'price' => '500.00']],
+            'options' => ['parcel' => ['weight_kg' => 1]],
             'total' => 500,
         ]);
     }

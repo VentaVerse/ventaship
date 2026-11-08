@@ -472,9 +472,10 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
     /**
      * The declared value sent with a booking.
      *
-     * COD: always insured. Prepaid: insured when asked, otherwise 0. The
-     * insured value is the shipment's declared_value (its total only when
-     * none was sent, CourierOrder::insuredValue()).
+     * COD: always insured, at no less than the amount the rider collects.
+     * Prepaid: insured when asked, otherwise 0. The insured value is the
+     * shipment's declared_value (its total only when none was sent,
+     * CourierOrder::insuredValue()).
      * An insured value is never below LbcParcel::MIN_INSURED_DECLARED_VALUE.
      * LBC still has to confirm that it accepts 0 for an uninsured parcel.
      */
@@ -484,7 +485,17 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
             return 0.0;
         }
 
-        return round(max($order->insuredValue(), (float) LbcParcel::MIN_INSURED_DECLARED_VALUE), 2);
+        $value = sprintf('%.2F', $order->insuredValue());
+        $floor = sprintf('%.2F', (float) LbcParcel::MIN_INSURED_DECLARED_VALUE);
+        $collect = sprintf('%.2F', self::codAmountFor($order, $cod));
+
+        foreach ([$floor, $collect] as $atLeast) {
+            if (bccomp($atLeast, $value, 2) > 0) {
+                $value = $atLeast;
+            }
+        }
+
+        return (float) $value;
     }
 
     /** What the rider collects: the shipment's cod_amount on a COD shipment, nothing otherwise. */
@@ -541,6 +552,19 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
         }
 
         return $date->setTime($h, $m, $s);
+    }
+
+    /** The pickup date asked for, Y-m-d: `pickup_slot` when given, else `pickup_date`. Null when neither is. */
+    private static function chosenPickupDate(array $opts): ?string
+    {
+        foreach (['pickup_slot', 'pickup_date'] as $key) {
+            $value = trim((string) ($opts[$key] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -604,7 +628,8 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
         return [
             'parcel' => $parcel,
             'mode' => $mode,
-            'preferred_at' => self::preferredDateFor(isset($opts['pickup_slot']) ? (string) $opts['pickup_slot'] : null),
+            // The pickup date: `pickup_slot` (Y-m-d) when given, else the shipment's `pickup_date` (Y-m-d).
+            'preferred_at' => self::preferredDateFor(self::chosenPickupDate($opts)),
             'insured' => $insured,
             'cod' => $cod,
             'from' => $from,

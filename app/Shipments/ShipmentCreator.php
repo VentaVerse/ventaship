@@ -223,7 +223,7 @@ final class ShipmentCreator
         $payment = $data['payment'] ?? [];
         $cod = ($payment['method'] ?? null) === 'cod';
         $items = self::items($data['items'] ?? []);
-        $parcel = self::pick($data['parcel'] ?? [], ['type', 'weight_kg', 'length_cm', 'width_cm', 'height_cm']);
+        $parcel = self::pick($data['parcel'] ?? [], ['type', 'weight_kg', 'length_cm', 'width_cm', 'height_cm', 'category']);
 
         return [
             'method' => $data['method'] ?? 'pickup',

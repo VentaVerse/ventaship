@@ -7,7 +7,7 @@ use App\Models\Shipment;
 
 /**
  * A shipment's booking options in the shape the courier port reads (`$opts` of createShipment() and estimateFee()):
- * flat parcel fields, the opaque pickup slot, the shipping payment, the insurance opt-in and the pickup point.
+ * flat parcel fields (with the SPX item `category`), the opaque pickup slot, the shipping payment, the insurance opt-in and the pickup point.
  */
 final class CourierOptions
 {
@@ -24,6 +24,7 @@ final class CourierOptions
             'length_cm' => $parcel['length_cm'] ?? null,
             'width_cm' => $parcel['width_cm'] ?? null,
             'height_cm' => $parcel['height_cm'] ?? null,
+            'category' => $parcel['category'] ?? null,
             'pickup_slot' => $options['pickup_slot'] ?? null,
             'pickup_date' => $options['pickup_date'] ?? null,
             'shipping_payment' => $options['shipping_payment'] ?? null,

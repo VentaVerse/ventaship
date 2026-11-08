@@ -219,6 +219,11 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
             return ['success' => false, 'error' => $problem];
         }
 
+        // QuadX: total is "required; at least 1" (docs/couriers/quadx/api.md:3276).
+        if (bccomp(self::orderTotal($order), '1', 2) < 0) {
+            return ['success' => false, 'error' => 'Parcel value is required.'];
+        }
+
         $payload = $this->buildPayload($order, $opts);
 
         $res = $this->client->createOrder($payload);
@@ -1001,11 +1006,11 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
             // it accepts orders with no parcel object, so we don't collect or send them.
             'payment_provider' => 'other',
             'payment_method'   => $buyerPayment === 'cod' ? 'cod' : 'other',
-            'items'            => $this->items($order),
+            'items'            => self::items($order),
             'currency'         => 'PHP',
             'shipment'         => $this->parcelFor($opts),
             // On COD, `total` is what QuadX's rider collects: the shipment's cod_amount, never its order total.
-            'total'            => $buyerPayment === 'cod' ? (float) $order->collectAmount() : (float) $order->total,
+            'total'            => (float) self::orderTotal($order),
             // QuadX insures via declared_value (~1% fee on that amount). Omitting
             // this field entirely makes QuadX silently DEFAULT declared_value to
             // the order total — auto-insuring every booking with an unwanted fee.
@@ -1076,21 +1081,61 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
         ];
     }
 
-    private function items(CourierOrder $order): array
+    /**
+     * QuadX's `total`, a 2dp decimal string: what the rider collects on COD (the shipment's cod_amount), else the
+     * order total (the Value for UI shipments). createShipment() refuses one below 1.
+     */
+    private static function orderTotal(CourierOrder $order): string
     {
-        $items = [];
-        foreach ($order->products as $p) {
-            $items[] = [
+        $amount = $order->cod ? $order->collectAmount() : $order->total;
+
+        return self::money($amount ?? 0);
+    }
+
+    /**
+     * QuadX's `items`, whose sum must equal `total` (docs/couriers/quadx/api.md:3276). The shipment's own lines go
+     * as they are when every line has a price and they add up to the total; otherwise one product line carries the
+     * whole total, described by the lines' names ("2 × Shirt, 1 × Cap").
+     */
+    private static function items(CourierOrder $order): array
+    {
+        $total = self::orderTotal($order);
+        $products = $order->products;
+
+        $sum = '0.00';
+        $allPriced = $products->isNotEmpty();
+        foreach ($products as $p) {
+            $allPriced = $allPriced && $p->priced;
+            $sum = bcadd($sum, bcmul(self::money($p->price), (string) (int) $p->quantity, 2), 2);
+        }
+
+        if ($allPriced && bccomp($sum, $total, 2) === 0) {
+            return $products->map(fn ($p) => [
                 'type'        => 'product',
                 'description' => $p->name ?: 'Item',
-                'amount'      => (float) $p->price,
+                'amount'      => (float) self::money($p->price),
                 'quantity'    => (int) $p->quantity,
-            ];
+            ])->values()->all();
         }
-        if ($items === []) {
-            $items[] = ['type' => 'product', 'description' => 'Order ' . $order->reference, 'amount' => (float) $order->total, 'quantity' => 1];
-        }
-        return $items;
+
+        $description = $products
+            ->map(fn ($p) => max(1, (int) $p->quantity) . ' × ' . ($p->name ?: 'Item'))
+            ->implode(', ') ?: 'Order ' . $order->reference;
+
+        return [[
+            'type'        => 'product',
+            'description' => mb_substr($description, 0, 500),
+            'amount'      => (float) $total,
+            'quantity'    => 1,
+        ]];
+    }
+
+    /** A money amount as a 2dp decimal string. */
+    private static function money(float|int|string $amount): string
+    {
+        return is_string($amount) && preg_match('/^-?\d+(\.\d{1,2})?$/', $amount)
+            ? bcadd($amount, '0', 2)
+            : sprintf('%.2f', round((float) $amount, 2));
     }
 
     private function orderIsCod(CourierOrder $order): bool

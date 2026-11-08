@@ -39,7 +39,7 @@ use Illuminate\Support\Collection;
  * @property-read string|null $shipping_country
  * @property-read string|null $phone
  * @property-read string|null $courier_comment
- * @property-read Collection<int, object{name: string, quantity: int, price: float, weight_kg: float|null}> $products
+ * @property-read Collection<int, object{name: string, quantity: int, price: float, priced: bool, weight_kg: float|null}> $products
  * @property-read string|null $courier_meta
  * @property-read string|null $courier_tracking_number
  * @property-read string|null $courier_status
@@ -67,6 +67,8 @@ final class CourierOrder
                 'name' => (string) (data_get($line, 'name') ?? ''),
                 'quantity' => (int) (data_get($line, 'quantity') ?? 1),
                 'price' => (float) (data_get($line, 'price') ?? 0),
+                // Whether the line came with a price at all: UI shipments carry none, only the Value as `total`.
+                'priced' => is_numeric(data_get($line, 'price')),
                 'weight_kg' => is_numeric(data_get($line, 'weight_kg')) ? (float) data_get($line, 'weight_kg') : null,
             ])
             ->values();

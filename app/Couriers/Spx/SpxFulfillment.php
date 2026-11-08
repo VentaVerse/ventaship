@@ -9,6 +9,7 @@ use App\Couriers\LiveBookingBlocked;
 use App\Couriers\PickupOrigin;
 use App\Couriers\PickupPoint;
 use App\Couriers\ServiceabilityService;
+use App\Couriers\Support\OrderWeight;
 use App\Couriers\Support\PhPhone;
 use App\Couriers\Support\ServiceabilityVerdict;
 use App\Models\CourierAccount;
@@ -77,11 +78,22 @@ class SpxFulfillment implements Courier
     ];
 
     /**
-     * SPX's parcel_item_type enum (api.md §1.4) has no "unspecified" value —
-     * Venta doesn't track a per-order shipment category, so every booking
-     * declares this safe, generic catch-all rather than guessing.
+     * SPX's parcel_item_type enum (api.md §1.4), verbatim. It has no
+     * "unspecified" value, so a shipment without a `parcel.category` (or
+     * with one SPX does not list) declares the generic catch-all.
      */
+    public const PARCEL_ITEM_TYPES = [
+        'Food and beverage', 'Clothing', 'Electronics', 'Medical', 'Groceries', 'General merchandise', 'Fragile',
+    ];
+
     private const PARCEL_ITEM_TYPE = 'General merchandise';
+
+    /** PH parcel and COD limits (docs/couriers/spx/guide.md:600-604; api.md cod_amount). */
+    private const MAX_WEIGHT_KG = '50';
+
+    private const MAX_SIDE_CM = '150';
+
+    private const MAX_COD = '50000';
 
     /**
      * SPX's own "Order status code" table (docs/spx/guide.md, lines
@@ -301,15 +313,13 @@ class SpxFulfillment implements Courier
             return ['success' => false, 'error' => $problem];
         }
 
-        // SPX's cod_amount is whole pesos: rounding would collect a different amount than the shipment says.
-        $collect = (float) $order->collectAmount();
-        if ($collect !== round($collect)) {
-            return ['success' => false, 'error' => 'SPX collects whole pesos only. Send a cod_amount without centavos.'];
-        }
-
         $built = $this->buildOrderPayload($order, $opts);
         if (!$built['ok']) {
             return ['success' => false, 'error' => $built['error']];
+        }
+
+        if (($problem = $this->limitProblem($order, $opts)) !== null) {
+            return ['success' => false, 'error' => $problem];
         }
         $orderPayload = $built['payload'];
 
@@ -1441,6 +1451,64 @@ class SpxFulfillment implements Courier
     // --- Payload builders ---------------------------------------------------
 
     /**
+     * Why SPX would refuse this parcel, checked before anything is sent:
+     * a weight under 50 kg, sides of at most 150 cm, and COD in whole pesos
+     * up to ₱50,000 (guide.md:600-604; api.md cod_amount).
+     */
+    private function limitProblem(CourierOrder $order, array $opts): ?string
+    {
+        $dims = $this->resolveParcelDims($opts);
+        if (!$dims['ok']) {
+            return $dims['error'];
+        }
+
+        $weight = self::typedWeight($order, $opts);
+        if ($weight === null) {
+            return 'Enter the parcel weight.';
+        }
+        if (bccomp(self::decimal($weight), self::MAX_WEIGHT_KG, 3) >= 0) {
+            return 'SPX weight must be under 50 kg.';
+        }
+
+        foreach (['length_cm', 'width_cm', 'height_cm'] as $side) {
+            if (bccomp(self::decimal($dims['dims'][$side]), self::MAX_SIDE_CM, 3) > 0) {
+                return "SPX sides can't exceed 150 cm.";
+            }
+        }
+
+        // SPX's cod_amount is whole pesos: rounding would collect a different amount than the shipment says.
+        $collect = self::decimal((float) $order->collectAmount());
+        if (bccomp($collect, bcadd($collect, '0', 0), 2) !== 0) {
+            return 'SPX collects whole pesos only. Send a cod_amount without centavos.';
+        }
+        if (bccomp($collect, self::MAX_COD, 2) > 0) {
+            return 'SPX COD must be whole pesos up to ₱50,000.';
+        }
+
+        return null;
+    }
+
+    /**
+     * The parcel weight the shipment gives: the typed parcel.weight_kg, else
+     * the sum of its items' weights. Null when neither is known.
+     */
+    private static function typedWeight(CourierOrder $order, array $opts): ?float
+    {
+        $typed = $opts['weight_kg'] ?? null;
+        if (is_numeric($typed) && (float) $typed > 0) {
+            return round((float) $typed, 3);
+        }
+
+        return OrderWeight::kg($order);
+    }
+
+    /** A number as a plain decimal string for bcmath (no exponent). */
+    private static function decimal(float|int|string $n): string
+    {
+        return rtrim(rtrim(sprintf('%.3F', (float) $n), '0'), '.') ?: '0';
+    }
+
+    /**
      * @return array{ok:bool, payload?:array, error?:string}
      */
     private function buildOrderPayload(CourierOrder $order, array $opts): array
@@ -1459,6 +1527,15 @@ class SpxFulfillment implements Courier
         if (!$dims['ok']) {
             return ['ok' => false, 'error' => $dims['error']];
         }
+
+        // The real weight. A preset's maximum stands in only where no weight
+        // can be known yet (the serviceability from-price before a parcel is
+        // chosen); createShipment() refuses a booking without one.
+        $weight = self::typedWeight($order, $opts) ?? $dims['dims']['max_weight_kg'];
+        if ($weight === null) {
+            return ['ok' => false, 'error' => 'Enter the parcel weight.'];
+        }
+        $dims['dims']['weight_kg'] = (float) $weight;
 
         return ['ok' => true, 'payload' => [
             'order_id'         => (string) $order->reference,
@@ -1681,7 +1758,7 @@ class SpxFulfillment implements Courier
         $itemName = $firstName ? Str::limit($firstName, 60, '') : ('Order ' . $order->reference);
 
         return [
-            'parcel_weight'         => $dims['max_weight_kg'],
+            'parcel_weight'         => $dims['weight_kg'],
             'parcel_length'         => $dims['length_cm'],
             'parcel_width'          => $dims['width_cm'],
             'parcel_height'         => $dims['height_cm'],
@@ -1692,8 +1769,16 @@ class SpxFulfillment implements Courier
             // over/under-insure default): explicit 0 unless the admin
             // opted in via the same "insure" checkbox QuadX's form uses.
             'express_insured_value' => (bool) ($opts['insure'] ?? false) ? $order->insuredValue() : 0,
-            'parcel_item_type'      => self::PARCEL_ITEM_TYPE,
+            'parcel_item_type'      => self::itemType($opts),
         ];
+    }
+
+    /** The shipment's parcel.category when SPX lists it verbatim, else General merchandise. */
+    private static function itemType(array $opts): string
+    {
+        $category = $opts['category'] ?? null;
+
+        return in_array($category, self::PARCEL_ITEM_TYPES, true) ? $category : self::PARCEL_ITEM_TYPE;
     }
 
     /**
@@ -1704,7 +1789,10 @@ class SpxFulfillment implements Courier
      * value plus a 'custom' sentinel — this is the single place that slug
      * resolves back into real dims, so the two stay in lockstep.
      *
-     * @return array{ok:bool, dims?:array{length_cm:float,width_cm:float,height_cm:float,max_weight_kg:float}, error?:string}
+     * Presets supply the dimensions only; max_weight_kg is the preset's
+     * ceiling (null for custom), never the weight booked.
+     *
+     * @return array{ok:bool, dims?:array{length_cm:float,width_cm:float,height_cm:float,max_weight_kg:?float}, error?:string}
      */
     private function resolveParcelDims(array $opts): array
     {
@@ -1714,14 +1802,13 @@ class SpxFulfillment implements Courier
             $length = $opts['length_cm'] ?? null;
             $width  = $opts['width_cm'] ?? null;
             $height = $opts['height_cm'] ?? null;
-            $weight = $opts['weight_kg'] ?? null;
-            if (!is_numeric($length) || !is_numeric($width) || !is_numeric($height) || !is_numeric($weight)
-                || (float) $length <= 0 || (float) $width <= 0 || (float) $height <= 0 || (float) $weight <= 0) {
+            if (!is_numeric($length) || !is_numeric($width) || !is_numeric($height)
+                || (float) $length <= 0 || (float) $width <= 0 || (float) $height <= 0) {
                 return ['ok' => false, 'error' => 'Custom parcel dimensions (length/width/height/weight) are required and must be greater than zero.'];
             }
             return ['ok' => true, 'dims' => [
                 'length_cm' => (float) $length, 'width_cm' => (float) $width,
-                'height_cm' => (float) $height, 'max_weight_kg' => (float) $weight,
+                'height_cm' => (float) $height, 'max_weight_kg' => null,
             ]];
         }
 
