@@ -6,7 +6,7 @@ use App\Couriers\AccountSettings;
 use App\Couriers\CourierAccountException;
 use App\Couriers\CourierAccounts;
 use App\Couriers\CourierRegistry;
-use App\Couriers\TrackingNumbers\TrackingNumberSeries;
+use App\Couriers\TrackingNumbers\TrackingNumberSeriesService;
 use App\Http\Controllers\Controller;
 use App\Models\CourierAccount;
 use App\Support\Settings;
@@ -77,7 +77,7 @@ class CourierAccountsController extends Controller
                 'base' => app(Settings::class)->publicBaseUrl(),
                 'masked' => $accounts->webhookAddress($account, true),
             ] : null,
-            'blocks' => $account->courier === 'lbc' ? $this->blocks($account) : null,
+            'blocks' => $account->courier === 'lbc' ? app(TrackingNumberSeriesService::class)->blockRows($account) : null,
         ]);
     }
 
@@ -92,7 +92,7 @@ class CourierAccountsController extends Controller
             'settings' => ['nullable', 'array'],
             'settings.*' => ['nullable', 'string'],
             'secrets' => ['nullable', 'array'],
-            'secrets.*' => ['nullable', 'string', 'max:'.CourierAccounts::MAX_VALUE_LENGTH],
+            'secrets.*' => ['nullable', 'string', 'max:' . CourierAccounts::MAX_VALUE_LENGTH],
         ]);
 
         $actor = ['type' => 'admin', 'id' => $request->user()->getAuthIdentifier(), 'ip' => $request->ip()];
@@ -181,7 +181,7 @@ class CourierAccountsController extends Controller
         try {
             $accounts->addLbcSeries($account, $data['first'], $data['last'], ['type' => 'admin', 'id' => $request->user()->getAuthIdentifier(), 'ip' => $request->ip()]);
         } catch (CourierAccountException $e) {
-            return back()->withInput()->withErrors(['first' => $e->getMessage(), 'last' => $e->getMessage()]);
+            return back()->withInput()->withErrors(['first' => $e->getMessage()]);
         }
 
         return redirect(route('accounts.show', $account))->with('status', 'Added');
@@ -194,18 +194,7 @@ class CourierAccountsController extends Controller
 
         return $result['ok']
             ? $back->with('status', 'Connected')
-            : $back->withErrors(['test' => 'Check failed: '.$result['message']]);
-    }
-
-    /** @return array<int, array{first: int, last: int, next: ?int, remaining: int}> */
-    private function blocks(CourierAccount $account): array
-    {
-        return TrackingNumberSeries::query()->where('courier_account_id', $account->id)->orderBy('first_number')->get()->map(function (TrackingNumberSeries $b) {
-            $next = $b->last_issued_number === null ? $b->first_number : $b->last_issued_number + 1;
-            $remaining = max(0, $b->last_number - $next + 1);
-
-            return ['first' => $b->first_number, 'last' => $b->last_number, 'next' => $remaining > 0 ? $next : null, 'remaining' => $remaining];
-        })->all();
+            : $back->withErrors(['test' => 'Check failed: ' . $result['message']]);
     }
 
     /** Which mode-scoped key set each account mode uses. A courier not listed has keys that ignore the mode. */

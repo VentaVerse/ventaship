@@ -449,6 +449,11 @@
         font: 400 13.5px var(--font-sans);
     }
 
+    .x-input::placeholder {
+        color: var(--bl-ink-3);
+        opacity: 1;
+    }
+
     .x-input:focus {
         border-color: var(--bl-brand-btn);
         outline: 2px solid var(--bl-brand-btn);

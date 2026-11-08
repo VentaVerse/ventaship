@@ -43,9 +43,7 @@ class TrackingNumberSeriesService
     private const ATTEMPTS = 5;
 
     /** @param string|null $connection database connection; null uses the models' default */
-    public function __construct(private readonly ?string $connection = null)
-    {
-    }
+    public function __construct(private readonly ?string $connection = null) {}
 
     /**
      * Record a block the courier assigned to this account.
@@ -111,14 +109,10 @@ class TrackingNumberSeriesService
             return null;
         }
 
-        $released = $this->numbers()
-            ->whereIn('series_id', $blocks->modelKeys())
-            ->where('status', TrackingNumber::RELEASED);
-
-        $remaining = $this->unissued($blocks) + (clone $released)->count();
-
-        $lowestReleased = (clone $released)->min('number');
-        $next = $lowestReleased !== null ? (int) $lowestReleased : $this->nextUnusedOrNull($blocks)[1];
+        $rows = $this->rows($blocks);
+        $remaining = array_sum(array_column($rows, 'remaining'));
+        $released = array_filter(array_column($rows, 'lowest_released'), fn ($n) => $n !== null);
+        $next = $released !== [] ? min($released) : $this->nextUnusedOrNull($blocks)[1];
 
         return [
             'blocks' => $blocks->count(),
@@ -127,6 +121,51 @@ class TrackingNumberSeriesService
             'next' => $next,
             'near_end' => $remaining <= $this->warnAt($blocks),
         ];
+    }
+
+    /**
+     * The account's blocks one by one, oldest first, for the account page. A block's `remaining` is its never-issued
+     * tail plus its released numbers; its `next` is its lowest released number, else its next never-issued one.
+     * Their sum is `status()['remaining']`.
+     *
+     * @return array<int, array{first:int, last:int, next:?int, remaining:int}>
+     */
+    public function blockRows(CourierAccount $account): array
+    {
+        return array_map(
+            fn (array $r) => array_diff_key($r, ['lowest_released' => 1]),
+            $this->rows($this->blocks($account)->get()),
+        );
+    }
+
+    /**
+     * @param  Collection<int, TrackingNumberSeries>  $blocks
+     * @return array<int, array{first:int, last:int, next:?int, remaining:int, lowest_released:?int}>
+     */
+    private function rows(Collection $blocks): array
+    {
+        $released = $blocks->isEmpty() ? collect() : $this->numbers()
+            ->whereIn('series_id', $blocks->modelKeys())
+            ->where('status', TrackingNumber::RELEASED)
+            ->selectRaw('series_id, count(*) as n, min(number) as lowest')
+            ->groupBy('series_id')
+            ->get()
+            ->keyBy('series_id');
+
+        return $blocks->map(function (TrackingNumberSeries $s) use ($released) {
+            $unissued = $this->unissued(collect([$s]));
+            $r = $released->get($s->getKey());
+            $lowest = $r !== null ? (int) $r->lowest : null;
+            $fresh = $unissued > 0 ? ($s->last_issued_number === null ? $s->first_number : $s->last_issued_number + 1) : null;
+
+            return [
+                'first' => $s->first_number,
+                'last' => $s->last_number,
+                'next' => $lowest ?? $fresh,
+                'remaining' => $unissued + (int) ($r->n ?? 0),
+                'lowest_released' => $lowest,
+            ];
+        })->values()->all();
     }
 
     /**

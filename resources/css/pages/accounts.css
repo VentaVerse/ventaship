@@ -64,6 +64,10 @@
         gap: 8px 12px;
     }
 
+    .ac-title-tile {
+        box-shadow: inset 0 0 0 1px var(--bl-field-edge);
+    }
+
     .ac-title-badges {
         display: inline-flex;
         flex-wrap: wrap;

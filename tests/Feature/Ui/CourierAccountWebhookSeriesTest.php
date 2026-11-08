@@ -53,13 +53,14 @@ class CourierAccountWebhookSeriesTest extends TestCase
     public function test_webhook_not_set_shows_badge_and_set_address_link(): void
     {
         $this->setBase(null);
+        config(['app.url' => 'http://localhost:8040']);
         $a = $this->account();
 
-        $this->actingAs($this->admin())->get(route('accounts.show', $a))->assertOk()
+        $this->actingAs($this->admin())->get('http://localhost:8040'.route('accounts.show', $a, false))->assertOk()
             ->assertSee('Not set')->assertSee('Set address')
             ->assertSee(route('settings.edit', ['tab' => 'couriers']), false)
             ->assertDontSee('/webhooks/quadx')
-            ->assertDontSee('/webhooks/');
+            ->assertDontSee('/webhooks/')->assertDontSee('localhost:8040/webhooks')->assertDontSee('token=');
         $this->postJson(route('accounts.reveal', [$a, 'webhook_url']))->assertNotFound();
     }
 
@@ -132,10 +133,10 @@ class CourierAccountWebhookSeriesTest extends TestCase
         $l = $this->account('lbc');
         $this->actingAs($this->admin())->from(route('accounts.show', $l))
             ->post(route('accounts.series', $l), ['first' => 'abc', 'last' => '5'])
-            ->assertRedirect(route('accounts.show', $l))->assertSessionHasErrors(['first', 'last']);
+            ->assertRedirect(route('accounts.show', $l))->assertSessionHasErrors(['first'])->assertSessionDoesntHaveErrors(['last']);
 
         $this->post(route('accounts.series', $l), ['first' => '10', 'last' => '20']);
-        $this->post(route('accounts.series', $l), ['first' => '15', 'last' => '30'])->assertSessionHasErrors(['first', 'last']);
+        $this->post(route('accounts.series', $l), ['first' => '15', 'last' => '30'])->assertSessionHasErrors(['first'])->assertSessionDoesntHaveErrors(['last']);
         $this->post(route('accounts.series', $l), [])->assertSessionHasErrors(['first', 'last']);
 
         $q = $this->account('quadx');
@@ -149,5 +150,30 @@ class CourierAccountWebhookSeriesTest extends TestCase
             ->assertDontSee('Webhook')->assertDontSee('Public address');
         $this->get(route('accounts.show', $this->account('quadx')))->assertOk()
             ->assertSee('Webhook')->assertDontSee('Add block')->assertDontSee('No blocks');
+    }
+
+    public function test_block_rows_count_released_numbers_and_match_status(): void
+    {
+        $l = $this->account('lbc');
+        $svc = app(\App\Couriers\TrackingNumbers\TrackingNumberSeriesService::class);
+        $svc->addSeries($l, 1000, 1009);
+        $svc->addSeries($l, 2000, 2004);
+        $issued = [];
+        for ($i = 0; $i < 4; $i++) {
+            $issued[] = $svc->reserve($l);
+        }
+        $svc->release($issued[1], 'Rejected: code 107');
+        $svc->spend($issued[0], 'ok');
+
+        $this->assertSame([
+            ['first' => 1000, 'last' => 1009, 'next' => 1001, 'remaining' => 7],
+            ['first' => 2000, 'last' => 2004, 'next' => 2000, 'remaining' => 5],
+        ], $svc->blockRows($l));
+        $status = $svc->status($l);
+        $this->assertSame(12, $status['remaining']);
+        $this->assertSame(1001, $status['next']);
+
+        $html = $this->actingAs($this->admin())->get(route('accounts.show', $l))->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/1000.*1009.*1001.*7.*2000.*2004.*2000.*5/s', $html);
     }
 }
