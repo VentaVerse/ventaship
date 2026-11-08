@@ -37,6 +37,14 @@ The couriers worker must name the queue **connection** `couriers`: booking and c
 
 Check: `curl -s http://localhost:8040/up` answers 200.
 
+## Admin login
+
+```bash
+php artisan ventaship:admin you@example.com
+```
+
+It asks for the password twice (at least 12 characters). Then open `http://<pi>:8040/login`. To change a password later, add `--reset`.
+
 ## 3. Create a client app, a key and a QuadX staging account
 
 ```bash

@@ -28,6 +28,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'client.auth' => AuthenticateClient::class,
             'idempotent' => EnforceIdempotency::class,
         ]);
+        $middleware->redirectGuestsTo(fn () => route('login'));
+        $middleware->redirectUsersTo('/');
         $middleware->api(prepend: [LogApiRequest::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

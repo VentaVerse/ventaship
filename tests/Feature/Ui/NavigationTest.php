@@ -62,15 +62,14 @@ class NavigationTest extends TestCase
         $this->assertSame([null, 'Setup', 'Developers', 'System', null], $this->labels());
     }
 
-    public function test_layout_renders_without_an_admin_and_without_logout_route(): void
+    public function test_layout_renders_without_an_admin(): void
     {
         $this->registerRoute('fulfillment', fn () => view('layouts.app'));
 
         $this->get('/_nav/fulfillment')
             ->assertOk()
             ->assertSee('Ventaship')
-            ->assertSee('Fulfillment')
-            ->assertDontSee('Sign out');
+            ->assertSee('Fulfillment');
     }
 
     public function test_only_the_current_system_item_is_active(): void
@@ -86,18 +85,15 @@ class NavigationTest extends TestCase
         $this->assertMatchesRegularExpression('/aria-current="page"[^>]*>\s*<svg.*?<span>Failed jobs<\/span>/s', $html);
     }
 
-    public function test_footer_shows_admin_name_and_sign_out_when_logout_exists(): void
+    public function test_footer_shows_admin_name_and_sign_out(): void
     {
         $this->registerRoute('fulfillment', fn () => view('layouts.app'));
-        Route::post('/_nav/logout', fn () => 'ok')->name('logout');
-        Route::getRoutes()->refreshNameLookups();
-
         $admin = Admin::create(['name' => 'Rosa Admin', 'email' => 'rosa@example.test', 'password' => 'secret-pass']);
 
         $this->actingAs($admin)->get('/_nav/fulfillment')
             ->assertOk()
             ->assertSee('Rosa Admin')
             ->assertSee('Sign out')
-            ->assertSee('action="'.url('/_nav/logout').'"', false);
+            ->assertSee('action="'.route('logout').'"', false);
     }
 }
