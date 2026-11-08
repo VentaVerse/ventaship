@@ -31,6 +31,8 @@
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="VENTASHIP_VAULT_KEY" value="dGVzdC12YXVsdC1rZXktMzItYnl0ZXMtZXhhY3RseSE="/>
+        <env name="COURIERS_LBC_LIVE" value="false" force="true"/>
+        <env name="COURIERS_SPX_LIVE" value="false" force="true"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
     </php>
