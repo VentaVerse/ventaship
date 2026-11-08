@@ -37,7 +37,8 @@
             $itemErrors[$n][$f] = $errors->first("items.{$n}.{$f}");
         }
     }
-    $value = ShipmentFormRequest::normaliseValue((string) $v('value'));
+    $valueRaw = is_string($v('value')) ? $v('value') : '';
+    $value = ShipmentFormRequest::normaliseValue($valueRaw);
     $valueOk = preg_match('/^\d{1,10}(\.\d{1,2})?$/', $value) === 1;
     $total = Money::peso($valueOk ? $value : '0');
     $count = array_sum(array_map(fn ($r) => ctype_digit($r['quantity']) ? (int) $r['quantity'] : 0, $rows));
@@ -55,7 +56,7 @@
     $sizeOpen = collect(['type', 'length_cm', 'width_cm', 'height_cm'])->contains(fn ($k) => (string) $v('parcel.'.$k) !== '' || $errors->has('parcel.'.$k));
     $config = [
         'services' => $services, 'account' => $accountId, 'service' => (string) $v('service'), 'names' => $names,
-        'rows' => $rows, 'errors' => $itemErrors, 'value' => (string) $v('value'), 'method' => $method, 'insure' => $insure,
+        'rows' => $rows, 'errors' => $itemErrors, 'value' => $valueRaw, 'method' => $method, 'insure' => $insure,
     ];
 @endphp
 
@@ -148,7 +149,7 @@
             <h2 class="st-h" id="sec-payment">Payment</h2>
             <div class="sh-grid">
                 <x-ui.field label="Value (₱)" name="value" :required="true">
-                    <x-ui.input type="text" inputmode="decimal" id="f-value" name="value" value="{{ $v('value') }}" x-model="value" required autocomplete="off" />
+                    <x-ui.input type="text" inputmode="decimal" id="f-value" name="value" value="{{ $valueRaw }}" x-model="value" required autocomplete="off" />
                 </x-ui.field>
             </div>
             <div class="sh-seg" role="radiogroup" aria-labelledby="sec-payment">

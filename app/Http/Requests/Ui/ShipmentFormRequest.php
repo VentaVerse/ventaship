@@ -86,7 +86,7 @@ class ShipmentFormRequest extends FormRequest
     public static function normaliseValue(mixed $value): mixed
     {
         if (! is_string($value)) {
-            return $value;
+            return '';
         }
         $value = (string) preg_replace('/^\+/', '', trim($value));
         if (preg_match('/^(\d*)\.(\d{0,2})$/', $value, $m) && $m[1].$m[2] !== '') {

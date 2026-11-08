@@ -306,4 +306,21 @@ class ShipmentFormRedesignTest extends TestCase
         $this->assertMatchesRegularExpression('/<aside class="sh-summary".*Book shipment/s', $html);
         $this->assertMatchesRegularExpression('/<main[^>]*class="x-content x-content--wide"/', $html);
     }
+
+    public function test_array_value_is_refused_not_a_500(): void
+    {
+        $this->from('/shipments/new')->post('/shipments', $this->form(['value' => ['x']]))
+            ->assertSessionHasErrors(['value' => 'Enter the parcel value.']);
+        $this->get('/shipments/new')->assertOk();
+        $this->assertSame(0, Shipment::query()->count());
+    }
+
+    public function test_odd_quantities_are_refused(): void
+    {
+        foreach (['2.0', '1e1'] as $qty) {
+            $this->post('/shipments', $this->form(['items' => [['quantity' => $qty]]]))
+                ->assertSessionHasErrors('items.0.quantity');
+        }
+        $this->assertSame(0, Shipment::query()->count());
+    }
 }
