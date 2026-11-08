@@ -25,7 +25,7 @@ class AccountCreate extends Command
         }
         $token = $account->webhook_token;
 
-        $base = rtrim((string) config('app.url'), '/');
+        $base = rtrim((string) (app(\App\Support\Settings::class)->publicBaseUrl() ?? config('app.url')), '/');
         $url = match ($courier) {
             'quadx' => "{$base}/webhooks/quadx?token={$token}",
             'spx' => "{$base}/webhooks/spx/{$token}",
