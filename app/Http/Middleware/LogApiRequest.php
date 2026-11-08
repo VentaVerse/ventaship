@@ -35,6 +35,7 @@ class LogApiRequest
             'idempotency_key' => Str::limit((string) $request->header('Idempotency-Key'), 128, '') ?: null,
             'error' => $request->attributes->get('api_error'),
             'request_id' => $request->attributes->get('request_id'),
+            'created_at' => now(),
         ]);
     }
 }

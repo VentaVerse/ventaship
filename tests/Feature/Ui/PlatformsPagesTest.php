@@ -58,19 +58,25 @@ class PlatformsPagesTest extends TestCase
         $ok = ClientApp::factory()->create(['name' => 'Shop One', 'webhook_url' => 'https://a.test/h']);
         $bad = ClientApp::factory()->create(['name' => 'Shop Two', 'webhook_url' => 'https://b.test/h', 'status' => 'disabled']);
         $none = ClientApp::factory()->create(['name' => 'Shop Zed']);
+        $quiet = ClientApp::factory()->create(['name' => 'Shop Yak', 'webhook_url' => 'https://c.test/h']);
+        $skipOnly = ClientApp::factory()->create(['name' => 'Shop Xen', 'webhook_url' => 'https://d.test/h']);
+        $this->event($skipOnly, 'skipped', 'app disabled');
         $this->event($ok, 'failed');
         $this->event($ok, 'delivered');
         $this->event($bad, 'delivered');
         $this->event($bad, 'pending', 'HTTP 500');
         app(PlatformApps::class)->issueKey($ok, 'one');
         app(PlatformApps::class)->issueKey($ok, 'two');
+        $gone = app(PlatformApps::class)->issueKey($ok, 'gone')['key'];
+        app(PlatformApps::class)->revokeKey($gone);
         ApiRequest::query()->create(['client_app_id' => $ok->id, 'method' => 'GET', 'path' => '/x', 'status' => 200, 'created_at' => now()->subHour()]);
 
         $html = $this->actingAs($this->admin())->get(route('apps.index'))->assertOk()
-            ->assertSeeInOrder(['Shop One', 'Active', 'Delivering', 'Shop Two', 'Disabled', 'Failing', 'Shop Zed', 'No webhook'])
+            ->assertSeeInOrder(['Shop One', 'Active', 'Delivering', 'Shop Two', 'Disabled', 'Failing', 'Shop Xen', 'No deliveries', 'Shop Yak', 'No deliveries', 'Shop Zed', 'No webhook'])
+            ->assertSee('2 keys')
             ->assertSee(route('apps.show', $ok), false)
             ->getContent();
-        $this->assertSame(3, substr_count($html, '>Open</a>'));
+        $this->assertSame(5, substr_count($html, '>Open</a>'));
         $this->assertStringContainsString('1 hour ago', $html);
     }
 
@@ -123,6 +129,17 @@ class PlatformsPagesTest extends TestCase
         $app->refresh();
         $this->assertSame('disabled', $app->status);
         $this->assertNull($app->webhook_url);
+    }
+
+    public function test_service_refusal_maps_to_the_webhook_field(): void
+    {
+        $app = ClientApp::factory()->create(['name' => 'Shop']);
+        $this->actingAs($this->admin());
+        $url = 'http://a_b.test/hook';
+
+        $this->post(route('apps.store'), ['name' => 'A', 'webhook_url' => $url])->assertSessionHasErrors('webhook_url');
+        $this->put(route('apps.update', $app), ['name' => 'A', 'webhook_url' => $url, 'active' => '1'])->assertSessionHasErrors('webhook_url');
+        $this->assertSame(1, ClientApp::count());
     }
 
     public function test_update_validation(): void

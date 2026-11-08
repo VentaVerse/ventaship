@@ -93,7 +93,7 @@ class PlatformsController extends Controller
 
     private function field(PlatformAppException $e): string
     {
-        return str_contains($e->getMessage(), 'webhook URL') ? 'webhook_url' : 'name';
+        return $e->field ?? 'name';
     }
 
     /** @return array{0: string, 1: string} label and badge tone */

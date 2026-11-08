@@ -395,7 +395,7 @@ class PlatformApps
             return null;
         }
         if (mb_strlen($url) > 2048 || ! WebhookUrl::isValid($url)) {
-            throw new PlatformAppException(self::BAD_URL);
+            throw new PlatformAppException(self::BAD_URL, 'webhook_url');
         }
 
         return $url;

@@ -12,6 +12,10 @@
         border-top: 0;
     }
 
+    .pf-row--off .pf-row__name {
+        color: var(--bl-ink-2);
+    }
+
     .pf-row__name {
         font-weight: 600;
         overflow-wrap: anywhere;

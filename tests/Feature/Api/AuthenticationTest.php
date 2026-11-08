@@ -22,6 +22,14 @@ class AuthenticationTest extends TestCase
         $this->assertSame($reason, ApiRequest::query()->latest('id')->value('error'));
     }
 
+    public function test_logged_request_time_is_set_by_the_app(): void
+    {
+        $this->travelTo('2026-11-09 12:00:00');
+        $this->signedJson('GET', '/api/v1/ping');
+
+        $this->assertSame('2026-11-09 12:00:00', ApiRequest::query()->latest('id')->first()->created_at);
+    }
+
     public function test_valid_signature_returns_app(): void
     {
         $client = $this->makeClient();
