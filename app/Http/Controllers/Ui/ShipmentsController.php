@@ -55,6 +55,13 @@ class ShipmentsController extends Controller
         ]);
     }
 
+    public function show(Shipment $shipment): View
+    {
+        $shipment->load(['clientApp', 'courierAccount', 'events' => fn ($q) => $q->orderByDesc('occurred_at')->orderByDesc('id')]);
+
+        return view('shipments.show', ['shipment' => $shipment]);
+    }
+
     public function store(ShipmentFormRequest $form, ShipmentCreator $creator): RedirectResponse
     {
         $request = $form;

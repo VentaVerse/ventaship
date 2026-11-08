@@ -1,5 +1,5 @@
 @php
-    use App\Fulfillment\DisplayPhase;
+    use App\Fulfillment\ShipmentBadges;
     use App\Fulfillment\ShipmentList;
     use App\Fulfillment\StatusFilter;
     use App\Shipments\TrackingLink;
@@ -9,21 +9,10 @@
     $name = $r ? trim(($r['first_name'] ?? '').' '.($r['last_name'] ?? '')) : '';
     $name = $name !== '' ? $name : null;
     $city = $r['city'] ?? null;
-    $phase = DisplayPhase::of($shipment);
     $isCod = str_starts_with((string) $shipment->payment_state, 'cod_');
     $amount = $isCod ? $shipment->cod_amount : $shipment->total;
-    $pay = match ($shipment->payment_state) {
-        'cod_unpaid' => ['COD · Unpaid', 'attn'],
-        'cod_collected' => ['COD · Collected', 'cool'],
-        'cod_remitted' => ['COD · Remitted', 'good'],
-        'cod_void' => ['COD · Void', 'mute'],
-        default => ['Prepaid', 'mute'],
-    };
-    $tones = [
-        'draft' => 'mute', 'booking' => 'cool', 'attention' => 'attn', 'to_handover' => 'cool', 'in_transit' => 'cool',
-        'delivered' => 'good', 'failed' => 'bad', 'lost_damaged' => 'bad', 'returning' => 'attn', 'cancelled' => 'mute',
-    ];
-    $statusTone = $tones[$phase] ?? 'mute';
+    $pay = ShipmentBadges::payment($shipment);
+    $statusTone = ShipmentBadges::statusTone($shipment);
     $statusKey = StatusFilter::keyFor($shipment);
     $statusLabel = StatusFilter::labelFor($shipment);
     $tracking = $shipment->tracking_number ? TrackingLink::for($shipment) : null;
@@ -34,7 +23,7 @@
 <div class="fl-row" data-id="{{ $shipment->public_id }}" data-status="{{ $statusKey }}">
     <input type="checkbox" class="fl-row__check" name="ids[]" value="{{ $shipment->public_id }}" aria-label="Select {{ $name ?: 'shipment' }}">
     <div>
-        <div class="fl-row__name {{ $name ? '' : 'is-removed' }}">{{ $name ?: 'Removed' }}</div>
+        <div class="fl-row__name {{ $name ? '' : 'is-removed' }}"><a class="fl-row__link" href="{{ route('shipments.show', $shipment->public_id) }}">{{ $name ?: 'Removed' }}</a></div>
         <div class="fl-row__ref">{{ $refs }}</div>
         <div class="fl-row__addr">{{ collect([$city, $shipment->items_count.' '.\Illuminate\Support\Str::plural('item', (int) $shipment->items_count)])->filter()->implode(' · ') }}</div>
     </div>

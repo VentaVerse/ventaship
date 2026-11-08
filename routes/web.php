@@ -19,6 +19,7 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::get('fulfillment/poll', [FulfillmentController::class, 'poll'])->name('fulfillment.poll');
     Route::get('shipments/new', [ShipmentsController::class, 'create'])->name('shipments.create');
     Route::post('shipments', [ShipmentsController::class, 'store'])->name('shipments.store');
+    Route::get('shipments/{shipment:public_id}', [ShipmentsController::class, 'show'])->name('shipments.show');
     Route::post('shipments/book', [ShipmentActionsController::class, 'book'])->name('shipments.book');
     Route::post('shipments/cancel', [ShipmentActionsController::class, 'cancel'])->name('shipments.cancel');
     Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');
