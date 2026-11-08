@@ -1,11 +1,29 @@
 @import 'tailwindcss';
+@import './blotter.css';
+@import './blotter-components.css';
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
-@source '../../storage/framework/views/*.php';
-@source '../**/*.blade.php';
-@source '../**/*.js';
+@source '../views';
+@source '../js';
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-sans: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'JB Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --color-brand: var(--bl-brand);
+    --color-brand-btn: var(--bl-brand-btn);
+    --color-brand-link: var(--bl-brand-link);
+    --color-brand-w: var(--bl-brand-w);
+    --color-paper: var(--bl-paper);
+    --color-sheet: var(--bl-sheet);
+    --color-ink: var(--bl-ink);
+    --color-ink-2: var(--bl-ink-2);
+    --color-ink-3: var(--bl-ink-3);
+    --color-rule: var(--bl-rule);
+    --color-rule-2: var(--bl-rule-2);
+    --color-good: var(--bl-good);
+    --color-attn: var(--bl-attn);
+    --color-bad: var(--bl-bad);
+    --color-cool: var(--bl-cool);
+    --radius-ctrl: var(--bl-r-ctrl);
+    --radius-panel: var(--bl-r-panel);
 }
