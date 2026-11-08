@@ -2,6 +2,7 @@
 
 namespace App\Webhooks\Outbound;
 
+use App\Http\Resources\ShipmentResource;
 use App\Models\ClientApp;
 use App\Models\OutgoingEvent;
 use App\Models\Shipment;
@@ -15,7 +16,10 @@ use LogicException;
 final class Outbox
 {
     /**
-     * @param  array<string, mixed>  $data  ['shipment' => array, 'event' => array|null]
+     * With a shipment, `data.shipment` is always that shipment as ShipmentResource renders it (never its parties),
+     * taken after the caller's changes, so a webhook carries exactly what GET /shipments/{id} would answer.
+     *
+     * @param  array<string, mixed>  $data  e.g. ['event' => array|null]
      * @return OutgoingEvent|null null when there is nobody to tell (a manual or CSV shipment has no client app)
      */
     public static function record(?ClientApp $app, string $type, array $data, ?Shipment $s = null): ?OutgoingEvent
@@ -36,6 +40,10 @@ final class Outbox
         if ($s !== null) {
             $s->increment('event_sequence'); // atomic UPDATE; the caller holds the row lock
             $sequence = (int) $s->event_sequence;
+        }
+
+        if ($s !== null) {
+            $data = ['shipment' => (new ShipmentResource($s))->resolve()] + $data;
         }
 
         return OutgoingEvent::create([

@@ -13,6 +13,7 @@ class ApiError extends RuntimeException
         string $message,
         public readonly bool $retryable = false,
         public readonly array $errors = [],
+        public readonly array $headers = [],
     ) {
         parent::__construct($message);
     }
@@ -24,6 +25,6 @@ class ApiError extends RuntimeException
             'code' => $this->errorCode,
             'retryable' => $this->retryable,
             'errors' => $this->errors === [] ? (object) [] : $this->errors,
-        ], $this->status);
+        ], $this->status, $this->headers);
     }
 }

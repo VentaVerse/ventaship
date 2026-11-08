@@ -1,0 +1,131 @@
+<?php
+
+namespace App\Http\Resources;
+
+use App\Couriers\Contracts\ProvidesPublicTrackingUrl;
+use App\Couriers\CourierOrder;
+use App\Couriers\CourierRegistry;
+use App\Models\Shipment;
+use App\Shipments\PhaseResolver;
+use Carbon\CarbonInterface;
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Log;
+use Throwable;
+
+/**
+ * One shipment as clients see it, in API answers and in webhook `data` (base plan §2 "Shipment resource").
+ * Money is a string with two decimals, exactly as stored. Personal data (pickup, recipient, items, note) appears
+ * only when the caller asks with withParties(): webhooks never carry it.
+ *
+ * @mixin Shipment
+ */
+class ShipmentResource extends JsonResource
+{
+    private bool $parties = false;
+
+    public function withParties(bool $parties = true): static
+    {
+        $this->parties = $parties;
+
+        return $this;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(?Request $request = null): array
+    {
+        /** @var Shipment $s */
+        $s = $this->resource;
+        $account = $s->courierAccount;
+
+        $data = [
+            'id' => $s->public_id,
+            'client_reference' => $s->client_reference,
+            'order_label' => $s->order_label,
+            'source' => $s->source,
+            'account' => $account === null ? null : [
+                'id' => $account->public_id,
+                'courier' => $account->courier,
+                'label' => $account->label,
+            ],
+            'courier' => $s->courier,
+            'state' => $s->state,
+            'cancel_state' => $s->cancel_state,
+            'phase' => $s->phase,
+            'courier_status' => $s->courier_status,
+            'courier_status_label' => $this->statusLabel($s),
+            'tracking_number' => $s->tracking_number,
+            'tracking_url' => $this->trackingUrl($s),
+            'label_available' => $s->state === 'booked' && $s->tracking_number !== null,
+            'method' => $s->method,
+            'service' => $s->service,
+            'pickup_date' => data_get($s->options, 'pickup_date'),
+            'fee' => $s->fee_amount === null ? null : ['amount' => $s->fee_amount, 'currency' => $s->fee_currency ?? 'PHP'],
+            'payment_method' => $s->payment_method,
+            'payment_state' => $s->payment_state,
+            'cod_amount' => $s->cod_amount,
+            'declared_value' => $s->declared_value,
+            'items_count' => (int) $s->items_count,
+            'items_summary' => $s->items_summary,
+            'notice' => $s->notice,
+            'error' => $s->error_code === null && $s->error_message === null ? null : [
+                'code' => $s->error_code,
+                'message' => $s->error_message,
+            ],
+            'needs_attention' => (bool) $s->needs_attention,
+            'attention_reason' => $s->attention_reason,
+            'created_at' => $this->time($s->created_at),
+            'booked_at' => $this->time($s->booked_at),
+            'updated_at' => $this->time($s->updated_at),
+            'metadata' => $s->metadata === null || $s->metadata === [] ? (object) [] : $s->metadata,
+        ];
+
+        if ($this->parties) {
+            $data['pickup'] = $s->pickup;
+            $data['recipient'] = $s->recipient;
+            $data['items'] = $s->items ?? [];
+            $data['note'] = $s->courier_note;
+            $data['parcel'] = data_get($s->options, 'parcel');
+        }
+
+        return $data;
+    }
+
+    private function time(?CarbonInterface $at): ?string
+    {
+        return $at?->copy()->setTimezone(config('app.timezone'))->toIso8601String();
+    }
+
+    private function statusLabel(Shipment $s): ?string
+    {
+        if ($s->courier === null || $s->courier_status === null || $s->courier_status === '') {
+            return null;
+        }
+
+        return app(PhaseResolver::class)->label($s->courier, $s->courier_status);
+    }
+
+    /** The courier's public tracker wins over its API links (owner ruling 2026-09-03); never fatal to the answer. */
+    private function trackingUrl(Shipment $s): ?string
+    {
+        if ($s->tracking_number === null || $s->courier === null || ! CourierRegistry::has($s->courier)) {
+            return null;
+        }
+
+        try {
+            $courier = CourierRegistry::describe($s->courier);
+            if ($courier instanceof ProvidesPublicTrackingUrl) {
+                $url = $courier->publicTrackingUrl($s->tracking_number, is_array($s->meta) ? $s->meta : []);
+                if ($url !== null) {
+                    return $url;
+                }
+            }
+
+            return $courier->trackingLinks(CourierOrder::fromApi($s))[0]['url'] ?? null;
+        } catch (Throwable $e) {
+            Log::warning('Tracking URL could not be built', ['shipment' => $s->public_id, 'error' => $e->getMessage()]);
+
+            return null;
+        }
+    }
+}

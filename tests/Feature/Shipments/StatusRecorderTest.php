@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Shipments;
 
+use App\Http\Resources\ShipmentResource;
 use App\Models\OutgoingEvent;
 use App\Models\Shipment;
 use App\Models\ShipmentEvent;
@@ -52,6 +53,23 @@ class StatusRecorderTest extends TestCase
         $this->assertSame('delivered', $rows[0]->payload['event']['phase']);
         $this->assertNull($rows[1]->payload['event']);
         $this->assertSame('cod_collected', $rows[1]->payload['shipment']['payment_state']);
+    }
+
+    public function test_outbox_payload_is_the_shipment_resource_without_parties(): void
+    {
+        $s = $this->cod(['tracking_number' => 'QX-1', 'state' => 'booked']);
+
+        $this->recorder()->record($s, 'in_transit', $this->at('10:00:00'), 'poll');
+
+        $payload = OutgoingEvent::where('shipment_id', $s->id)->sole()->payload;
+        $expected = (new ShipmentResource($s->fresh()))->resolve();
+        $this->assertSame(array_keys($expected), array_keys($payload['shipment']));
+        $this->assertSame($s->courierAccount->public_id, $payload['shipment']['account']['id']);
+        $this->assertSame('1290.00', $payload['shipment']['cod_amount']);
+        $this->assertSame('in_transit', $payload['shipment']['phase']);
+        $this->assertArrayNotHasKey('recipient', $payload['shipment']);
+        $this->assertArrayNotHasKey('pickup', $payload['shipment']);
+        $this->assertArrayNotHasKey('items', $payload['shipment']);
     }
 
     public function test_duplicate_event_is_ignored(): void

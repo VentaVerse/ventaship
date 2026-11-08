@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Log;
  *  2. Every throwable is caught. An adapter blowing up resolves to `unknown` and never fails the caller.
  *
  * Definite answers (serviceable, not_serviceable) are cached for a day per account, pickup and recipient address,
- * under `cov:{account}:{sha1(pickup)}:{sha1(recipient)}`. An `unknown` is never cached: it says nothing about the
+ * under `cov:{account}:{sha1(default service)}:{sha1(pickup)}:{sha1(recipient)}`. An `unknown` is never cached: it says nothing about the
  * address, and the next call should ask again.
  */
 class ServiceabilityService
@@ -102,7 +102,11 @@ class ServiceabilityService
             $order->cod ? 'cod' : 'prepaid',
         ]);
 
-        return 'cov:' . $account->getKey() . ':' . sha1($pickup) . ':' . sha1($recipient);
+        // A courier that quotes on the account's default service (QuadX's quadx_default_service) prices a different
+        // service once that setting changes, so its cached fees must not outlive the change.
+        $service = (string) AccountSettings::for($account)->read($account->courier . '_default_service', '');
+
+        return 'cov:' . $account->getKey() . ':' . sha1($service) . ':' . sha1($pickup) . ':' . sha1($recipient);
     }
 
     /** @param  list<mixed>  $parts */

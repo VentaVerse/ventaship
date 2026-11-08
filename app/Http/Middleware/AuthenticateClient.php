@@ -7,10 +7,15 @@ use App\Api\Signature;
 use App\Models\ApiKey;
 use App\Models\RequestSignature;
 use Closure;
+use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-class AuthenticateClient
+/**
+ * The marker interface puts this in the framework's auth slot of the middleware priority list, so it always runs
+ * before throttle: (limits are keyed by the authenticated API key) and before route model binding.
+ */
+class AuthenticateClient implements AuthenticatesRequests
 {
     private const WINDOW_SECONDS = 300;
 

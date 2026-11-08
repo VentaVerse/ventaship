@@ -85,16 +85,10 @@ class StatusRecorder
             $eventData = $event->only(['courier_status', 'label', 'phase', 'occurred_at', 'remarks']);
             $eventData['occurred_at'] = $occurredAt->toIso8601String();
 
-            Outbox::record($app, 'shipment.status_changed', [
-                'shipment' => $this->snapshot($shipment),
-                'event' => $eventData,
-            ], $shipment);
+            Outbox::record($app, 'shipment.status_changed', ['event' => $eventData], $shipment);
 
             if ($paymentAfter !== $paymentBefore) {
-                Outbox::record($app, 'shipment.payment_state_changed', [
-                    'shipment' => $this->snapshot($shipment),
-                    'event' => null,
-                ], $shipment);
+                Outbox::record($app, 'shipment.payment_state_changed', ['event' => null], $shipment);
             }
 
             $s->setRawAttributes($shipment->getAttributes(), true);
@@ -128,20 +122,6 @@ class StatusRecorder
         } catch (InvalidArgumentException) {
             return false;
         }
-    }
-
-    /** @return array<string, mixed> Task 9 swaps this for ShipmentResource. */
-    private function snapshot(Shipment $s): array
-    {
-        return [
-            'id' => $s->public_id,
-            'state' => $s->state,
-            'phase' => $s->phase,
-            'courier_status' => $s->courier_status,
-            'payment_state' => $s->payment_state,
-            'tracking_number' => $s->tracking_number,
-            'client_reference' => $s->client_reference,
-        ];
     }
 
     /** @return array<string, mixed> */
