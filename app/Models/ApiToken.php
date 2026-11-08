@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\Vault\VaultEncrypted;
+use Illuminate\Database\Eloquent\Builder;
 use Laravel\Sanctum\PersonalAccessToken;
 
 /**
@@ -17,6 +18,12 @@ class ApiToken extends PersonalAccessToken
     protected $fillable = ['name', 'token', 'abilities', 'expires_at', 'prefix', 'token_encrypted'];
 
     protected $hidden = ['token', 'token_encrypted'];
+
+    /** Not expired: the tokens that can still authenticate. */
+    public function scopeUsable(Builder $query): void
+    {
+        $query->where(fn (Builder $q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()));
+    }
 
     protected function casts(): array
     {

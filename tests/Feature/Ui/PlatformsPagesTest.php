@@ -69,6 +69,7 @@ class PlatformsPagesTest extends TestCase
         app(PlatformApps::class)->issueKey($ok, 'two');
         $gone = app(PlatformApps::class)->issueKey($ok, 'gone')['key'];
         app(PlatformApps::class)->revokeKey($gone);
+        app(PlatformApps::class)->issueKey($ok, 'expired')['key']->update(['expires_at' => now()->subMinute()]);
         ApiRequest::query()->create(['client_app_id' => $ok->id, 'method' => 'GET', 'path' => '/x', 'status' => 200, 'created_at' => now()->subHour()]);
 
         $html = $this->actingAs($this->admin())->get(route('apps.index'))->assertOk()

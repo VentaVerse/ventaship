@@ -169,8 +169,18 @@ class AuthenticationTest extends TestCase
         $this->assertSame(200, $row->status);
         $this->assertNotNull($row->duration_ms);
         $this->assertSame($client['app']->getKey(), $row->client_app_id);
-        $this->assertSame($client['app']->tokens()->sole()->getKey(), $row->token_id);
+        $token = $client['app']->tokens()->sole();
+        $this->assertSame($token->getKey(), $row->token_id);
+        $this->assertSame($token->prefix, $row->token_prefix);
+        $this->assertSame('Test', $row->token_name);
         $this->assertNull($row->error);
+
+        // Revoking deletes the token; the history still names it.
+        app(PlatformApps::class)->revokeKey($token);
+        $row->refresh();
+        $this->assertNull($row->token_id);
+        $this->assertSame($token->prefix, $row->token_prefix);
+        $this->assertSame('Test', $row->token_name);
     }
 
     public function test_validation_exception_on_api_is_422_invalid_request(): void

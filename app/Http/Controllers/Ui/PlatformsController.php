@@ -19,7 +19,7 @@ class PlatformsController extends Controller
 {
     public function index(): View
     {
-        $apps = ClientApp::query()->withCount('tokens as active_keys_count')
+        $apps = ClientApp::query()->withCount(['tokens as active_keys_count' => fn ($q) => $q->usable()])
             ->orderBy('name')->orderBy('id')->get();
         $ids = $apps->modelKeys();
 
@@ -64,7 +64,7 @@ class PlatformsController extends Controller
 
     public function show(Request $request, ClientApp $app, PlatformApps $platforms): View
     {
-        $keys = $app->tokens()->orderBy('id')->get();
+        $keys = $app->tokens()->usable()->orderBy('id')->get();
         // Set by issueKey for one request: the new key's id only. The page then reveals it through apps.reveal.
         $issued = $request->session()->get('issued_key');
 
@@ -119,7 +119,7 @@ class PlatformsController extends Controller
                 $value = $platforms->revealWebhookSecret($app, $actor);
             } else {
                 abort_unless(preg_match('/^token:(\d{1,19})$/', $what, $m) === 1, 404);
-                $key = $app->tokens()->whereKey((int) $m[1])->first();
+                $key = $app->tokens()->usable()->whereKey((int) $m[1])->first();
                 abort_if($key === null, 404);
                 $value = $platforms->revealKey($key, $actor);
             }

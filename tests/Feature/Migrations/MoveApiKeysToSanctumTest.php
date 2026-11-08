@@ -23,6 +23,8 @@ class MoveApiKeysToSanctumTest extends TestCase
 
     private const REVOKED = 'vsk_'.'Rv0kEdRv0kEdRv0kEdRv0kEdRv0kEdRv0kEdRv0k';
 
+    private const EXPIRED = 'vsk_'.'ExP1rEdExP1rEdExP1rEdExP1rEdExP1rEdExP1r';
+
     private object $migration;
 
     protected function setUp(): void
@@ -33,7 +35,7 @@ class MoveApiKeysToSanctumTest extends TestCase
         $this->migration->down();
     }
 
-    /** @return array{app: ClientApp, active: int, legacy: int, revoked: int} */
+    /** @return array{app: ClientApp, active: int, legacy: int, revoked: int, expired: int} */
     private function seedKeys(): array
     {
         $app = ClientApp::factory()->create();
@@ -55,13 +57,14 @@ class MoveApiKeysToSanctumTest extends TestCase
         ]);
         $legacy = $row(self::LEGACY, 'Old');
         $revoked = $row(self::REVOKED, 'Gone', ['revoked_at' => '2026-11-05 00:00:00']);
+        $expired = $row(self::EXPIRED, 'Lapsed', ['expires_at' => now()->subDay()]);
 
         DB::table('api_requests')->insert([
             ['client_app_id' => $app->id, 'api_key_id' => $active, 'method' => 'GET', 'path' => '/api/v1/ping', 'status' => 200, 'created_at' => now()],
             ['client_app_id' => $app->id, 'api_key_id' => $revoked, 'method' => 'GET', 'path' => '/api/v1/ping', 'status' => 401, 'created_at' => now()],
         ]);
 
-        return ['app' => $app, 'active' => $active, 'legacy' => $legacy, 'revoked' => $revoked];
+        return ['app' => $app, 'active' => $active, 'legacy' => $legacy, 'revoked' => $revoked, 'expired' => $expired];
     }
 
     private function ping(string $token)
@@ -97,6 +100,28 @@ class MoveApiKeysToSanctumTest extends TestCase
             [$seeded['active'], null],
             ApiRequest::query()->orderBy('id')->pluck('token_id')->all(),
         );
+        // Every key's history keeps its name, the revoked one's included.
+        $this->assertSame(
+            [['vsk_Ab3d', 'Production'], ['vsk_Rv0k', 'Gone']],
+            ApiRequest::query()->orderBy('id')->get()->map(fn ($r) => [$r->token_prefix, $r->token_name])->all(),
+        );
+
+        // After a revoke the row still names the token.
+        app(\App\Platforms\PlatformApps::class)->revokeKey($active);
+        $this->assertSame(['vsk_Ab3d', 'Production', null], array_values(
+            ApiRequest::query()->orderBy('id')->first(['token_prefix', 'token_name', 'token_id'])->toArray()
+        ));
+    }
+
+    public function test_rerun_after_the_foreign_key_was_already_dropped(): void
+    {
+        $seeded = $this->seedKeys();
+        Schema::table('api_requests', fn ($t) => $t->dropForeign(['api_key_id']));
+
+        $this->migration->up();
+
+        $this->assertFalse(Schema::hasColumn('api_requests', 'api_key_id'));
+        $this->assertSame([$seeded['active'], null], ApiRequest::query()->orderBy('id')->pluck('token_id')->all());
     }
 
     public function test_moved_keys_authenticate_and_revoked_ones_do_not(): void
@@ -109,6 +134,8 @@ class MoveApiKeysToSanctumTest extends TestCase
         $this->ping(self::LEGACY)->assertOk();
         $this->ping($seeded['active'].'|'.self::ACTIVE)->assertOk();
         $this->ping(self::REVOKED)->assertStatus(401)->assertJsonPath('code', 'unauthorized');
+        $this->ping(self::EXPIRED)->assertStatus(401);
+        $this->assertNull(ApiToken::query()->where('token', hash('sha256', self::EXPIRED))->first());
     }
 
     public function test_rerun_is_harmless(): void

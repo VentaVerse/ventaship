@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\ClientApp;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -12,7 +11,11 @@ use Illuminate\Support\Facades\Schema;
  * Each active (not revoked) api_keys row becomes a personal_access_tokens row with the same SHA-256 hash. Our
  * key_hash was always hash('sha256', <the whole key>), and Sanctum looks up a token sent without '|' by exactly that
  * hash, so issued keys keep working unchanged. The vault ciphertext of the key is copied as is (the vault binds
- * nothing to the table or column). Revoked keys are not moved, so they can never authenticate.
+ * nothing to the table or column). Revoked and expired keys are not moved, so they can never authenticate.
+ *
+ * Log rows keep who called: api_requests.token_prefix / token_name are filled from api_keys for every key (revoked
+ * ones included) before api_keys is dropped, and the app writes both on every call from now on, so a revoked
+ * (deleted) token's history still names it.
  *
  * The api_keys id is kept as the token id when free, so api_requests.api_key_id carries over to token_id.
  *
@@ -36,6 +39,23 @@ return new class extends Migration
             });
         }
 
+        if (! Schema::hasColumn('api_requests', 'token_prefix')) {
+            Schema::table('api_requests', function (Blueprint $table) {
+                $table->string('token_prefix', 8)->nullable();
+            });
+        }
+        if (! Schema::hasColumn('api_requests', 'token_name')) {
+            Schema::table('api_requests', function (Blueprint $table) {
+                $table->string('token_name')->nullable();
+            });
+        }
+        if (Schema::hasTable('api_keys') && Schema::hasColumn('api_requests', 'api_key_id')) {
+            DB::table('api_keys')->orderBy('id')->each(function (object $key) {
+                DB::table('api_requests')->where('api_key_id', $key->id)->whereNull('token_prefix')
+                    ->update(['token_prefix' => $key->key_prefix, 'token_name' => $key->name]);
+            });
+        }
+
         $map = Schema::hasTable('api_keys') ? $this->moveKeys() : [];
 
         if (! Schema::hasColumn('api_requests', 'token_id')) {
@@ -48,9 +68,11 @@ return new class extends Migration
             foreach ($map as $old => $new) {
                 DB::table('api_requests')->where('api_key_id', $old)->update(['token_id' => $new]);
             }
-            Schema::table('api_requests', function (Blueprint $table) {
-                $table->dropForeign(['api_key_id']);
-            });
+            if ($this->hasForeignKeyOn('api_requests', 'api_key_id')) {
+                Schema::table('api_requests', function (Blueprint $table) {
+                    $table->dropForeign(['api_key_id']);
+                });
+            }
             Schema::table('api_requests', function (Blueprint $table) {
                 $table->dropColumn('api_key_id');
             });
@@ -60,13 +82,28 @@ return new class extends Migration
         Schema::dropIfExists('request_signatures');
     }
 
+    private function hasForeignKeyOn(string $table, string $column): bool
+    {
+        foreach (Schema::getForeignKeys($table) as $fk) {
+            if ($fk['columns'] === [$column]) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** @return array<int, int> api_keys id => personal_access_tokens id, for every moved key */
     private function moveKeys(): array
     {
-        $type = (new ClientApp)->getMorphClass();
+        // The class name, as Sanctum stores it (the app has no morph map). Hard-coded so a later model change cannot alter
+        // what this migration wrote.
+        $type = 'App\\Models\\ClientApp';
         $map = [];
 
-        DB::table('api_keys')->whereNull('revoked_at')->orderBy('id')->each(function (object $key) use ($type, &$map) {
+        DB::table('api_keys')->whereNull('revoked_at')
+            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+            ->orderBy('id')->each(function (object $key) use ($type, &$map) {
             $existing = DB::table('personal_access_tokens')->where('token', $key->key_hash)->value('id');
             if ($existing !== null) {
                 $map[(int) $key->id] = (int) $existing;
@@ -130,10 +167,17 @@ return new class extends Migration
                 $table->foreignId('api_key_id')->nullable()->constrained()->nullOnDelete();
             });
         }
+        foreach (['token_prefix', 'token_name'] as $column) {
+            if (Schema::hasColumn('api_requests', $column)) {
+                Schema::table('api_requests', fn (Blueprint $table) => $table->dropColumn($column));
+            }
+        }
         if (Schema::hasColumn('api_requests', 'token_id')) {
-            Schema::table('api_requests', function (Blueprint $table) {
-                $table->dropForeign(['token_id']);
-            });
+            if ($this->hasForeignKeyOn('api_requests', 'token_id')) {
+                Schema::table('api_requests', function (Blueprint $table) {
+                    $table->dropForeign(['token_id']);
+                });
+            }
             Schema::table('api_requests', function (Blueprint $table) {
                 $table->dropColumn('token_id');
             });

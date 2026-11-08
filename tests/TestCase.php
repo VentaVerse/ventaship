@@ -27,7 +27,10 @@ abstract class TestCase extends BaseTestCase
     public function call($method, $uri, $parameters = [], $cookies = [], $files = [], $server = [], $content = null)
     {
         $guard = config('auth.defaults.guard');
-        $this->app['auth']->guard('sanctum')->forgetUser();
+        // A request with a bearer token must be resolved afresh, not answered as the previous caller.
+        if (isset($server['HTTP_AUTHORIZATION'])) {
+            $this->app['auth']->guard('sanctum')->forgetUser();
+        }
 
         try {
             return parent::call($method, $uri, $parameters, $cookies, $files, $server, $content);

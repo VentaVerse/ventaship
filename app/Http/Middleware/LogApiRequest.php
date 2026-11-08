@@ -24,10 +24,14 @@ class LogApiRequest
     public function terminate(Request $request, Response $response): void
     {
         $started = $request->attributes->get('api_started_at');
+        // The token's prefix and name are copied onto the row: a revoked token is deleted, and its history must still name it.
+        $token = $request->attributes->get('api_token');
 
         ApiRequest::query()->create([
             'client_app_id' => $request->attributes->get('client_app')?->getKey(),
-            'token_id' => $request->attributes->get('api_token')?->getKey(),
+            'token_id' => $token?->getKey(),
+            'token_prefix' => $token?->prefix,
+            'token_name' => $token === null ? null : Str::limit((string) $token->name, 255, ''),
             'method' => $request->getMethod(),
             'path' => Str::limit($request->getPathInfo(), 255, ''),
             'status' => $response->getStatusCode(),

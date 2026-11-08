@@ -141,6 +141,19 @@ class PlatformKeysTest extends TestCase
         $this->assertStringNotContainsString('autoView\u0022:true', $html);
     }
 
+    public function test_expired_token_is_not_listed_or_revealable(): void
+    {
+        $app = ClientApp::factory()->create();
+        $live = app(PlatformApps::class)->issueKey($app, 'Live')['key'];
+        $old = app(PlatformApps::class)->issueKey($app, 'Lapsed')['key'];
+        $old->update(['expires_at' => now()->subMinute()]);
+
+        $this->actingAs($this->admin())->get(route('apps.show', $app))->assertOk()
+            ->assertSee('Live')->assertDontSee('Lapsed')->assertSee('value="Key 2"', false);
+        $this->reveal($app, 'token:'.$old->id)->assertNotFound();
+        $this->reveal($app, 'token:'.$live->id)->assertOk();
+    }
+
     public function test_legacy_key_shows_text_and_revoke_only(): void
     {
         $app = ClientApp::factory()->create();
