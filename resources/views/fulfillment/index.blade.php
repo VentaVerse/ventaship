@@ -84,7 +84,7 @@
 
     @if(Route::has('shipments.book'))
         @foreach($shipments as $shipment)
-            @if(($shipment->phase ?? 'draft') === 'draft')
+            @if($shipment->state === 'draft')
                 <form id="book-{{ $shipment->public_id }}" method="POST" action="{{ route('shipments.book') }}">
                     @csrf
                     <input type="hidden" name="ids[]" value="{{ $shipment->public_id }}">

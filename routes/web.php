@@ -12,7 +12,7 @@ Route::middleware('guest')->group(function () {
     Route::post('login', [LoginController::class, 'store']);
 });
 
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::post('logout', [LoginController::class, 'destroy'])->name('logout');
     Route::get('/', [FulfillmentController::class, 'index'])->name('fulfillment');
     Route::get('fulfillment/poll', [FulfillmentController::class, 'poll'])->name('fulfillment.poll');

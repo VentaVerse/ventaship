@@ -81,7 +81,7 @@ class FulfillmentPageTest extends TestCase
     {
         Route::post('/shipments/book', fn () => 'x')->name('shipments.book');
         app('router')->getRoutes()->refreshNameLookups();
-        $draft = $this->ship('draft');
+        $draft = $this->ship('draft', ['state' => 'draft']);
         $booked = $this->ship('to_handover');
 
         $html = $this->get('/')->assertOk()->getContent();
@@ -104,6 +104,16 @@ class FulfillmentPageTest extends TestCase
             ->assertJsonPath('counts.to_ship', 1)
             ->assertJsonPath('counts.delivered', 1)
             ->assertJsonPath('counts.to_pack', 1);
+    }
+
+    public function test_poll_is_sent_as_xhr_and_never_becomes_the_previous_url(): void
+    {
+        $js = (string) file_get_contents(resource_path('js/app.js'));
+        $this->assertMatchesRegularExpression("#'X-Requested-With': 'XMLHttpRequest'#", $js);
+
+        $this->get('/settings')->assertOk();
+        $this->getJson('/fulfillment/poll?ids=a', ['X-Requested-With' => 'XMLHttpRequest'])->assertOk();
+        $this->assertStringEndsWith('/settings', (string) session()->previousUrl());
     }
 
     public function test_poll_caps_ids_at_100(): void

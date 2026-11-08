@@ -8,8 +8,11 @@ use App\Models\AuditEntry;
 use App\Support\Settings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -24,6 +27,10 @@ class SettingsController extends Controller
     ];
 
     private const DEFAULTS = ['shipments.reference_prefix' => 'VS', 'privacy.retention_days' => 180];
+
+    private const PASSWORD_ATTEMPTS = 5;
+
+    private const PASSWORD_DECAY_SECONDS = 60;
 
     public function edit(Request $request, Settings $settings): View
     {
@@ -94,6 +101,10 @@ class SettingsController extends Controller
         /** @var Admin $admin */
         $admin = $request->user();
 
+        if (is_string($email = $request->input('email'))) {
+            $request->merge(['email' => Str::lower(trim($email))]);
+        }
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('admins', 'email')->ignore($admin->getKey())],
@@ -121,10 +132,21 @@ class SettingsController extends Controller
             $changed[] = 'password';
         }
 
-        if (array_intersect(['email', 'password'], $changed) !== []
-            && ! Hash::check((string) ($data['current_password'] ?? ''), $admin->password)) {
-            return back()->withInput($request->except(['current_password', 'password', 'password_confirmation']))
-                ->withErrors(['current_password' => 'Current password is wrong.']);
+        if (array_intersect(['email', 'password'], $changed) !== []) {
+            $key = 'account|'.$admin->getKey().'|'.$request->ip();
+            $refuse = fn (string $message) => back()
+                ->withInput($request->except(['current_password', 'password', 'password_confirmation']))
+                ->withErrors(['current_password' => $message]);
+
+            if (RateLimiter::tooManyAttempts($key, self::PASSWORD_ATTEMPTS)) {
+                return $refuse('Too many attempts. Try again in '.RateLimiter::availableIn($key).' seconds.');
+            }
+            if (! Hash::check((string) ($data['current_password'] ?? ''), $admin->password)) {
+                RateLimiter::hit($key, self::PASSWORD_DECAY_SECONDS);
+
+                return $refuse('Current password is wrong.');
+            }
+            RateLimiter::clear($key);
         }
 
         if ($changed !== []) {
@@ -133,6 +155,7 @@ class SettingsController extends Controller
                 $admin->email = $data['email'];
                 if (in_array('password', $changed, true)) {
                     $admin->password = $newPassword; // hashed by the model cast
+                    $admin->setRememberToken(Str::random(60));
                 }
                 $admin->save();
 
@@ -149,6 +172,32 @@ class SettingsController extends Controller
             });
         }
 
+        if (in_array('password', $changed, true)) {
+            $this->signOutOtherSessions($request, $admin);
+        }
+
         return redirect()->route('settings.edit', ['tab' => 'account'])->with('status', 'Saved');
+    }
+
+    /**
+     * After a password change only this browser stays signed in: the remember token was rotated (old remember
+     * cookies stop working), the `auth.session` middleware rejects sessions holding the old password hash, and on
+     * the database driver the other session rows are deleted outright. This session moves to a new id.
+     */
+    private function signOutOtherSessions(Request $request, Admin $admin): void
+    {
+        $guard = Auth::guard('web');
+        $remembered = $request->cookies->has($guard->getRecallerName());
+
+        $guard->login($admin, $remembered); // re-queues a remember cookie carrying the new token
+        $request->session()->regenerate(true);
+        $request->session()->put('password_hash_web', $guard->hashPasswordForCookie($admin->getAuthPassword()));
+
+        if (config('session.driver') === 'database') {
+            DB::connection(config('session.connection'))->table(config('session.table', 'sessions'))
+                ->where('user_id', $admin->getKey())
+                ->where('id', '!=', $request->session()->getId())
+                ->delete();
+        }
     }
 }

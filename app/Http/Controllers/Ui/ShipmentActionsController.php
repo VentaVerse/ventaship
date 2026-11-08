@@ -18,12 +18,13 @@ class ShipmentActionsController extends Controller
 {
     public function book(Request $request, ShipmentCreator $creator): RedirectResponse
     {
+        [$shipments, $unknown] = $this->requested($request);
         $queued = 0;
-        $skipped = 0;
+        $skipped = $unknown;
         $errors = [];
 
-        foreach ($this->shipments($request) as $s) {
-            if ($s->phase !== 'draft' || $s->state !== 'draft') {
+        foreach ($shipments as $s) {
+            if ($s->state !== 'draft') {
                 $skipped++;
 
                 continue;
@@ -46,10 +47,11 @@ class ShipmentActionsController extends Controller
 
     public function cancel(Request $request, Canceller $canceller): RedirectResponse
     {
+        [$shipments, $unknown] = $this->requested($request);
         $done = 0;
-        $refused = 0;
+        $refused = $unknown;
 
-        foreach ($this->shipments($request) as $s) {
+        foreach ($shipments as $s) {
             $before = $s->cancel_state;
             try {
                 $row = $canceller->request($s);
@@ -96,14 +98,21 @@ class ShipmentActionsController extends Controller
     /** @return Collection<int, Shipment> the requested shipments in request order; unknown ids are dropped */
     private function shipments(Request $request): Collection
     {
+        return $this->requested($request)[0];
+    }
+
+    /** @return array{0: Collection<int, Shipment>, 1: int} the known shipments in request order, and how many ids were unknown */
+    private function requested(Request $request): array
+    {
         $ids = array_values(array_unique($request->validate([
             'ids' => ['required', 'array', 'min:1', 'max:100'],
             'ids.*' => ['required', 'string', 'max:64'],
         ])['ids']));
 
         $found = Shipment::query()->whereIn('public_id', $ids)->with('courierAccount')->get()->keyBy('public_id');
+        $shipments = collect($ids)->map(fn ($id) => $found->get($id))->filter()->values();
 
-        return collect($ids)->map(fn ($id) => $found->get($id))->filter()->values();
+        return [$shipments, count($ids) - $shipments->count()];
     }
 
     private function audit(Request $request, string $action, Shipment $s): void

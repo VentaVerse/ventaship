@@ -68,6 +68,12 @@ class LoginTest extends TestCase
             ->assertSessionHasErrors(['email' => 'Wrong email or password.']);
     }
 
+    public function test_empty_fields_say_required(): void
+    {
+        $this->post('/login', ['email' => '', 'password' => ''])
+            ->assertSessionHasErrors(['email' => 'Required.', 'password' => 'Required.']);
+    }
+
     public function test_error_state_renders_alert(): void
     {
         $this->admin();

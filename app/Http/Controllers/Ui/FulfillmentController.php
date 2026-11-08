@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Ui;
 
 use App\Fulfillment\CourierCards;
+use App\Fulfillment\DisplayPhase;
 use App\Fulfillment\ShipmentList;
 use App\Fulfillment\Tabs;
 use App\Http\Controllers\Controller;
@@ -45,7 +46,8 @@ class FulfillmentController extends Controller
 
         return response()->json([
             'counts' => ShipmentList::counts($this->filters($request)),
-            'phases' => $ids === [] ? (object) [] : Shipment::query()->whereIn('public_id', $ids)->pluck('phase', 'public_id'),
+            'phases' => $ids === [] ? (object) [] : Shipment::query()->whereIn('public_id', $ids)->get(['public_id', 'phase', 'state'])
+                ->mapWithKeys(fn (Shipment $s) => [$s->public_id => DisplayPhase::of($s)]),
         ]);
     }
 

@@ -98,6 +98,18 @@ class ShipmentActionsTest extends TestCase
         $this->assertSame('draft', $bad->fresh()->state);
     }
 
+    public function test_unknown_ids_count_as_skipped_and_not_cancellable(): void
+    {
+        Queue::fake();
+        $draft = $this->ship('draft', 'draft');
+
+        $this->post('/shipments/book', ['ids' => [$draft->public_id, 'shp_nope', 'shp_gone']])
+            ->assertSessionHas('status', '1 queued for booking · 2 skipped');
+
+        $this->post('/shipments/cancel', ['ids' => ['shp_nope']])
+            ->assertSessionHas('status', '0 cancelled or cancelling · 1 not cancellable');
+    }
+
     public function test_cancel_mixed_states_one_failure_does_not_abort_rest(): void
     {
         Queue::fake();

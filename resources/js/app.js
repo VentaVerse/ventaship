@@ -62,13 +62,21 @@ Alpine.data('fulfillmentPoll', (config) => ({
         const rows = [...this.$root.querySelectorAll('[data-id]')].slice(0, 100);
         const params = new URLSearchParams({ ...config.query, ids: rows.map((r) => r.dataset.id).join(',') });
         try {
-            const res = await fetch(`${config.url}?${params}`, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+            const res = await fetch(`${config.url}?${params}`, {
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+            });
             if (!res.ok) {
                 return;
             }
             const data = await res.json();
             this.counts = data.counts;
-            const changed = rows.some((r) => data.phases[r.dataset.id] !== undefined && data.phases[r.dataset.id] !== r.dataset.phase);
+            const phases = data.phases && typeof data.phases === 'object' ? data.phases : {};
+            const changed = rows.some((r) => {
+                const now = phases[r.dataset.id];
+
+                return typeof now === 'string' && now !== '' && now !== r.dataset.phase;
+            });
             if (changed && !this.$root.querySelector('input[name="ids[]"]:checked')) {
                 window.location.reload();
             }

@@ -27,7 +27,7 @@ class LoginController extends Controller
         $credentials = $request->validate([
             'email' => ['required', 'string', 'max:255'],
             'password' => ['required', 'string', 'max:1024'],
-        ], [], ['email' => 'email']);
+        ], ['email.required' => 'Required.', 'password.required' => 'Required.'], ['email' => 'email']);
 
         $credentials['email'] = Str::lower(trim($credentials['email']));
         $key = $credentials['email'].'|'.$request->ip();

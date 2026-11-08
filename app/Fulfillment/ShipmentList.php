@@ -23,7 +23,7 @@ class ShipmentList
             if ($tab === 'to_ship' && is_string($chip) && isset(Tabs::CHIPS[$chip])) {
                 $phases = Tabs::CHIPS[$chip];
             }
-            $q->whereIn('phase', $phases);
+            $q->whereRaw(DisplayPhase::sql().' IN ('.implode(', ', array_fill(0, count($phases), '?')).')', $phases);
         }
 
         return $q->with(['clientApp', 'courierAccount'])->orderByDesc('id');
@@ -38,9 +38,10 @@ class ShipmentList
     public static function counts(array $filters): array
     {
         $base = self::scoped($filters);
+        $expr = DisplayPhase::sql();
         $byPhase = (clone $base)->reorder()
-            ->selectRaw('phase, COUNT(*) as n')->groupBy('phase')
-            ->pluck('n', 'phase')->map(fn ($n) => (int) $n)->all();
+            ->selectRaw("{$expr} as display_phase, COUNT(*) as n")->groupByRaw($expr)
+            ->pluck('n', 'display_phase')->map(fn ($n) => (int) $n)->all();
         $unpaid = (clone $base)->where('payment_state', 'cod_unpaid')->count();
 
         $sum = fn (array $phases): int => array_sum(array_map(fn ($p) => $byPhase[$p] ?? 0, $phases));

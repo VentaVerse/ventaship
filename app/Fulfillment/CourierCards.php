@@ -16,18 +16,19 @@ class CourierCards
             ->sortBy(fn (CourierAccount $a) => [array_search($a->courier, array_keys(self::COURIERS), true) ?: 0, $a->label])
             ->values();
 
+        $expr = DisplayPhase::sql();
         $byAccount = [];
         $rows = Shipment::query()
             ->whereIn('courier_account_id', $accounts->pluck('id'))
-            ->selectRaw('courier_account_id, phase, COUNT(*) as n')
-            ->groupBy('courier_account_id', 'phase')->get();
+            ->selectRaw("courier_account_id, {$expr} as display_phase, COUNT(*) as n")
+            ->groupBy('courier_account_id')->groupByRaw($expr)->get();
         foreach ($rows as $r) {
-            $byAccount[$r->courier_account_id][$r->phase] = (int) $r->n;
+            $byAccount[$r->courier_account_id][$r->display_phase] = (int) $r->n;
         }
 
         $cod = Shipment::query()
             ->whereIn('courier_account_id', $accounts->pluck('id'))
-            ->where('payment_state', 'cod_unpaid')->where('phase', '!=', 'cancelled')
+            ->where('payment_state', 'cod_unpaid')->whereRaw("{$expr} <> ?", ['cancelled'])
             ->selectRaw('courier_account_id, SUM(ROUND(cod_amount * 100)) as centavos')->groupBy('courier_account_id')
             ->pluck('centavos', 'courier_account_id');
 

@@ -1,4 +1,5 @@
 @php
+    use App\Fulfillment\DisplayPhase;
     use App\Fulfillment\ShipmentList;
     use App\Shipments\TrackingLink;
     use App\Support\Money;
@@ -7,7 +8,7 @@
     $name = $r ? trim(($r['first_name'] ?? '').' '.($r['last_name'] ?? '')) : '';
     $name = $name !== '' ? $name : null;
     $city = $r['city'] ?? null;
-    $phase = $shipment->phase ?? 'draft';
+    $phase = DisplayPhase::of($shipment);
     $isCod = str_starts_with((string) $shipment->payment_state, 'cod_');
     $amount = $isCod ? $shipment->cod_amount : $shipment->total;
     $pay = match ($shipment->payment_state) {
@@ -53,7 +54,7 @@
         <x-ui.badge :tone="$pay[1]">{{ $pay[0] }}</x-ui.badge>
     </div>
     <div class="fl-row__end">
-        @if($phase === 'draft' && Route::has('shipments.book'))
+        @if($shipment->state === 'draft' && Route::has('shipments.book'))
             <x-ui.button size="sm" variant="primary" type="submit" form="book-{{ $shipment->public_id }}">Book</x-ui.button>
         @else
             <x-ui.badge :tone="$phaseTone">{{ $phaseLabel }}</x-ui.badge>

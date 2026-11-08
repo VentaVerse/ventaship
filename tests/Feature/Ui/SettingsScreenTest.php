@@ -134,6 +134,23 @@ class SettingsScreenTest extends TestCase
         $this->assertSame('Ana B', $admin->fresh()->name);
     }
 
+    public function test_email_is_trimmed_and_lowercased_before_checks_and_save(): void
+    {
+        $admin = $this->admin();
+        $this->admin_other();
+
+        $this->actingAs($admin)->put('/settings/account', ['name' => 'Ana', 'email' => '  BOB@Example.com '])
+            ->assertSessionHasErrors(['email' => 'Email already in use.']);
+
+        $this->actingAs($admin)->put('/settings/account', ['name' => 'Ana', 'email' => ' ANA@Example.COM '])
+            ->assertSessionHas('status', 'Saved');
+        $this->assertSame(0, \App\Models\AuditEntry::query()->where('action', 'admin.updated')->count(), 'same email in other case is no change');
+
+        $this->actingAs($admin)->put('/settings/account', ['name' => 'Ana', 'email' => ' New@Example.com', 'current_password' => 'correct-horse-battery'])
+            ->assertSessionHas('status', 'Saved');
+        $this->assertSame('new@example.com', $admin->fresh()->email);
+    }
+
     private function admin_other(): void
     {
         Admin::query()->create(['name' => 'Bob', 'email' => 'bob@example.com', 'password' => 'another-long-password']);
