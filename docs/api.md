@@ -110,9 +110,11 @@ Every API request is authenticated by an API key **and** signed with that key's 
 X-Signature = "sha256=" + hex( HMAC_SHA256( signing_secret, "{X-Timestamp}.{METHOD} {target}\n{body}" ) )
 ```
 
-- `{X-Timestamp}` is exactly the header value.
+- `{X-Timestamp}` is the header value, a plain integer of unix seconds with no leading zeros, sign, spaces or decimals (the server signs the integer it parses, so `0179…` would not match).
 - `{METHOD}` is the HTTP method in capitals: `GET`, `POST`.
 - `{target}` is the path **and** the raw query string exactly as sent, starting at `/api/v1`: `/api/v1/shipments?state=booked&cursor=abc`. No host, no scheme. If there is no query string there is no `?`.
+- Percent-encode query values yourself **before** signing (`encodeURIComponent` in JS, `rawurlencode`/`http_build_query` in PHP), and send that exact string. Unencoded characters may be rewritten on the way (Node's `URL`/`fetch` normalise spaces and other characters), and the signature would no longer match. A literal `+` in a query value is read by the server as a space, so an offset such as `+08:00` must be sent as `%2B08:00`.
+- Links the API returns (`links.next` in `GET /shipments`) are absolute URLs. Sign only their path and query (`/api/v1/shipments?cursor=…`), never the scheme and host.
 - `\n` is one line feed character.
 - `{body}` is the raw request body, byte for byte as sent. For a request without a body (every `GET`) it is the empty string, so the signed string ends with the line feed.
 
@@ -342,7 +344,7 @@ Every code the API can answer:
 | 422 | `invalid_request` | false | The body or query is invalid; `Idempotency-Key` missing or too long; `account_id` and `courier` disagree | field → messages |
 | 422 | `idempotency_key_reused` | false | This `Idempotency-Key` was used for a different request | `{}` |
 | 422 | `account_not_found` | false | No courier account with this `account_id`, or no default account for this `courier` | `{"account_id": [...]}` or `{"courier": [...]}` |
-| 422 | `account_misconfigured` | false | The courier account cannot be used: disabled, its courier not installed, or settings missing (e.g. no API keys) | `{"account": ["…", …]}` |
+| 422 | `account_misconfigured` | false | The courier account cannot be used: disabled, its courier not installed, or settings missing (e.g. no API keys). On `POST /shipments/{id}/submit`, also a draft whose courier account no longer exists | usually `{"account": ["…", …]}`; `{}` for a draft without an account |
 | 429 | `rate_limited` | **true** | Too many requests (see [5](#5-rate-limits)); `Retry-After` header says how many seconds to wait | `{}` |
 | 502 | `courier_unavailable` | varies | The courier could not be reached or refused (labels, refresh). `retryable` says whether trying again can help | `{}` |
 | 500 | `server_error` | **true** | Unexpected server error | `{}` |
@@ -787,7 +789,7 @@ Response, one entry per destination, in request order:
 | `ref` | your `ref` |
 | `verdict` | `serviceable`, `not_serviceable`, or `unknown` (the courier could not be asked or gave no clear answer: it is **not** a refusal) |
 | `kind` | when recognised, which kind of problem: `destination`, `origin`, `cod`, `postcode`, `parcel` (these come with `not_serviceable`), or `slot`, `their_side`, `unreachable` (these come with `unknown`); otherwise `null` |
-| `reason` | the courier's own words when `kind` is `null` and it said something; otherwise `null` |
+| `reason` | the courier's own words when it said something (always shown to people when `kind` is `null`; may also accompany a recognised `kind`, e.g. `destination`); otherwise `null` |
 
 <!-- fixture: coverage.response -->
 ```json
@@ -895,7 +897,7 @@ Request: `account_id` / `courier`, `pickup` (address), `parcel` (optional).
 
 Creates a shipment and, unless it is a draft, queues it for booking. **No courier is called during this request**: the answer is `202` with the shipment in state `queued`, and the booking happens a moment later (see [9](#9-booking)). Requires `Idempotency-Key`.
 
-Query: `?wait=N` (whole seconds, 0 to 20; anything else counts as 0) holds the answer until the booking settles (leaves `queued`/`booking`) or N seconds pass. The status is still `202`; read `data.state`.
+Query: `?wait=N` (whole seconds; values above 20 are treated as 20, negative values and anything that is not a whole number as 0) holds the answer until the booking settles (leaves `queued`/`booking`) or N seconds pass. The status is still `202`; read `data.state`.
 
 Request fields:
 
@@ -1063,7 +1065,7 @@ Your shipments, newest first, 50 per page. Every filter is optional; they combin
 | `updated_since` | a timestamp; shipments whose `updated_at` is at or after it. Send ISO-8601 with an offset (`2026-11-08T13:00:00+08:00`) |
 | `cursor` | the `meta.next_cursor` of the previous page |
 
-Pagination is by cursor: follow `links.next` (or pass `meta.next_cursor` as `cursor`) until it is `null`. Remember the query string is part of what you sign.
+Pagination is by cursor: follow `links.next` (or pass `meta.next_cursor` as `cursor`) until it is `null`. `links.next` is an absolute URL: sign only its path and query string (see [2](#2-authentication-and-request-signing)). Percent-encode `updated_since` (`+08:00` is `%2B08:00`).
 
 For reconciliation (say, after your webhook endpoint was down), list with `updated_since` set to the last time you were sure you were in sync.
 
@@ -1603,14 +1605,14 @@ Where the parcel is, on one scale shared by every courier. `null` until the cour
 
 | Phase | Meaning |
 |---|---|
-| `draft` | not booked (reserved; normally `phase` is `null` before booking) |
-| `booking` | being booked (reserved) |
-| `attention` | the courier reported something Ventaship cannot place |
+| `draft` | not booked (reserved; `phase` is `null` before booking) |
+| `booking` | the courier accepted the request but has not issued the tracking number yet: SPX's `creating` status maps here. A shipment waiting on SPX is recognisable by `state` `booking` with `courier_status` `creating`; its `phase` may still be `null`, because that interim status is not recorded as a timeline event |
+| `attention` | reached only when the Ventaship owner maps a courier status to it (a status no one knows becomes `in_transit`) |
 | `to_handover` | booked, waiting for the courier to collect it (or for drop-off) |
 | `in_transit` | the courier has it, on its way (includes out for delivery) |
 | `delivered` | delivered to the recipient |
 | `failed` | a failed attempt or exception (failed pickup, failed delivery, rejected, lost or damaged per some couriers) |
-| `lost_damaged` | lost or damaged |
+| `lost_damaged` | lost or damaged. No courier maps to it today: QuadX `lost`/`damaged` and LBC damaged statuses are `failed`; only an owner status mapping produces it |
 | `returning` | coming back to the sender, or returned |
 | `cancelled` | cancelled |
 
@@ -1629,6 +1631,8 @@ Where the cash stands. Ventaship records it; it never holds money.
 | `cod_void` | will never be collected: cancelled, returning, or lost/damaged before collection |
 
 It only moves forward: `cod_unpaid → cod_collected → cod_remitted`, and `cod_unpaid → cod_void`. `cod_void` is final, and so is `cod_collected` against later bad news (a delivered parcel stays `cod_collected`). Each change produces a `shipment.payment_state_changed` webhook.
+
+`cod_void` follows the phases `cancelled`, `returning` and `lost_damaged`. Because no courier reports `lost_damaged` today (lost or damaged parcels show as phase `failed`), a lost COD parcel stays `cod_unpaid` until the courier reports it returning or cancelled, or the owner re-maps the status.
 
 ### 8.4 `cancel_state`
 
@@ -1649,7 +1653,7 @@ It only moves forward: `cod_unpaid → cod_collected → cod_remitted`, and `cod
 
 `POST /shipments` stores the shipment and answers `202` at once; a worker books it with the courier right after. Follow the result by webhook (`shipment.booked`, `shipment.booking_failed`, `shipment.unknown`), by `GET /shipments/{id}`, or by waiting in the create call itself with `?wait=N` (N ≤ 20 seconds).
 
-A shipment that has not started booking within 30 minutes (workers down) becomes `failed` with `error.code` `not_started`. One stuck in `booking` for more than 10 minutes becomes `unknown`.
+A shipment that has not started booking within 30 minutes (workers down) becomes `failed` with `error.code` `not_started`. One stuck in `booking` for more than 10 minutes becomes `unknown`, except an SPX shipment waiting for its tracking number (`courier_status` `creating`), which Ventaship keeps polling.
 
 ### 9.2 `client_reference`
 
@@ -1696,6 +1700,8 @@ What `POST /shipments/{id}/cancel` does, by the shipment's state when you ask:
 | … the courier refuses | `cancel_state` `refused`, `needs_attention`, state stays `booked` | | `shipment.cancel_failed` |
 | … the call fails or times out | `cancel_state` `failed`, `needs_attention` ("Cancel outcome unknown — check the courier portal"). Never retried | | `shipment.cancel_failed` |
 | `booked`, courier status no longer cancelable (e.g. picked up) | refused at once, the courier is not called; `needs_attention` | `200`, `cancel_state` `refused` | `shipment.cancel_failed` |
+| `booked`, its courier account deleted | refused at once: `cancel_state` `refused`, `needs_attention` ("This shipment's courier account no longer exists — cancel it at the courier portal") | `200` | `shipment.cancel_failed` |
+| `booked`, the cancel cannot be prepared (account settings unreadable) | `cancel_state` `failed`, `needs_attention` ("Cancel could not be prepared — check the account settings"); the courier is not called | `200` | `shipment.cancel_failed` |
 | `booked` at **LBC** | LBC has no cancel API: `cancel_state` `unsupported`, `needs_attention`, `attention_reason` "LBC has no cancel API. Call LBC to void this booking." The shipment stays `booked` | `200` | `shipment.cancel_failed` |
 | `failed`, `cancelled` | nothing to do; returned unchanged | `200` | none |
 | any, with `cancel_state` already set | returned unchanged (a cancel is asked once) | `202` if `requested`, else `200` | none |

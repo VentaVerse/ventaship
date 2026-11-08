@@ -149,14 +149,20 @@ When QuadX staging never sends picked up / in transit / delivered (it often does
 | `tests/Fixtures/quadx/webhook-in-transit.json` | `in_transit` |
 | `tests/Fixtures/quadx/webhook-delivered.json` | `delivered` |
 
-They name the tracking number `QX-TEST-0001` and reference `VS000001`. Copy them, put in your shipment's real tracking number (from `GET /shipments/{id}`), and set `status_updated_at` to times after the booking:
+They name the tracking number `QX-TEST-0001` and carry fixed `status_updated_at` times. The loop below puts in your shipment's real tracking number (from `GET /shipments/{id}`) and rewrites each `status_updated_at` to now plus 1, 2 and 3 minutes. **The times must be later than the booking**: the booking recorded `for_pickup` at the moment it was booked, and an event dated earlier than the latest one is kept in the timeline but does not move the shipment's phase, so with the fixtures' original times it would never reach `delivered`. Run it after the shipment is `booked`.
 
 ```bash
 TOKEN='…'   # the token from the account's webhook URL
 TN='QX…'    # the shipment's tracking number
 
+n=0
 for f in webhook-status webhook-in-transit webhook-delivered; do
-  sed "s/QX-TEST-0001/$TN/" tests/Fixtures/quadx/$f.json > /tmp/$f.json
+  n=$((n + 1))
+  at=$(TZ=Asia/Manila date -d "+$n minutes" +%Y-%m-%dT%H:%M:%S+08:00)
+  sed -e "s/QX-TEST-0001/$TN/" \
+      -e "s/\"status_updated_at\": \"[^\"]*\"/\"status_updated_at\": \"$at\"/" \
+      tests/Fixtures/quadx/$f.json > /tmp/$f.json
+  grep -h '"status"\|status_updated_at' /tmp/$f.json
   curl -sS -X POST "http://localhost:8040/webhooks/quadx?token=$TOKEN" \
     -H 'Content-Type: application/json' --data-binary @/tmp/$f.json
   echo
@@ -196,7 +202,7 @@ _To be filled in by the owner after running §3–§7 with the real QuadX stagin
 - [ ] The QuadX account switched to `production` mode only for the live parcel, with production keys set via `ventaship:account-set … --secret`.
 - [ ] §7 confirmed on staging.
 - [ ] `APP_ENV=production`, `APP_DEBUG=false`.
-- [ ] The three workers and the scheduler under **systemd**, restarting on failure, started on boot; `php artisan queue:restart` after every deploy.
+- [ ] The two queue workers, the scheduler and the web server under **systemd**, restarting on failure, started on boot; `php artisan queue:restart` after every deploy.
 - [ ] **Backups**: the MySQL `ventaship` database (nightly, kept off the Pi), and `storage/app/labels` (stored waybills; they can be refetched from the courier only while the courier still serves them).
 - [ ] **`VENTASHIP_VAULT_KEY` stored separately** from the database backups (a password manager). A backup without it cannot decrypt courier credentials; the key with a backup is everything an attacker needs.
 - [ ] Live-booking locks still off unless an LBC or production SPX parcel is intended (§1).
