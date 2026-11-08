@@ -3,14 +3,17 @@
 namespace App\Http\Controllers\Ui;
 
 use App\Http\Controllers\Controller;
+use App\Models\ApiKey;
 use App\Models\ApiRequest;
 use App\Models\ClientApp;
 use App\Models\OutgoingEvent;
 use App\Platforms\PlatformAppException;
 use App\Platforms\PlatformApps;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use Throwable;
 
 class PlatformsController extends Controller
 {
@@ -59,9 +62,88 @@ class PlatformsController extends Controller
         return redirect(route('apps.show', $app))->with('status', 'Added');
     }
 
-    public function show(ClientApp $app): View
+    public function show(Request $request, ClientApp $app, PlatformApps $platforms): View
     {
-        return view('platforms.show', ['app' => $app]);
+        $keys = ApiKey::query()->where('client_app_id', $app->id)->orderBy('id')->get();
+        // Set by issueKey for one request: the new key's prefix only. The page then reveals it through apps.reveal.
+        $issued = $request->session()->get('issued_key');
+
+        return view('platforms.show', [
+            'app' => $app,
+            'keys' => $keys->map(fn (ApiKey $key) => [
+                'key' => $key,
+                'active' => $key->revoked_at === null,
+                'viewable' => $key->getRawOriginal('key_encrypted') !== null,
+                'masked_key' => $key->revoked_at === null ? $this->maskedOf($key, 'key_encrypted', $platforms) : null,
+                'masked_secret' => $key->revoked_at === null ? $this->maskedOf($key, 'signing_secret', $platforms) : null,
+                'auto' => $issued !== null && $key->revoked_at === null && hash_equals((string) $key->key_prefix, (string) $issued),
+            ]),
+            'nextKeyName' => 'Key '.($keys->count() + 1),
+            'webhookSecret' => $this->maskedOf($app, 'webhook_secret', $platforms),
+        ]);
+    }
+
+    public function issueKey(Request $request, ClientApp $app, PlatformApps $platforms): RedirectResponse
+    {
+        $data = $request->validate(['key_name' => ['required', 'string', 'max:255']], [], ['key_name' => 'name']);
+
+        try {
+            $issued = $platforms->issueKey($app, $data['key_name'], $this->actor($request));
+        } catch (PlatformAppException $e) {
+            return back()->withInput()->withErrors(['key_name' => $e->getMessage()]);
+        }
+
+        // The prefix only: the plaintext never goes into the session.
+        return redirect(route('apps.show', $app).'#keys')
+            ->with('status', 'Issued')->with('issued_key', $issued['key']->key_prefix);
+    }
+
+    public function revokeKey(Request $request, ClientApp $app, int $key, PlatformApps $platforms): RedirectResponse
+    {
+        $apiKey = ApiKey::query()->where('client_app_id', $app->id)->whereKey($key)->firstOrFail();
+        $back = redirect(route('apps.show', $app).'#keys');
+
+        return $platforms->revokeKey($apiKey, $this->actor($request))
+            ? $back->with('status', 'Revoked')
+            : $back->withErrors(['keys' => 'This key is already revoked.']);
+    }
+
+    /** `key:{prefix}`, `secret:{prefix}` (a key of this app only) or `webhook`. Throttled, audited, never cached. */
+    public function reveal(Request $request, ClientApp $app, string $what, PlatformApps $platforms): JsonResponse
+    {
+        $actor = $this->actor($request);
+
+        try {
+            if ($what === 'webhook') {
+                $value = $platforms->revealWebhookSecret($app, $actor);
+            } else {
+                [$part, $prefix] = explode(':', $what, 2);
+                // Prefixes are short: on the rare clash within one app, the newest active key wins.
+                $key = ApiKey::query()->where('client_app_id', $app->id)->where('key_prefix', $prefix)
+                    ->orderByRaw('revoked_at IS NULL DESC')->orderByDesc('id')->first();
+                abort_if($key === null, 404);
+                $value = $platforms->revealKey($key, $part, $actor);
+            }
+        } catch (PlatformAppException $e) {
+            return $this->noStore(response()->json(['message' => $e->getMessage()], 422));
+        }
+
+        return $this->noStore(response()->json(['value' => $value]));
+    }
+
+    public function regenerateWebhookSecret(Request $request, ClientApp $app, PlatformApps $platforms): RedirectResponse
+    {
+        $platforms->regenerateWebhookSecret($app, $this->actor($request));
+
+        return redirect(route('apps.show', $app).'#webhook')->with('status', 'Regenerated');
+    }
+
+    public function ping(ClientApp $app, PlatformApps $platforms): RedirectResponse
+    {
+        $result = $platforms->ping($app);
+        $back = redirect(route('apps.show', $app).'#webhook');
+
+        return $result['ok'] ? $back->with('status', $result['message']) : $back->withErrors(['ping' => $result['message']]);
     }
 
     public function update(Request $request, ClientApp $app, PlatformApps $platforms): RedirectResponse
@@ -89,6 +171,28 @@ class PlatformsController extends Controller
     private function actor(Request $request): array
     {
         return ['type' => 'admin', 'id' => $request->user()->getAuthIdentifier(), 'ip' => $request->ip()];
+    }
+
+    /**
+     * Length and last 4 of a stored secret, decrypted here and never passed on whole. Null when unset or unreadable.
+     *
+     * @return array{length: int, last4: string}|null
+     */
+    private function maskedOf(ApiKey|ClientApp $model, string $column, PlatformApps $platforms): ?array
+    {
+        if ($model->getRawOriginal($column) === null) {
+            return null;
+        }
+        try {
+            return $platforms->masked((string) $model->{$column});
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    private function noStore(JsonResponse $response): JsonResponse
+    {
+        return $response->withHeaders(['Cache-Control' => 'no-store', 'Pragma' => 'no-cache']);
     }
 
     private function field(PlatformAppException $e): string

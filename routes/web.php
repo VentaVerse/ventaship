@@ -43,6 +43,14 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::post('platforms', [PlatformsController::class, 'store'])->name('apps.store');
     Route::get('platforms/{app:public_id}', [PlatformsController::class, 'show'])->name('apps.show');
     Route::put('platforms/{app:public_id}', [PlatformsController::class, 'update'])->name('apps.update');
+    Route::prefix('platforms/{app:public_id}')->group(function () {
+        Route::post('keys', [PlatformsController::class, 'issueKey'])->name('apps.keys.store');
+        Route::post('keys/{key}/revoke', [PlatformsController::class, 'revokeKey'])->whereNumber('key')->name('apps.keys.revoke');
+        Route::post('reveal/{what}', [PlatformsController::class, 'reveal'])
+            ->where('what', '(key|secret):[A-Za-z0-9_]{1,16}|webhook')->middleware('throttle:secret-reveals')->name('apps.reveal');
+        Route::post('webhook-secret', [PlatformsController::class, 'regenerateWebhookSecret'])->name('apps.webhook.regenerate');
+        Route::post('ping', [PlatformsController::class, 'ping'])->name('apps.ping');
+    });
     Route::get('ph/{level}', PhAddressController::class)->where('level', 'provinces|cities|districts|barangays')->name('ph.options');
     Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');
     Route::put('settings', [SettingsController::class, 'update'])->name('settings.update');

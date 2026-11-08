@@ -51,4 +51,112 @@
             min-width: 44px;
         }
     }
+
+    .pf-keys-wrap {
+        margin-bottom: 12px;
+    }
+
+    .pf-keys {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    .pf-keys th,
+    .pf-keys td {
+        padding: 8px 12px 8px 0;
+        text-align: left;
+        vertical-align: middle;
+    }
+
+    .pf-keys th {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--bl-ink-3);
+        border-bottom: 1px solid var(--bl-rule);
+    }
+
+    .pf-key {
+        border-bottom: 1px solid var(--bl-rule);
+    }
+
+    .pf-key__name {
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+
+    .pf-key--off .pf-key__name,
+    .pf-key--off td {
+        color: var(--bl-ink-2);
+    }
+
+    .pf-key__mono,
+    .pf-url {
+        font: 500 13px var(--font-mono);
+        overflow-wrap: anywhere;
+    }
+
+    .pf-key__act {
+        text-align: right;
+    }
+
+    .pf-keys .pf-key__creds td {
+        padding-top: 0;
+    }
+
+    .pf-key__legacy {
+        margin: 0 0 4px;
+        color: var(--bl-ink-2);
+    }
+
+    .pf-issue {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 12px;
+    }
+
+    .st-row.pf-issue .fm-field {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
+    }
+
+    @media (max-width: 640px) {
+        .pf-keys thead {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip-path: inset(50%);
+        }
+
+        .pf-keys,
+        .pf-keys tbody,
+        .pf-keys tr,
+        .pf-keys td {
+            display: block;
+        }
+
+        .pf-key > tr:first-child {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 4px 12px;
+            padding-top: 8px;
+        }
+
+        .pf-key > tr:first-child td {
+            padding: 0;
+        }
+
+        .pf-key__name {
+            flex-basis: 100%;
+        }
+
+        .pf-key__act {
+            margin-left: auto;
+        }
+    }
 }

@@ -113,6 +113,10 @@ Alpine.data('credentialField', (config) => ({
         // A shown value must not survive in a page restored from the back/forward cache.
         this.onPageHide = () => { if (this.state === 'viewing') { this.rest(); } };
         window.addEventListener('pagehide', this.onPageHide);
+        // A key just issued: shown once on load, fetched (and audited) like any View.
+        if (config.autoView) {
+            this.view();
+        }
     },
 
     destroy() {
@@ -151,7 +155,8 @@ Alpine.data('credentialField', (config) => ({
             });
             const body = await res.json().catch(() => ({}));
             if (!res.ok || typeof body.value !== 'string') {
-                this.error = res.status === 429 && body.message ? body.message : 'Could not show it.';
+                const refused = (res.status === 429 || res.status === 422) && typeof body.message === 'string';
+                this.error = refused ? body.message : 'Could not show it.';
                 return null;
             }
             return body.value;
