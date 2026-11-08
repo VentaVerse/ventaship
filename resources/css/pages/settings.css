@@ -1,40 +1,43 @@
 @layer components {
     .st-sec {
-        padding: 6px 20px;
+        padding: 16px 20px;
         border-bottom: 1px solid var(--bl-rule);
     }
 
-    .st-row {
-        display: grid;
-        padding: 12px 0;
-        border-top: 1px solid var(--bl-rule);
+    .st-h {
+        margin: 0 0 12px;
+        font-size: 14.5px;
+        font-weight: 600;
     }
 
-    .st-row:first-child {
-        border-top: 0;
+    .st-row {
+        padding: 6px 0;
+    }
+
+    .st-row .fm-field,
+    .st-switch {
+        display: grid;
+        grid-template-columns: 200px minmax(0, 1fr);
+        align-items: center;
+        gap: 6px 20px;
+    }
+
+    .st-ctl {
+        width: 100%;
+        max-width: 320px;
     }
 
     .st-narrow {
-        max-width: 220px;
-    }
-
-    .st-row .fm-field {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        align-items: center;
-        gap: 6px 20px;
+        max-width: 160px;
     }
 
     .st-row .fm-error {
         grid-column: 2;
     }
 
-    .st-row .st-narrow {
-        width: 100%;
-    }
-
     @media (max-width: 640px) {
-        .st-row .fm-field {
+        .st-row .fm-field,
+        .st-switch {
             grid-template-columns: minmax(0, 1fr);
         }
 
@@ -45,17 +48,13 @@
 
     .st-switch {
         position: relative;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
         font-size: 13px;
         cursor: pointer;
     }
 
     .st-switch__input {
         position: absolute;
-        right: 0;
+        left: 220px;
         width: 34px;
         height: 20px;
         margin: 0;
@@ -96,6 +95,13 @@
     .st-switch__input:focus-visible ~ .st-switch__track {
         outline: 2px solid var(--bl-brand);
         outline-offset: 2px;
+    }
+
+    @media (max-width: 640px) {
+        .st-switch__input {
+            left: 0;
+            top: calc(1.5em + 6px);
+        }
     }
 
     @media (prefers-reduced-motion: reduce) {

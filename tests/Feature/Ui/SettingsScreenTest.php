@@ -152,7 +152,10 @@ class SettingsScreenTest extends TestCase
         $admin = $this->admin();
         $old = $admin->password;
 
-        $this->actingAs($admin)->put('/settings/account', [
+        $this->post('/login', ['email' => 'ana@example.com', 'password' => 'correct-horse-battery'])->assertRedirect();
+        $this->assertAuthenticatedAs($admin);
+
+        $this->put('/settings/account', [
             'name' => 'Ana', 'email' => 'ana@example.com', 'current_password' => 'correct-horse-battery',
             'password' => 'a-brand-new-passphrase', 'password_confirmation' => 'a-brand-new-passphrase',
         ])->assertSessionHasNoErrors();
@@ -160,8 +163,21 @@ class SettingsScreenTest extends TestCase
         $fresh = $admin->fresh();
         $this->assertNotSame($old, $fresh->password);
         $this->assertTrue(Hash::check('a-brand-new-passphrase', $fresh->password));
-        $this->assertAuthenticatedAs($fresh);
         $this->get('/settings')->assertOk();
+        $this->assertAuthenticatedAs($fresh);
+    }
+
+    public function test_account_error_messages_are_short_facts(): void
+    {
+        $admin = $this->admin();
+        $this->admin_other();
+
+        $this->actingAs($admin)->put('/settings/account', ['name' => '', 'email' => ''])
+            ->assertSessionHasErrors(['name' => 'Required.', 'email' => 'Required.']);
+        $this->actingAs($admin)->put('/settings/account', ['name' => 'Ana', 'email' => 'nope'])
+            ->assertSessionHasErrors(['email' => 'Not a valid email.']);
+        $this->actingAs($admin)->put('/settings/account', ['name' => 'Ana', 'email' => 'bob@example.com', 'current_password' => 'correct-horse-battery'])
+            ->assertSessionHasErrors(['email' => 'Email already in use.']);
     }
 
     public function test_password_rules(): void

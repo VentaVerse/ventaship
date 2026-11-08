@@ -47,7 +47,7 @@ class SettingsController extends Controller
 
         if ($tab === 'general') {
             $data = $request->validate([
-                'shipments_reference_prefix' => ['required', 'regex:/^[A-Z0-9]{1,8}$/'],
+                'shipments_reference_prefix' => ['required', 'regex:/^[A-Z0-9]{1,8}\z/'],
                 'privacy_retention_days' => ['required', 'integer', 'between:30,3650'],
             ], [
                 'shipments_reference_prefix.*' => 'Use 1–8 capital letters or digits.',
@@ -100,6 +100,12 @@ class SettingsController extends Controller
             'current_password' => ['nullable', 'string'],
             'password' => ['nullable', 'string', 'min:12', 'confirmed'],
         ], [
+            'name.required' => 'Required.',
+            'name.max' => 'Too long.',
+            'email.required' => 'Required.',
+            'email.email' => 'Not a valid email.',
+            'email.max' => 'Too long.',
+            'email.unique' => 'Email already in use.',
             'password.min' => 'At least 12 characters.',
             'password.confirmed' => "Passwords don't match.",
         ]);
