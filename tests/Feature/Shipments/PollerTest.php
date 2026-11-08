@@ -80,6 +80,25 @@ class PollerTest extends TestCase
         $this->assertTrue($s->updated_at->lessThan(now()->subMinutes(59)));
     }
 
+    public function test_batches_rotate_so_shipments_past_the_cap_are_polled(): void
+    {
+        $fake = FakeCourier::make('quadx');
+        CourierRegistry::fake('quadx', $fake);
+        $account = CourierAccount::factory()->create(['courier' => 'quadx']);
+        foreach (['QX-1', 'QX-2', 'QX-3'] as $tn) {
+            $this->booked($account, $tn, ['courier_status' => 'pending']);
+        }
+        $poller = app(Poller::class);
+        $poller->perAccount = 2;
+
+        $this->assertSame(2, $poller->run());
+        $this->travel(1)->minutes();
+        $this->assertSame(2, $poller->run());
+
+        $asked = array_map(fn ($c) => $c['args'][0], $fake->callsTo('getTracking'));
+        $this->assertSame(['QX-1', 'QX-2', 'QX-3', 'QX-1'], $asked);
+    }
+
     public function test_an_account_locked_by_another_poll_is_skipped(): void
     {
         $fake = FakeCourier::make('quadx');

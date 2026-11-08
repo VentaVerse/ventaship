@@ -4,12 +4,14 @@ namespace App\Console\Commands;
 
 use App\Models\WebhookReceipt;
 use App\Webhooks\Inbound\Jobs\ProcessReceipt;
+use App\Webhooks\Inbound\Jobs\RelayReceipt;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 
 /**
  * Every minute: queues again any courier webhook receipt still unprocessed two minutes after it arrived, so a lost
  * dispatch never loses data. ProcessReceipt skips a receipt another job already settled or is processing.
+ * A `relay_pending` receipt (its relay could not be queued) has its relay queued again.
  */
 class ReceiptsReprocess extends Command
 {
@@ -42,7 +44,21 @@ class ReceiptsReprocess extends Command
             }
         }
 
-        $this->info("Queued {$queued} receipts.");
+        $relays = WebhookReceipt::query()
+            ->where('status', 'relay_pending')
+            ->orderBy('id')
+            ->limit(self::BATCH)
+            ->pluck('id');
+
+        $relayed = 0;
+        foreach ($relays as $id) {
+            if (Cache::add("receipt-relay-requeued:{$id}", true, self::REQUEUE_SECONDS)) {
+                RelayReceipt::dispatch((int) $id);
+                $relayed++;
+            }
+        }
+
+        $this->info("Queued {$queued} receipts and {$relayed} relays.");
 
         return self::SUCCESS;
     }

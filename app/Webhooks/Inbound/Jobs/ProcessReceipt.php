@@ -10,6 +10,7 @@ use App\Shipments\BookingOutcomes;
 use App\Shipments\StatusRecorder;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -27,7 +28,8 @@ use Throwable;
  * Every matched event is recorded by StatusRecorder (source `webhook`), which drops duplicates.
  *
  * Receipt outcome: `processed` when any event matched (or there were none), `unmatched` when none did, `failed`
- * when the body cannot be read. Any unmatched event relays the raw receipt when the account has a relay URL.
+ * when the body cannot be read. Any unmatched event relays the raw receipt when the account has a relay URL; if
+ * the relay cannot be queued the receipt becomes `relay_pending` and ventaship:receipts-reprocess queues it again.
  * A bad receipt is settled as failed and never blocks the others; a database error is retried.
  */
 class ProcessReceipt implements ShouldQueue
@@ -143,7 +145,13 @@ class ProcessReceipt implements ShouldQueue
 
         // The raw body cannot be split: one unmatched event relays the whole delivery, as the courier sent it.
         if ($unmatched > 0 && filled($account->relay_url) && ! $account->trashed()) {
-            RelayReceipt::dispatch($receipt->id);
+            try {
+                app(Dispatcher::class)->dispatch(new RelayReceipt($receipt->id));
+            } catch (Throwable $e) {
+                // Not lost: ventaship:receipts-reprocess queues the relay again.
+                Log::error('Courier webhook relay could not be queued', ['receipt' => $receipt->id, 'exception' => $e::class]);
+                $receipt->forceFill(['status' => 'relay_pending'])->save();
+            }
         }
     }
 
@@ -187,7 +195,7 @@ class ProcessReceipt implements ShouldQueue
         $recorder->record(
             $s,
             mb_substr($status, 0, self::STATUS_MAX),
-            $this->time($event['occurred_at'] ?? null),
+            $this->time($event['occurred_at'] ?? null, $receipt),
             'webhook',
             $this->remarks($event['remarks'] ?? null),
             $event,
@@ -200,8 +208,11 @@ class ProcessReceipt implements ShouldQueue
         $receipt->forceFill(['status' => $status, 'error' => $error, 'processed_at' => now()])->save();
     }
 
-    /** The courier's time, else now: an event is never dropped for a missing or unreadable timestamp. */
-    private function time(mixed $at): CarbonImmutable
+    /**
+     * The courier's time, else when the receipt arrived: an event is never dropped for a missing or unreadable
+     * timestamp, and a retry or reprocess of the same receipt lands on the same event key.
+     */
+    private function time(mixed $at, WebhookReceipt $receipt): CarbonImmutable
     {
         if (is_string($at) && $at !== '') {
             try {
@@ -211,7 +222,7 @@ class ProcessReceipt implements ShouldQueue
             }
         }
 
-        return CarbonImmutable::now();
+        return $receipt->received_at !== null ? CarbonImmutable::instance($receipt->received_at) : CarbonImmutable::now();
     }
 
     private function remarks(mixed $value): ?string

@@ -28,6 +28,9 @@ final class Poller
     /** Shipments asked about per account per run; the rest wait for the next run. */
     public const PER_ACCOUNT = 500;
 
+    /** Overridable (tests). Batches rotate: least recently polled first, so nothing past the cap starves. */
+    public int $perAccount = self::PER_ACCOUNT;
+
     private const LOCK_SECONDS = 900;
 
     public function __construct(private readonly BookingOutcomes $outcomes, private readonly TrackingRefresher $tracking) {}
@@ -70,13 +73,13 @@ final class Poller
         $courier = CourierRegistry::for($account);
         $polled = 0;
 
-        $creating = $this->creating()->where('courier_account_id', $accountId)->orderBy('id')->limit(self::PER_ACCOUNT)->get();
+        $creating = $this->leastRecentFirst($this->creating()->where('courier_account_id', $accountId))->limit($this->perAccount)->get();
         foreach ($creating as $s) {
             $this->resolveCreation($courier, $s);
             $polled++;
         }
 
-        $due = $this->due()->where('courier_account_id', $accountId)->orderBy('id')->limit(self::PER_ACCOUNT)->get();
+        $due = $this->leastRecentFirst($this->due()->where('courier_account_id', $accountId))->limit($this->perAccount)->get();
         foreach ($due as $s) {
             if ($this->throttled($courier, $s)) {
                 continue;
@@ -174,6 +177,12 @@ final class Poller
             ->whereNotNull('tracking_number')
             ->where('tracking_number', '!=', '')
             ->where(fn (Builder $q) => $q->whereNull('next_poll_at')->orWhere('next_poll_at', '<=', now()));
+    }
+
+    /** Never polled first, then the longest ago, then by id. */
+    private function leastRecentFirst(Builder $q): Builder
+    {
+        return $q->orderByRaw('CASE WHEN last_polled_at IS NULL THEN 0 ELSE 1 END')->orderBy('last_polled_at')->orderBy('id');
     }
 
     /** SPX bookings submitted but not yet created at the courier. */

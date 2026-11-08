@@ -3,13 +3,17 @@
 namespace App\Console\Commands;
 
 use App\Models\Shipment;
+use App\Models\ShipmentEvent;
 use App\Support\Settings;
 use Illuminate\Console\Command;
 
 /**
- * Daily: clears the personal data (pickup, recipient, courier note) of shipments that reached a terminal courier
- * status more than `privacy.retention_days` (default 180) ago, and stamps pii_purged_at. The rest of the shipment
- * (state, tracking, money, events) stays.
+ * Daily: clears the personal data of finished shipments older than `privacy.retention_days` (default 180) and stamps
+ * pii_purged_at. Finished: a terminal courier status (terminal_at, or a delivered/cancelled phase) or state failed
+ * or cancelled; its age runs from COALESCE(terminal_at, cancelled_at, updated_at).
+ *
+ * Cleared: pickup, recipient, courier note, and each of its events' raw courier payload (set to {"purged":true}).
+ * The rest (state, tracking, money, event statuses) stays.
  */
 class PiiPurge extends Command
 {
@@ -30,9 +34,11 @@ class PiiPurge extends Command
         $purged = 0;
         do {
             $ids = Shipment::query()
-                ->whereNotNull('terminal_at')
-                ->where('terminal_at', '<', $cutoff)
                 ->whereNull('pii_purged_at')
+                ->where(fn ($q) => $q->whereNotNull('terminal_at')
+                    ->orWhereIn('state', ['failed', 'cancelled'])
+                    ->orWhereIn('phase', ['delivered', 'cancelled']))
+                ->whereRaw('COALESCE(terminal_at, cancelled_at, updated_at) < ?', [$cutoff->format('Y-m-d H:i:s')])
                 ->orderBy('id')
                 ->limit(self::CHUNK)
                 ->pluck('id');
@@ -44,6 +50,7 @@ class PiiPurge extends Command
                     'courier_note' => null,
                     'pii_purged_at' => now(),
                 ]);
+                ShipmentEvent::query()->whereIn('shipment_id', $ids->all())->toBase()->update(['raw' => '{"purged":true}']);
             }
         } while ($ids->count() === self::CHUNK);
 

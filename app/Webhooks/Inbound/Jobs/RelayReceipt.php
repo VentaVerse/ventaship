@@ -27,7 +27,8 @@ class RelayReceipt implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable;
 
-    public int $tries = 3;
+    /** The first send plus retries after 60, 300 and 900 seconds. */
+    public int $tries = 4;
 
     public int $timeout = 30;
 
@@ -58,8 +59,13 @@ class RelayReceipt implements ShouldQueue
     public function handle(): void
     {
         $receipt = WebhookReceipt::query()->find($this->receiptId);
-        if ($receipt === null || $receipt->body === null || ! in_array($receipt->status, ['unmatched', 'processed'], true)) {
+        if ($receipt === null || $receipt->body === null || ! in_array($receipt->status, ['unmatched', 'processed', 'relay_pending'], true)) {
             return;
+        }
+
+        if ($receipt->status === 'relay_pending') {
+            // The relay job runs now: the queue's own retries take over from receipts-reprocess.
+            WebhookReceipt::query()->whereKey($receipt->id)->where('status', 'relay_pending')->update(['status' => 'unmatched']);
         }
 
         $account = $receipt->courier_account_id === null ? null : CourierAccount::query()->find($receipt->courier_account_id);

@@ -12,6 +12,7 @@ use App\Webhooks\Inbound\Jobs\ProcessReceipt;
 use App\Webhooks\Inbound\Jobs\RelayReceipt;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
@@ -176,7 +177,7 @@ class InboundQuadXTest extends TestCase
     {
         $job = new RelayReceipt(1);
 
-        $this->assertSame(3, $job->tries);
+        $this->assertSame(4, $job->tries, 'the first send plus three retries');
         $this->assertSame([60, 300, 900], $job->backoff());
         $this->assertSame('inbound', $job->queue);
     }
@@ -254,6 +255,53 @@ class InboundQuadXTest extends TestCase
 
         Queue::assertPushed(ProcessReceipt::class, 1);
         Queue::assertPushedOn('inbound', ProcessReceipt::class);
+    }
+
+    public function test_event_without_a_time_is_dated_by_the_receipt_so_a_reprocess_dedupes(): void
+    {
+        $s = $this->bookedShipment();
+        $raw = '{"data":[{"tracking_number":"QX-TEST-0001","status":"picked_up"}]}';
+        $receipt = $this->receipt(now()->subMinutes(10));
+        $receipt->forceFill(['body' => $raw])->save();
+
+        (new ProcessReceipt($receipt->id))->handle(app(\App\Shipments\StatusRecorder::class), app(\App\Shipments\BookingOutcomes::class));
+        $receipt->forceFill(['status' => 'received', 'processed_at' => null])->save(); // as if processed again
+        (new ProcessReceipt($receipt->id))->handle(app(\App\Shipments\StatusRecorder::class), app(\App\Shipments\BookingOutcomes::class));
+
+        $event = ShipmentEvent::query()->where('shipment_id', $s->id)->sole();
+        $this->assertSame($receipt->received_at->getTimestamp(), $event->occurred_at->getTimestamp());
+    }
+
+    public function test_a_relay_that_cannot_be_queued_is_queued_again_by_reprocess(): void
+    {
+        $this->account->forceFill(['relay_url' => 'https://store.example.test/hook?token=core'])->save();
+        $receipt = $this->receipt(now()->subMinutes(3));
+        $receipt->forceFill(['body' => '{"data":[{"tracking_number":"QX-NOT-OURS","status":"delivered"}]}'])->save();
+
+        Bus::shouldReceive('dispatch')->once()->andThrow(new \RuntimeException('queue down'));
+        (new ProcessReceipt($receipt->id))->handle(app(\App\Shipments\StatusRecorder::class), app(\App\Shipments\BookingOutcomes::class));
+        $this->assertSame('relay_pending', $receipt->refresh()->status);
+
+        Bus::swap(app(\Illuminate\Bus\Dispatcher::class));
+        Http::fake(['store.example.test/*' => Http::response('ok')]);
+        $this->artisan('ventaship:receipts-reprocess')->assertExitCode(0);
+
+        Http::assertSentCount(1);
+        $receipt->refresh();
+        $this->assertSame('unmatched', $receipt->status);
+        $this->assertSame(1, $receipt->relay_attempts);
+    }
+
+    public function test_tracking_on_another_account_of_the_same_courier_is_not_touched(): void
+    {
+        $other = $this->quadxAccount('qx-other-key', 'qx-other-secret');
+        $theirs = $this->bookedShipment(['courier_account_id' => $other->id]);
+
+        $this->postRaw('/webhooks/quadx?token='.self::TOKEN, $this->fixtureBody())->assertOk();
+
+        $this->assertSame('unmatched', WebhookReceipt::query()->sole()->status);
+        $this->assertSame(0, ShipmentEvent::query()->where('shipment_id', $theirs->id)->count());
+        $this->assertNull($theirs->refresh()->courier_status);
     }
 
     public function test_webhook_routes_are_rate_limited_per_ip(): void

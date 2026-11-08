@@ -4,6 +4,7 @@ namespace Tests\Feature\Console;
 
 use App\Models\ClientApp;
 use App\Models\Shipment;
+use App\Models\ShipmentEvent;
 use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -91,6 +92,32 @@ class MaintenanceCommandsTest extends TestCase
         $this->assertIsArray($recent->refresh()->recipient);
         $this->assertNull($recent->pii_purged_at);
         $this->assertIsArray($live->refresh()->recipient);
+    }
+
+    public function test_pii_purge_covers_failed_and_cancelled_shipments_and_scrubs_event_raw(): void
+    {
+        $failed = Shipment::factory()->create(['state' => 'failed']);
+        $cancelled = Shipment::factory()->create(['state' => 'cancelled', 'cancelled_at' => now()->subDays(200)]);
+        $recentFailed = Shipment::factory()->create(['state' => 'failed']);
+        $booked = Shipment::factory()->create(['state' => 'booked', 'terminal_at' => null]);
+        Shipment::query()->whereIn('id', [$failed->id, $cancelled->id, $booked->id])->toBase()->update(['updated_at' => now()->subDays(181)]);
+        Shipment::query()->whereKey($recentFailed->id)->toBase()->update(['updated_at' => now()->subDays(179)]);
+        $event = ShipmentEvent::query()->create([
+            'shipment_id' => $failed->id, 'source' => 'webhook', 'courier_status' => 'pending',
+            'occurred_at' => now()->subDays(190), 'raw' => ['recipient_name' => 'Juan Dela Cruz'],
+        ]);
+
+        $this->artisan('ventaship:pii-purge')->assertExitCode(0);
+
+        foreach ([$failed, $cancelled] as $s) {
+            $s->refresh();
+            $this->assertNull($s->recipient);
+            $this->assertNotNull($s->pii_purged_at);
+        }
+        $this->assertSame(['purged' => true], $event->refresh()->raw);
+        $this->assertNull($recentFailed->refresh()->pii_purged_at);
+        $this->assertIsArray($recentFailed->recipient);
+        $this->assertNull($booked->refresh()->pii_purged_at, 'a live booking is never purged, however old');
     }
 
     public function test_pii_purge_honours_the_retention_setting(): void
