@@ -125,6 +125,85 @@
         </div>
         <p class="x-sr" aria-live="polite" x-text="status"></p>
     </div>
+    <div class="st-sec" id="activity">
+        <h2 class="st-h">Deliveries</h2>
+        @if($deliveries->isEmpty())
+            <x-ui.empty title="No deliveries" />
+        @else
+            <div class="pf-keys-wrap">
+                <table class="pf-act">
+                    <thead>
+                        <tr>
+                            <th scope="col">Time</th>
+                            <th scope="col">Event</th>
+                            <th scope="col">Shipment</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Attempts</th>
+                            <th scope="col">Last error</th>
+                            <th scope="col"><span class="x-sr">Actions</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($deliveries as $row)
+                            @php $e = $row['event']; @endphp
+                            <tr>
+                                <td data-label="Time">{{ $e->created_at?->format('j M H:i') }}</td>
+                                <td class="pf-act__mono">{{ $e->type }}</td>
+                                <td data-label="Shipment">
+                                    @if($e->shipment)
+                                        <a href="{{ route('shipments.show', $e->shipment) }}">{{ $e->shipment->client_reference }}</a>
+                                    @else
+                                        <span class="pf-act__none">None</span>
+                                    @endif
+                                </td>
+                                <td><x-ui.badge :tone="$row['badge'][1]">{{ $row['badge'][0] }}</x-ui.badge></td>
+                                <td data-label="Attempts">{{ $e->attempts }}</td>
+                                <td data-label="Error" class="pf-act__err">{{ $row['error'] }}</td>
+                                <td class="pf-act__act">
+                                    @if($row['resendable'])
+                                        <x-ui.button size="sm" type="submit" :form="'resend-' . $e->public_id" :aria-label="'Resend ' . $e->type">Resend</x-ui.button>
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+
+        <h2 class="st-h">API calls</h2>
+        @if($calls->isEmpty())
+            <x-ui.empty title="No API calls" />
+        @else
+            <div class="pf-keys-wrap">
+                <table class="pf-act">
+                    <thead>
+                        <tr>
+                            <th scope="col">Time</th>
+                            <th scope="col">Method</th>
+                            <th scope="col">Path</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Duration</th>
+                            <th scope="col">Key</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($calls as $row)
+                            @php $r = $row['call']; @endphp
+                            <tr>
+                                <td data-label="Time">{{ \Illuminate\Support\Carbon::parse($r->created_at)->format('j M H:i:s') }}</td>
+                                <td class="pf-act__mono">{{ $r->method }}</td>
+                                <td class="pf-act__mono pf-act__path">{{ $r->path }}</td>
+                                <td><x-ui.badge :tone="$row['tone']">{{ $r->status }}</x-ui.badge></td>
+                                <td data-label="Duration">{{ $r->duration_ms !== null ? $r->duration_ms.' ms' : 'None' }}</td>
+                                <td class="pf-act__mono" data-label="Key">{{ $r->token_prefix ?? 'None' }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </div>
 </section>
 @endsection
 
@@ -134,5 +213,10 @@
         <form id="revoke-key-{{ $row['key']->id }}" method="POST" action="{{ route('apps.keys.revoke', [$app, $row['key']->id]) }}">@csrf</form>
     @endforeach
     <form id="regenerate-webhook" method="POST" action="{{ route('apps.webhook.regenerate', $app) }}">@csrf</form>
+    @foreach($deliveries as $row)
+        @if($row['resendable'])
+            <form id="resend-{{ $row['event']->public_id }}" method="POST" action="{{ route('apps.events.resend', [$app, $row['event']]) }}">@csrf</form>
+        @endif
+    @endforeach
     <form id="ping" method="POST" action="{{ route('apps.ping', $app) }}">@csrf</form>
 @endpush

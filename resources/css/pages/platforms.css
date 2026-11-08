@@ -159,4 +159,82 @@
             color: var(--bl-ink-3);
         }
     }
+
+    .pf-act {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    .pf-act th,
+    .pf-act td {
+        padding: 8px 12px 8px 0;
+        text-align: left;
+        vertical-align: middle;
+    }
+
+    .pf-act th {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--bl-ink-3);
+        border-bottom: 1px solid var(--bl-rule);
+    }
+
+    .pf-act tbody tr {
+        border-bottom: 1px solid var(--bl-rule);
+    }
+
+    .pf-act__mono {
+        font: 500 13px var(--font-mono);
+    }
+
+    .pf-act__path,
+    .pf-act__err {
+        overflow-wrap: anywhere;
+    }
+
+    .pf-act__none {
+        color: var(--bl-ink-3);
+    }
+
+    .pf-act__act {
+        text-align: right;
+    }
+
+    @media (max-width: 640px) {
+        .pf-act thead {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip-path: inset(50%);
+        }
+
+        .pf-act,
+        .pf-act tbody {
+            display: block;
+        }
+
+        .pf-act tr {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 4px 12px;
+            padding: 8px 0;
+        }
+
+        .pf-act td {
+            display: block;
+            padding: 0;
+        }
+
+        .pf-act td[data-label]::before {
+            content: attr(data-label) " ";
+            color: var(--bl-ink-3);
+        }
+
+        .pf-act__act {
+            margin-left: auto;
+        }
+    }
 }

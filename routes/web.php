@@ -50,6 +50,7 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
             ->where('what', 'token:\d{1,19}|webhook')->middleware('throttle:secret-reveals')->name('apps.reveal');
         Route::post('webhook-secret', [PlatformsController::class, 'regenerateWebhookSecret'])->name('apps.webhook.regenerate');
         Route::post('ping', [PlatformsController::class, 'ping'])->name('apps.ping');
+        Route::post('events/{event:public_id}/resend', [PlatformsController::class, 'resendEvent'])->name('apps.events.resend');
     });
     Route::get('ph/{level}', PhAddressController::class)->where('level', 'provinces|cities|districts|barangays')->name('ph.options');
     Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');

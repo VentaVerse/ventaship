@@ -12,6 +12,7 @@ use App\Platforms\PlatformApps;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Throwable;
 
@@ -68,8 +69,26 @@ class PlatformsController extends Controller
         // Set by issueKey for one request: the new key's id only. The page then reveals it through apps.reveal.
         $issued = $request->session()->get('issued_key');
 
+        $deliveries = OutgoingEvent::query()->where('client_app_id', $app->id)
+            ->with('shipment:id,public_id,client_reference')
+            ->orderByDesc('id')->limit(50)
+            ->get(['id', 'public_id', 'client_app_id', 'type', 'shipment_id', 'status', 'attempts', 'last_error', 'created_at']);
+        $calls = ApiRequest::query()->where('client_app_id', $app->id)
+            ->orderByDesc('id')->limit(50)
+            ->get(['id', 'method', 'path', 'status', 'duration_ms', 'token_prefix', 'created_at']);
+
         return view('platforms.show', [
             'app' => $app,
+            'deliveries' => $deliveries->map(fn (OutgoingEvent $e) => [
+                'event' => $e,
+                'badge' => $this->deliveryBadge($e),
+                'resendable' => in_array($e->status, ['failed', 'delivered'], true),
+                'error' => $e->last_error === null ? null : Str::limit($e->last_error, 80),
+            ]),
+            'calls' => $calls->map(fn (ApiRequest $r) => [
+                'call' => $r,
+                'tone' => $r->status >= 500 ? 'bad' : ($r->status >= 400 ? 'attn' : 'good'),
+            ]),
             'keys' => $keys->map(fn (ApiToken $key) => [
                 'key' => $key,
                 'viewable' => $key->getRawOriginal('token_encrypted') !== null,
@@ -145,6 +164,16 @@ class PlatformsController extends Controller
         return $result['ok'] ? $back->with('status', $result['message']) : $back->withErrors(['ping' => $result['message']]);
     }
 
+    public function resendEvent(Request $request, ClientApp $app, OutgoingEvent $event, PlatformApps $platforms): RedirectResponse
+    {
+        abort_unless($event->client_app_id === $app->id, 404);
+
+        $result = $platforms->resend($event, $this->actor($request));
+        $back = redirect(route('apps.show', $app).'#activity');
+
+        return $result['ok'] ? $back->with('status', $result['message']) : $back->withErrors(['resend' => $result['message']]);
+    }
+
     public function update(Request $request, ClientApp $app, PlatformApps $platforms): RedirectResponse
     {
         $data = $request->validate([
@@ -197,6 +226,22 @@ class PlatformsController extends Controller
     private function field(PlatformAppException $e): string
     {
         return $e->field ?? 'name';
+    }
+
+    /**
+     * Skipped events (nothing was sent) get their own neutral label.
+     *
+     * @return array{0: string, 1: string} label and badge tone
+     */
+    private function deliveryBadge(OutgoingEvent $e): array
+    {
+        return match (true) {
+            $e->status === 'delivered' => ['Delivered', 'good'],
+            $e->status === 'failed' => ['Failed', 'bad'],
+            $e->status === 'skipped' => ['Skipped', 'mute'],
+            $e->status === 'pending' && ($e->attempts > 0 || $e->last_error !== null) => ['Retrying', 'attn'],
+            default => ['Pending', 'mute'],
+        };
     }
 
     /** @return array{0: string, 1: string} label and badge tone */

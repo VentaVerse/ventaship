@@ -24,6 +24,11 @@ class ClientApp extends Model
         return ['webhook_secret' => VaultEncrypted::class, 'webhook_events' => 'array'];
     }
 
+    public function events(): HasMany
+    {
+        return $this->hasMany(OutgoingEvent::class);
+    }
+
     public function shipments(): HasMany
     {
         return $this->hasMany(Shipment::class);
