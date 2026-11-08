@@ -171,9 +171,39 @@ class QuadXFulfillmentTest extends TestCase
         $this->assertSame('Delivery address is not serviceable.', $refused->reason);
     }
 
-    private function shipmentFor(CourierAccount $account): Shipment
+    public function test_cod_collects_the_cod_amount_not_the_total(): void
     {
-        return Shipment::factory()->create([
+        Http::fake(['api.staging.quadx.xyz/*' => Http::response($this->quadxFixture('order-created'))]);
+        $account = $this->quadxAccount();
+        $shipment = $this->shipmentFor($account, ['payment_method' => 'cod', 'total' => 1500.00, 'cod_amount' => 1290.00]);
+
+        $result = CourierRegistry::for($account)->createShipment(CourierOrder::fromApi($shipment), ['pickup' => $this->pickup()]);
+
+        $this->assertTrue($result['success']);
+        Http::assertSent(fn (Request $r) => $r['payment_method'] === 'cod' && (float) $r['total'] === 1290.0);
+        Http::assertNotSent(fn (Request $r) => (float) ($r['total'] ?? 0) === 1500.0);
+    }
+
+    public function test_a_cod_shipment_without_an_amount_or_a_contradicting_buyer_payment_is_refused(): void
+    {
+        Http::fake();
+        $account = $this->quadxAccount();
+        $courier = CourierRegistry::for($account);
+
+        $noAmount = CourierOrder::fromApi($this->shipmentFor($account, ['payment_method' => 'cod', 'cod_amount' => null]));
+        $this->assertStringContainsString('needs a cod_amount', $courier->createShipment($noAmount, ['pickup' => $this->pickup()])['error']);
+
+        $prepaid = CourierOrder::fromApi($this->shipmentFor($account));
+        $said = $courier->createShipment($prepaid, ['pickup' => $this->pickup(), 'buyer_payment' => 'cod']);
+        $this->assertFalse($said['success']);
+        $this->assertStringContainsString('the shipment is prepaid', $said['error']);
+
+        Http::assertNothingSent();
+    }
+
+    private function shipmentFor(CourierAccount $account, array $attributes = []): Shipment
+    {
+        return Shipment::factory()->create($attributes + [
             'courier_account_id' => $account->id,
             'courier_ref' => 'VS000001',
             'payment_method' => 'prepaid',

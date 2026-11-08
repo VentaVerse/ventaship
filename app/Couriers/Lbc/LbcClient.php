@@ -132,7 +132,14 @@ class LbcClient
             return LbcPickupResult::transportFailure('LBC did not answer: ' . $error);
         }
 
-        return LbcPickupResult::fromResponse($response->status(), $response->body());
+        // The request has left: a fault reading the answer is an unknown outcome, never a rejection.
+        try {
+            return LbcPickupResult::fromResponse($response->status(), $response->body());
+        } catch (\Throwable $e) {
+            Log::warning('LBC pickup answer could not be read', ['status' => $response->status(), 'error' => $e->getMessage()]);
+
+            return LbcPickupResult::transportFailure('LBC answered with a body that could not be read.', $response->status());
+        }
     }
 
     // --- Air Waybill (renders a label, books nothing) ----------------------

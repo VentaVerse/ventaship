@@ -1481,4 +1481,42 @@ class SpxFulfillmentTest extends TestCase
         $this->assertFalse($result['success']);
         Http::assertNothingSent();
     }
+
+    public function test_cod_collects_the_cod_amount_not_the_total(): void
+    {
+        $this->configureAccountCredentials();
+        Http::fake([
+            '*batch_create_order*' => Http::response(['ret_code' => 0, 'message' => 'success.', 'data' => ['batch_no' => 1]]),
+            '*get_order_create_result*' => Http::response($this->doneCreateResultResponse('SPEPH000000000088', 1)),
+        ]);
+
+        $order = $this->makeOrder([], ['payment_method' => 'cod', 'total' => 1500.00, 'cod_amount' => 1290.00]);
+        $this->assertTrue($this->courier()->createShipment($order, $this->opts(['parcel' => 'small']))['success']);
+
+        Http::assertSent(function ($request) {
+            if (!str_contains($request->url(), 'batch_create_order')) {
+                return false;
+            }
+            $info = $request->data()['orders'][0]['fulfillment_info'];
+
+            return $info['cod_collection'] === 1 && $info['cod_amount'] === 1290;
+        });
+    }
+
+    public function test_cod_with_centavos_no_amount_or_a_contradicting_buyer_payment_is_refused(): void
+    {
+        $this->configureAccountCredentials();
+        Http::fake();
+
+        $centavos = $this->makeOrder([], ['payment_method' => 'cod', 'total' => 1500, 'cod_amount' => 1290.50]);
+        $this->assertStringContainsString('whole pesos', $this->courier()->createShipment($centavos, $this->opts(['parcel' => 'small']))['error']);
+
+        $noAmount = $this->makeOrder([], ['payment_method' => 'cod', 'cod_amount' => null]);
+        $this->assertStringContainsString('needs a cod_amount', $this->courier()->createShipment($noAmount, $this->opts(['parcel' => 'small']))['error']);
+
+        $prepaid = $this->makeOrder();
+        $this->assertStringContainsString('the shipment is prepaid', $this->courier()->createShipment($prepaid, $this->opts(['parcel' => 'small', 'buyer_payment' => 'cod']))['error']);
+
+        Http::assertNothingSent();
+    }
 }

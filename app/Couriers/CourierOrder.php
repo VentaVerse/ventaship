@@ -128,6 +128,45 @@ final class CourierOrder
         ]);
     }
 
+    /**
+     * What the courier collects from the recipient. The shipment's payment method alone decides whether there is
+     * a collection, and `cod_amount` alone is the amount: never `total`, `declared_value` or the items.
+     *
+     * 0.0 on a prepaid shipment. Null on a COD shipment with no positive `cod_amount`: that shipment cannot be
+     * booked, because guessing the amount a rider hands over is real money either way.
+     */
+    public function collectAmount(): ?float
+    {
+        if (! $this->cod) {
+            return 0.0;
+        }
+
+        $amount = $this->attributes['cod_amount'] ?? null;
+
+        return is_numeric($amount) && (float) $amount > 0 ? round((float) $amount, 2) : null;
+    }
+
+    /**
+     * Why this shipment cannot be booked for its payment, or null when it can: a COD shipment needs a positive
+     * cod_amount, and a caller's `buyer_payment` may not contradict the shipment's own payment method.
+     *
+     * @param  array<string, mixed>  $opts
+     */
+    public function paymentProblem(array $opts = []): ?string
+    {
+        $said = $opts['buyer_payment'] ?? null;
+        if ($said !== null && $said !== '' && ($said === 'cod') !== $this->cod) {
+            return 'The booking says ' . ($said === 'cod' ? 'cash on delivery' : 'prepaid') . ' but the shipment is '
+                . ($this->cod ? 'cash on delivery' : 'prepaid') . '.';
+        }
+
+        if ($this->collectAmount() === null) {
+            return 'A cash-on-delivery shipment needs a cod_amount above zero.';
+        }
+
+        return null;
+    }
+
     /** A copy carrying a booking's courier_* fields. */
     public function withBooking(array $booking): self
     {

@@ -128,18 +128,32 @@ class LbcServiceabilityAndOptionsTest extends TestCase
         $this->assertSame(500.0, LbcFulfillment::declaredValueFor($order, true, false));
         $this->assertSame(500.0, LbcFulfillment::declaredValueFor($order, false, true), 'COD is insured even when not ticked.');
         $this->assertSame(1999.5, LbcFulfillment::declaredValueFor($this->order([], ['total' => 1999.5]), false, true));
-        $this->assertSame(320.0, LbcFulfillment::codAmountFor($order, true));
-        $this->assertSame(0.0, LbcFulfillment::codAmountFor($order, false));
+        $cod = $this->order([], ['payment_method' => 'cod', 'total' => 320, 'cod_amount' => 290]);
+        $this->assertSame(290.0, LbcFulfillment::codAmountFor($cod, true), 'The rider collects cod_amount, not the total.');
+        $this->assertSame(0.0, LbcFulfillment::codAmountFor($cod, false));
+        $this->assertSame(0.0, LbcFulfillment::codAmountFor($order, true), 'A prepaid shipment collects nothing.');
     }
 
-    public function test_the_buyer_payment_follows_the_shipment_unless_the_caller_says(): void
+    public function test_the_buyer_payment_is_the_shipments_and_a_contradiction_is_refused(): void
     {
+        $this->fakeLbc();
         $cod = $this->codOrder(500);
         $prepaid = $this->order();
 
         $this->assertTrue(LbcFulfillment::isCod($cod, []));
         $this->assertFalse(LbcFulfillment::isCod($prepaid, []));
-        $this->assertTrue(LbcFulfillment::isCod($prepaid, ['buyer_payment' => 'cod']));
+
+        $said = $this->lbc()->createShipment($prepaid, $this->bookingOptions(['buyer_payment' => 'cod']));
+        $this->assertFalse($said['success']);
+        $this->assertStringContainsString('the shipment is prepaid', $said['error']);
+
+        $said = $this->lbc()->createShipment($cod, $this->bookingOptions(['buyer_payment' => 'prepaid']));
+        $this->assertStringContainsString('the shipment is cash on delivery', $said['error']);
+
+        $noAmount = $this->order([], ['payment_method' => 'cod', 'cod_amount' => null, 'total' => 500]);
+        $this->assertStringContainsString('needs a cod_amount', $this->lbc()->createShipment($noAmount, $this->bookingOptions())['error']);
+
+        Http::assertNothingSent();
     }
 
     public function test_missing_settings_keep_lbc_off_and_are_named(): void

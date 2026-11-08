@@ -297,6 +297,16 @@ class SpxFulfillment implements Courier
             return ['success' => false, 'error' => 'The shipment has no courier reference.'];
         }
 
+        if (($problem = $order->paymentProblem($opts)) !== null) {
+            return ['success' => false, 'error' => $problem];
+        }
+
+        // SPX's cod_amount is whole pesos: rounding would collect a different amount than the shipment says.
+        $collect = (float) $order->collectAmount();
+        if ($collect !== round($collect)) {
+            return ['success' => false, 'error' => 'SPX collects whole pesos only. Send a cod_amount without centavos.'];
+        }
+
         $built = $this->buildOrderPayload($order, $opts);
         if (!$built['ok']) {
             return ['success' => false, 'error' => $built['error']];
@@ -1599,7 +1609,8 @@ class SpxFulfillment implements Courier
             'cod_collection' => $isCod ? 1 : 0,
         ];
         if ($isCod) {
-            $info['cod_amount'] = (int) round((float) $order->total);
+            // What the rider collects: the shipment's cod_amount, never its order total. SPX takes whole pesos.
+            $info['cod_amount'] = (int) round((float) $order->collectAmount());
         }
 
         // collect_type: 1 pickup, 2 drop-off. Pickup requires a scheduled

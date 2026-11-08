@@ -147,6 +147,10 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
             return ['success' => false, 'error' => 'The shipment has no courier reference.'];
         }
 
+        if (($problem = $order->paymentProblem($opts)) !== null) {
+            return ['success' => false, 'error' => $problem];
+        }
+
         $payload = $this->buildPayload($order, $opts);
 
         $res = $this->client->createOrder($payload);
@@ -900,8 +904,8 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
 
     private function buildPayload(CourierOrder $order, array $opts): array
     {
-        $buyerPayment = ($opts['buyer_payment'] ?? null)
-            ?: ($this->orderIsCod($order) ? 'cod' : 'prepaid');
+        // The shipment's payment method decides; createShipment() refuses a buyer_payment that contradicts it.
+        $buyerPayment = $this->orderIsCod($order) ? 'cod' : 'prepaid';
 
         $payload = [
             'status'           => 'for_pickup',
@@ -918,7 +922,8 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
             'items'            => $this->items($order),
             'currency'         => 'PHP',
             'shipment'         => $this->parcelFor($opts),
-            'total'            => (float) $order->total,
+            // On COD, `total` is what QuadX's rider collects: the shipment's cod_amount, never its order total.
+            'total'            => $buyerPayment === 'cod' ? (float) $order->collectAmount() : (float) $order->total,
             // QuadX insures via declared_value (~1% fee on that amount). Omitting
             // this field entirely makes QuadX silently DEFAULT declared_value to
             // the order total — auto-insuring every booking with an unwanted fee.

@@ -58,6 +58,10 @@ class TrackingNumberSeriesService
         $courier = (string) $account->courier;
 
         return $this->db()->transaction(function () use ($account, $courier, $first, $last) {
+            // Lock the courier's blocks (and, on InnoDB, the index range they sit in) before checking, so two
+            // concurrent adds cannot both pass the overlap check. The loser waits, then sees the winner's block.
+            $this->series()->where('courier', $courier)->lockForUpdate()->get(['id']);
+
             $this->assertNoOverlap($courier, $first, $last);
 
             return $this->series()->create([

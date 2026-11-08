@@ -486,24 +486,19 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
         return round(max((float) $order->total, (float) LbcParcel::MIN_INSURED_DECLARED_VALUE), 2);
     }
 
-    /** What the rider collects: the whole order total on a COD order, nothing otherwise. */
+    /** What the rider collects: the shipment's cod_amount on a COD shipment, nothing otherwise. */
     public static function codAmountFor(CourierOrder $order, bool $cod): float
     {
-        return $cod ? round((float) $order->total, 2) : 0.0;
+        return $cod ? (float) $order->collectAmount() : 0.0;
     }
 
     /**
-     * Whether the buyer pays the rider. The caller may say so
-     * (buyer_payment, as with QuadX); otherwise the shipment's own payment
-     * method decides.
+     * Whether the buyer pays the rider: the shipment's own payment method.
+     * plan() refuses a buyer_payment that contradicts it.
      */
     public static function isCod(CourierOrder $order, array $opts): bool
     {
-        $said = $opts['buyer_payment'] ?? null;
-
-        return $said !== null && $said !== ''
-            ? $said === 'cod'
-            : (bool) $order->cod;
+        return (bool) $order->cod;
     }
 
     /** The first date a pickup may be asked for: the next business day (Monday to Saturday). */
@@ -584,6 +579,10 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
         $from = PickupOrigin::from($opts);
         if ($from === null) {
             throw new LbcException('The shipment has no pickup address.');
+        }
+
+        if (($problem = $order->paymentProblem($opts)) !== null) {
+            throw new LbcException($problem);
         }
 
         $cod = self::isCod($order, $opts);

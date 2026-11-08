@@ -4,6 +4,7 @@ namespace App\Couriers\Lbc;
 
 use App\Couriers\AccountSettings;
 use App\Couriers\CourierOrder;
+use App\Couriers\LiveBookingBlocked;
 use App\Couriers\PickupPoint;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -116,13 +117,27 @@ class LbcPickupService
 
         try {
             $fields = $this->fieldsFor($draft, $issued->number);
-            $result = $this->client->insertPickupRequest($this->builder->toXml($fields));
+            $xml = $this->builder->toXml($fields);
         } catch (\Throwable $e) {
-            // Thrown before the request left (a key missing, a value refused):
-            // LBC has nothing, so the number goes back.
+            // The request was never built, so LBC has nothing: the number goes back.
             $this->series->release($issued, 'Not sent: ' . $e->getMessage());
 
             throw $e;
+        }
+
+        try {
+            $result = $this->client->insertPickupRequest($xml);
+        } catch (LiveBookingBlocked|LbcException $e) {
+            // Only thrown before the request leaves (a live lock off, the key
+            // missing): LBC has nothing, so the number goes back.
+            $this->series->release($issued, 'Not sent: ' . $e->getMessage());
+
+            throw $e;
+        } catch (\Throwable $e) {
+            // Anything else may have happened after the request left. LBC may
+            // hold the pickup, so the number is never handed to another parcel.
+            Log::warning('LBC pickup request failed after it may have been sent', ['error' => $e->getMessage()]);
+            $result = LbcPickupResult::transportFailure('The LBC answer could not be read: ' . $e->getMessage());
         }
 
         if ($result->outcome === LbcPickupResult::REJECTED) {

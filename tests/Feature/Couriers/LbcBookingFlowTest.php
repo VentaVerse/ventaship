@@ -264,4 +264,87 @@ class LbcBookingFlowTest extends TestCase
         $this->assertFalse($this->lbc($other)->createShipment($this->order(), $this->bookingOptions())['success']);
         $this->assertSame(0, $this->pickupRequestCount());
     }
+
+    public function test_cod_collects_the_cod_amount_not_the_total(): void
+    {
+        $this->fakeLbc();
+
+        $order = $this->order([], ['payment_method' => 'cod', 'total' => 1500.00, 'cod_amount' => 1290.00]);
+        $this->assertTrue($this->lbc()->createShipment($order, $this->bookingOptions())['success']);
+
+        $fields = $this->sentPickupFields();
+        $this->assertSame('1290', $fields['CODAmount']);
+        $this->assertSame('1500', $fields['DeclaredValue'], 'The insured value is unchanged.');
+    }
+
+    /** The pickup request may have reached LBC before the connection broke: the number is LBC's now. */
+    public function test_a_pickup_request_that_throws_in_transport_keeps_the_number_and_needs_attention(): void
+    {
+        $sent = 0;
+        $this->fakeLbc(function () use (&$sent) {
+            $sent++;
+
+            throw new \Illuminate\Http\Client\ConnectionException('cURL error 28: Operation timed out');
+        });
+
+        $result = $this->lbc()->createShipment($this->order(), $this->bookingOptions());
+
+        $this->assertTrue($result['success']);
+        $this->assertSame(LbcTrackingStatus::UNCONFIRMED, $result['status']);
+        $this->assertSame((string) self::SERIES_FIRST, $result['tracking_number']);
+        $this->assertNotNull($result['attention_reason']);
+        $this->assertStringContainsString('did not confirm pickup request ' . self::SERIES_FIRST, $result['attention_reason']);
+        $this->assertSame(TrackingNumber::SPENT, TrackingNumber::where('number', self::SERIES_FIRST)->value('status'));
+        $this->assertSame(0, TrackingNumber::where('status', TrackingNumber::RELEASED)->count());
+        $this->assertSame(1, $sent, 'Sent once, never retried.');
+
+        // The next booking never gets the number LBC may hold.
+        $this->fakeLbc();
+        $this->assertSame((string) (self::SERIES_FIRST + 1), $this->lbc()->createShipment($this->order(), $this->bookingOptions())['tracking_number']);
+    }
+
+    /** A fault after the request left (reading LBC's answer) is an unknown outcome, never a release. */
+    public function test_a_fault_after_the_request_left_keeps_the_number_spent(): void
+    {
+        $this->fakeLbc();
+        $account = $this->account->fresh();
+        $client = new class(\App\Couriers\AccountSettings::for($account)) extends \App\Couriers\Lbc\LbcClient {
+            public function insertPickupRequest(string $xml): \App\Couriers\Lbc\LbcPickupResult
+            {
+                parent::insertPickupRequest($xml);
+
+                throw new \RuntimeException('The answer could not be parsed.');
+            }
+        };
+        $lbc = new LbcFulfillment($account, \App\Couriers\AccountSettings::for($account), $client);
+
+        $result = $lbc->createShipment($this->order(), $this->bookingOptions());
+
+        $this->assertTrue($result['success']);
+        $this->assertSame(LbcTrackingStatus::UNCONFIRMED, $result['status']);
+        $this->assertNotNull($result['attention_reason']);
+        $this->assertSame(TrackingNumber::SPENT, TrackingNumber::where('number', self::SERIES_FIRST)->value('status'));
+        $this->assertSame(1, $this->pickupRequestCount());
+    }
+
+    /** A refusal the client raises before anything leaves (a key it cannot read): that number does go back. */
+    public function test_a_refusal_before_sending_releases_the_number(): void
+    {
+        $this->fakeLbc();
+        $account = $this->account->fresh();
+        $client = new class(\App\Couriers\AccountSettings::for($account)) extends \App\Couriers\Lbc\LbcClient {
+            public function insertPickupRequest(string $xml): \App\Couriers\Lbc\LbcPickupResult
+            {
+                throw new \App\Couriers\Lbc\LbcException('The LBC pickup key is not set.');
+            }
+        };
+        $lbc = new LbcFulfillment($account, \App\Couriers\AccountSettings::for($account), $client);
+
+        $result = $lbc->createShipment($this->order(), $this->bookingOptions());
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('key is not set', $result['error']);
+        $this->assertSame(0, $this->pickupRequestCount());
+        $this->assertSame(TrackingNumber::RELEASED, TrackingNumber::where('number', self::SERIES_FIRST)->value('status'));
+    }
 }
