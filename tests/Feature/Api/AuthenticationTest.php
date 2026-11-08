@@ -98,19 +98,29 @@ class AuthenticationTest extends TestCase
         $this->assertSame('app_disabled', ApiRequest::query()->first()->error);
     }
 
-    public function test_query_string_is_part_of_target(): void
+    private function sendEmptyBody(array $client, string $signedTarget, string $sentTarget)
     {
-        $client = $this->makeClient();
         $ts = time();
-        $signature = \App\Api\Signature::sign($client['secret'], $ts, 'GET', '/api/v1/ping?x=1', '');
-
-        $response = $this->getJson('/api/v1/ping?x=2', [
+        $headers = [
             'Authorization' => 'Bearer ' . $client['key'],
             'X-Timestamp' => (string) $ts,
-            'X-Signature' => $signature,
-        ]);
+            'X-Signature' => \App\Api\Signature::sign($client['secret'], $ts, 'GET', $signedTarget, ''),
+            'Accept' => 'application/json',
+        ];
+
+        return $this->call('GET', $sentTarget, [], [], [], $this->transformHeadersToServerVars($headers), '');
+    }
+
+    public function test_query_string_is_part_of_target(): void
+    {
+        $response = $this->sendEmptyBody($this->makeClient(), '/api/v1/ping?x=1', '/api/v1/ping?x=2');
 
         $this->assertUnauthorized($response, 'bad_signature');
+    }
+
+    public function test_signed_query_string_is_accepted(): void
+    {
+        $this->sendEmptyBody($this->makeClient(), '/api/v1/ping?x=1', '/api/v1/ping?x=1')->assertOk();
     }
 
     public function test_every_request_is_logged(): void
