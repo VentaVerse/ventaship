@@ -56,27 +56,24 @@ class DisplayPhaseFlowTest extends TestCase
         $this->assertSame('in_transit', DisplayPhase::of($s));
     }
 
-    public function test_draft_shows_in_to_pack_with_book_and_counts_on_the_card(): void
+    public function test_draft_is_active_with_book_and_counts_on_the_card(): void
     {
         $draft = $this->create('D1', submit: false);
         $this->assertNull($draft->refresh()->phase);
         $this->assertSame('draft', $draft->state);
 
-        $counts = ShipmentList::counts([]);
-        $this->assertSame(1, $counts['all']);
-        $this->assertSame(1, $counts['to_ship']);
-        $this->assertSame(1, $counts['to_pack']);
-        $this->assertSame(0, $counts['to_handover']);
-        $this->assertSame([$draft->id], ShipmentList::query(['tab' => 'to_ship', 'chip' => 'to_pack'])->pluck('id')->all());
-        $this->assertSame([$draft->id], ShipmentList::query(['tab' => 'all'])->pluck('id')->all());
+        $this->assertSame(['all' => 1, 'active' => 1, 'finished' => 0], ShipmentList::counts([]));
+        $this->assertSame([$draft->id], ShipmentList::query(['view' => 'active'])->pluck('id')->all());
+        $this->assertSame([], ShipmentList::query(['view' => 'finished'])->pluck('id')->all());
 
         $card = collect(CourierCards::all())->firstWhere('courier', 'quadx');
-        $this->assertSame(1, $card['to_ship']);
+        $this->assertSame(1, $card['active']);
         $this->assertSame('1290.00', $card['cod_unpaid']);
 
-        $html = $this->get('/?tab=to_ship&chip=to_pack')->assertOk()->getContent();
+        $html = $this->get('/?view=active')->assertOk()->getContent();
         $row = $this->row($html, $draft);
-        $this->assertStringContainsString('data-phase="draft"', $row);
+        $this->assertStringContainsString('data-status="ventaship:draft"', $row);
+        $this->assertStringContainsString('Not booked', $row);
         $this->assertStringContainsString('form="book-'.$draft->public_id.'"', $row);
         $this->assertStringContainsString('id="book-'.$draft->public_id.'"', $html);
 
@@ -86,7 +83,7 @@ class DisplayPhaseFlowTest extends TestCase
         Queue::assertPushed(BookShipment::class);
     }
 
-    public function test_queued_and_booking_rows_show_in_to_handover_as_booking(): void
+    public function test_queued_and_booking_rows_are_active_and_read_booking(): void
     {
         $queued = $this->create('Q1', submit: true);
         $booking = $this->create('B1', submit: true);
@@ -94,13 +91,12 @@ class DisplayPhaseFlowTest extends TestCase
         $this->assertSame('booking', $booking->refresh()->state);
         $this->assertNull($booking->phase);
 
-        $this->assertSame(2, ShipmentList::counts([])['to_handover']);
-        $this->assertEqualsCanonicalizing([$queued->id, $booking->id], ShipmentList::query(['tab' => 'to_ship', 'chip' => 'to_handover'])->pluck('id')->all());
+        $this->assertEqualsCanonicalizing([$queued->id, $booking->id], ShipmentList::query(['view' => 'active', 'status' => 'ventaship:booking'])->pluck('id')->all());
 
-        $html = $this->get('/?tab=to_ship&chip=to_handover')->assertOk()->getContent();
+        $html = $this->get('/?status=ventaship:booking')->assertOk()->getContent();
         foreach ([$queued, $booking] as $s) {
             $row = $this->row($html, $s);
-            $this->assertStringContainsString('data-phase="booking"', $row);
+            $this->assertStringContainsString('data-status="ventaship:booking"', $row);
             $this->assertStringContainsString('Booking', $row);
             $this->assertStringNotContainsString('form="book-', $row);
         }
@@ -108,7 +104,7 @@ class DisplayPhaseFlowTest extends TestCase
         $this->post('/shipments/book', ['ids' => [$queued->public_id]])->assertSessionHas('status', '0 queued for booking · 1 skipped');
     }
 
-    public function test_failed_booking_shows_in_to_pack_as_needs_attention(): void
+    public function test_failed_booking_is_active_and_reads_booking_failed(): void
     {
         $s = $this->create('F1', submit: true);
         app(BookingOutcomes::class)->start($s->id);
@@ -116,16 +112,15 @@ class DisplayPhaseFlowTest extends TestCase
         $this->assertSame('failed', $s->refresh()->state);
         $this->assertNull($s->phase);
 
-        $this->assertSame([$s->id], ShipmentList::query(['tab' => 'to_ship', 'chip' => 'to_pack'])->pluck('id')->all());
-        $this->assertSame(0, ShipmentList::counts([])['failed'], 'the Failed tab is the courier delivery failure');
+        $this->assertSame([$s->id], ShipmentList::query(['view' => 'active', 'status' => 'ventaship:failed'])->pluck('id')->all());
 
-        $row = $this->row($this->get('/?tab=to_ship&chip=to_pack')->assertOk()->getContent(), $s);
-        $this->assertStringContainsString('data-phase="attention"', $row);
-        $this->assertStringContainsString('Needs attention', $row);
+        $row = $this->row($this->get('/?view=active')->assertOk()->getContent(), $s);
+        $this->assertStringContainsString('data-status="ventaship:failed"', $row);
+        $this->assertStringContainsString('Booking failed', $row);
         $this->assertStringNotContainsString('form="book-', $row);
     }
 
-    public function test_cancelled_null_phase_is_left_out_of_card_cod(): void
+    public function test_cancelled_null_phase_is_finished_and_left_out_of_card_cod(): void
     {
         $this->create('C1', submit: false);
         $gone = $this->create('C2', submit: false);
@@ -133,28 +128,30 @@ class DisplayPhaseFlowTest extends TestCase
 
         $card = collect(CourierCards::all())->firstWhere('courier', 'quadx');
         $this->assertSame('1290.00', $card['cod_unpaid']);
-        $this->assertSame(1, ShipmentList::counts([])['cancelled']);
+        $this->assertSame(1, $card['active']);
+        $this->assertSame(1, ShipmentList::counts([])['finished']);
+        $this->assertSame([$gone->id], ShipmentList::query(['view' => 'finished'])->pluck('id')->all());
     }
 
-    public function test_poll_returns_display_phases_without_nulls_and_is_stable(): void
+    public function test_poll_returns_status_keys_without_nulls_and_is_stable(): void
     {
         $draft = $this->create('P1', submit: false);
         $queued = $this->create('P2', submit: true);
         $ids = $draft->public_id.','.$queued->public_id;
 
         $first = $this->get('/')->assertOk()->getContent();
-        $phases = $this->getJson('/fulfillment/poll?ids='.$ids)->assertOk()->json('phases');
-        $this->assertSame([$draft->public_id => 'draft', $queued->public_id => 'booking'], $phases);
-        $this->assertNotContains(null, $phases);
+        $statuses = $this->getJson('/fulfillment/poll?ids='.$ids)->assertOk()->json('statuses');
+        $this->assertSame([$draft->public_id => 'ventaship:draft', $queued->public_id => 'ventaship:booking'], $statuses);
+        $this->assertNotContains(null, $statuses);
 
-        preg_match_all('#data-id="([^"]+)" data-phase="([^"]+)"#', $first, $m);
-        $page = array_intersect_key(array_combine($m[1], $m[2]), $phases);
+        preg_match_all('#data-id="([^"]+)" data-status="([^"]+)"#', $first, $m);
+        $page = array_intersect_key(array_combine($m[1], $m[2]), $statuses);
         ksort($page);
-        $sorted = $phases;
+        $sorted = $statuses;
         ksort($sorted);
         $this->assertSame($sorted, $page, 'the page and the poll agree');
 
         $this->get('/')->assertOk();
-        $this->assertSame($phases, $this->getJson('/fulfillment/poll?ids='.$ids)->json('phases'));
+        $this->assertSame($statuses, $this->getJson('/fulfillment/poll?ids='.$ids)->json('statuses'));
     }
 }

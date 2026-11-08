@@ -69,7 +69,7 @@ class NavigationTest extends TestCase
         $this->get('/_nav/fulfillment')
             ->assertOk()
             ->assertSee('Ventaship')
-            ->assertSee('Fulfillment');
+            ->assertSee('Shipments');
     }
 
     public function test_only_the_current_system_item_is_active(): void

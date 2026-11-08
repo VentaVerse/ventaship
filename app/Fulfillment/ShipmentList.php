@@ -9,52 +9,27 @@ use Illuminate\Database\Eloquent\Builder;
 
 class ShipmentList
 {
-    /** @param array<string, mixed> $filters tab, chip, account, source */
+    /** @param array<string, mixed> $filters view, account, source, status */
     public static function query(array $filters): Builder
     {
-        $q = self::scoped($filters);
-
-        $tab = self::tab($filters);
-        if ($tab === 'unpaid') {
-            $q->where('payment_state', 'cod_unpaid');
-        } elseif ($tab !== 'all') {
-            $phases = Tabs::PHASES[$tab];
-            $chip = $filters['chip'] ?? null;
-            if ($tab === 'to_ship' && is_string($chip) && isset(Tabs::CHIPS[$chip])) {
-                $phases = Tabs::CHIPS[$chip];
-            }
-            $q->whereRaw(DisplayPhase::sql().' IN ('.implode(', ', array_fill(0, count($phases), '?')).')', $phases);
-        }
-
-        return $q->with(['clientApp', 'courierAccount'])->orderByDesc('id');
+        return self::scoped($filters, view: true, status: true)->with(['clientApp', 'courierAccount'])->orderByDesc('id');
     }
 
     /**
-     * Per tab and per chip. Courier and source filters apply; tab and chip do not.
+     * Per view. Account, source and status apply; the view does not.
      *
      * @param array<string, mixed> $filters
-     * @return array<string, int>
+     * @return array{all:int,active:int,finished:int}
      */
     public static function counts(array $filters): array
     {
-        $base = self::scoped($filters);
-        $expr = DisplayPhase::sql();
-        $byPhase = (clone $base)->reorder()
-            ->selectRaw("{$expr} as display_phase, COUNT(*) as n")->groupByRaw($expr)
-            ->pluck('n', 'display_phase')->map(fn ($n) => (int) $n)->all();
-        $unpaid = (clone $base)->where('payment_state', 'cod_unpaid')->count();
+        $row = self::scoped($filters, view: false, status: true)->reorder()
+            ->selectRaw('COUNT(*) as total, COALESCE(SUM(CASE WHEN '.Views::finishedSql().' THEN 1 ELSE 0 END), 0) as done')
+            ->first();
+        $all = (int) ($row->total ?? 0);
+        $finished = (int) ($row->done ?? 0);
 
-        $sum = fn (array $phases): int => array_sum(array_map(fn ($p) => $byPhase[$p] ?? 0, $phases));
-
-        $out = [];
-        foreach (Tabs::PHASES as $tab => $phases) {
-            $out[$tab] = $tab === 'unpaid' ? $unpaid : ($tab === 'all' ? array_sum($byPhase) : $sum($phases));
-        }
-        foreach (Tabs::CHIPS as $chip => $phases) {
-            $out[$chip] = $sum($phases);
-        }
-
-        return $out;
+        return ['all' => $all, 'active' => $all - $finished, 'finished' => $finished];
     }
 
     public static function sourceLabel(Shipment $s): string
@@ -66,18 +41,17 @@ class ShipmentList
         return $s->clientApp?->name ?? 'Manual';
     }
 
-    /** @param array<string, mixed> $filters */
-    private static function tab(array $filters): string
-    {
-        $tab = $filters['tab'] ?? null;
-
-        return is_string($tab) && array_key_exists($tab, Tabs::PHASES) ? $tab : 'all';
-    }
-
-    /** Courier account and source filters; unknown values are ignored. */
-    private static function scoped(array $filters): Builder
+    /** Account and source always; view and status when asked. Unknown values are ignored. */
+    public static function scoped(array $filters, bool $view, bool $status): Builder
     {
         $q = Shipment::query();
+
+        if ($view) {
+            Views::apply($q, $filters['view'] ?? null);
+        }
+        if ($status) {
+            StatusFilter::apply($q, $filters['status'] ?? null);
+        }
 
         $account = $filters['account'] ?? null;
         if (is_string($account) && ($id = CourierAccount::query()->where('public_id', $account)->value('id')) !== null) {

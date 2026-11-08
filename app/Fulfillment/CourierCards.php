@@ -9,7 +9,7 @@ class CourierCards
 {
     private const COURIERS = ['quadx' => 'QuadX', 'spx' => 'SPX', 'lbc' => 'LBC'];
 
-    /** @return array<int, array{courier:string, name:string, account:?CourierAccount, to_ship:int, delivered:int, to_handover:int, shipping:int, failed:int, cod_unpaid:string}> */
+    /** @return array<int, array{courier:string, name:string, account:?CourierAccount, active:int, delivered:int, cod_unpaid:string}> */
     public static function all(): array
     {
         $accounts = CourierAccount::query()->where('status', 'active')->get()
@@ -17,14 +17,11 @@ class CourierCards
             ->values();
 
         $expr = DisplayPhase::sql();
-        $byAccount = [];
-        $rows = Shipment::query()
+        $finished = Views::finishedSql();
+        $byAccount = Shipment::query()
             ->whereIn('courier_account_id', $accounts->pluck('id'))
-            ->selectRaw("courier_account_id, {$expr} as display_phase, COUNT(*) as n")
-            ->groupBy('courier_account_id')->groupByRaw($expr)->get();
-        foreach ($rows as $r) {
-            $byAccount[$r->courier_account_id][$r->display_phase] = (int) $r->n;
-        }
+            ->selectRaw("courier_account_id, SUM(CASE WHEN {$finished} THEN 0 ELSE 1 END) as active, SUM(CASE WHEN {$expr} = 'delivered' THEN 1 ELSE 0 END) as delivered")
+            ->groupBy('courier_account_id')->get()->keyBy('courier_account_id');
 
         $cod = Shipment::query()
             ->whereIn('courier_account_id', $accounts->pluck('id'))
@@ -34,17 +31,13 @@ class CourierCards
 
         $cards = [];
         foreach ($accounts as $a) {
-            $p = $byAccount[$a->id] ?? [];
-            $n = fn (array $phases): int => array_sum(array_map(fn ($x) => $p[$x] ?? 0, $phases));
+            $row = $byAccount[$a->id] ?? null;
             $cards[] = [
                 'courier' => $a->courier,
                 'name' => $a->label,
                 'account' => $a,
-                'to_ship' => $n(Tabs::PHASES['to_ship']),
-                'delivered' => $n(['delivered']),
-                'to_handover' => $n(Tabs::CHIPS['to_handover']),
-                'shipping' => $n(['in_transit']),
-                'failed' => $n(['failed']),
+                'active' => (int) ($row->active ?? 0),
+                'delivered' => (int) ($row->delivered ?? 0),
                 'cod_unpaid' => self::money((int) ($cod[$a->id] ?? 0)),
             ];
         }
@@ -52,8 +45,7 @@ class CourierCards
         $have = $accounts->pluck('courier')->all();
         foreach (self::COURIERS as $key => $label) {
             if (! in_array($key, $have, true)) {
-                $cards[] = ['courier' => $key, 'name' => $label, 'account' => null, 'to_ship' => 0, 'delivered' => 0,
-                    'to_handover' => 0, 'shipping' => 0, 'failed' => 0, 'cod_unpaid' => '0.00'];
+                $cards[] = ['courier' => $key, 'name' => $label, 'account' => null, 'active' => 0, 'delivered' => 0, 'cod_unpaid' => '0.00'];
             }
         }
 

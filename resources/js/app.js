@@ -71,11 +71,11 @@ Alpine.data('fulfillmentPoll', (config) => ({
             }
             const data = await res.json();
             this.counts = data.counts;
-            const phases = data.phases && typeof data.phases === 'object' ? data.phases : {};
+            const statuses = data.statuses && typeof data.statuses === 'object' ? data.statuses : {};
             const changed = rows.some((r) => {
-                const now = phases[r.dataset.id];
+                const now = statuses[r.dataset.id];
 
-                return typeof now === 'string' && now !== '' && now !== r.dataset.phase;
+                return typeof now === 'string' && now !== '' && now !== r.dataset.status;
             });
             if (changed && !this.$root.querySelector('input[name="ids[]"]:checked')) {
                 window.location.reload();

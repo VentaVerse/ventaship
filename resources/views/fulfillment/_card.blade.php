@@ -17,14 +17,9 @@
             <x-ui.badge :tone="$check[1]" class="fl-card__badge">{{ $check[0] }}</x-ui.badge>
         </header>
         <div class="fl-card__stats">
-            <div class="fl-big x-num">{{ $card['to_ship'] }}<small>To ship</small></div>
+            <div class="fl-big x-num">{{ $card['active'] }}<small>Active</small></div>
             <div class="fl-big x-num {{ $card['delivered'] === 0 ? 'is-clear' : '' }}">{{ $card['delivered'] }}<small>Delivered</small></div>
         </div>
-        <dl class="fl-card__mid">
-            <div><dt>To handover</dt><dd class="x-num">{{ $card['to_handover'] }}</dd></div>
-            <div><dt>Shipping</dt><dd class="x-num">{{ $card['shipping'] }}</dd></div>
-            <div><dt>Failed</dt><dd class="x-num">{{ $card['failed'] }}</dd></div>
-        </dl>
         <div class="fl-card__cod"><span>COD unpaid</span><b class="x-num">{{ \App\Support\Money::peso($card['cod_unpaid']) }}</b></div>
     </article>
 @else

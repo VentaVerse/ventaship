@@ -34,26 +34,31 @@ class CourierCardsTest extends TestCase
         $this->assertSame([$spxA->id, $spxB->id], [$cards[1]['account']->id, $cards[2]['account']->id]);
         $this->assertNull($cards[0]['account']);
         $this->assertNull($cards[3]['account']);
-        $this->assertSame(0, $cards[0]['to_ship']);
+        $this->assertSame(0, $cards[0]['active']);
         $this->assertSame('0.00', $cards[0]['cod_unpaid']);
     }
 
-    public function test_counts_per_account(): void
+    public function test_cards_show_active_delivered_cod_unpaid(): void
     {
         $a = CourierAccount::factory()->create(['courier' => 'quadx']);
         $b = CourierAccount::factory()->create(['courier' => 'quadx']);
-        foreach (['draft', 'attention', 'booking', 'to_handover', 'in_transit', 'in_transit', 'failed', 'delivered', 'cancelled'] as $p) {
+        foreach (['draft', 'attention', 'booking', 'to_handover', 'in_transit', 'in_transit', 'failed'] as $p) {
             $this->ship($a, $p);
         }
+        $this->ship($a, 'delivered');
+        $this->ship($a, 'cancelled');
+        $this->ship($a, 'returning', ['terminal_at' => now()]);
         $this->ship($b, 'delivered');
+        $this->ship($a, 'in_transit', ['payment_state' => 'cod_unpaid', 'cod_amount' => 10]);
 
         $card = collect(CourierCards::all())->first(fn ($c) => $c['account']?->id === $a->id);
 
-        $this->assertSame(4, $card['to_ship']);
-        $this->assertSame(2, $card['to_handover']);
-        $this->assertSame(2, $card['shipping']);
-        $this->assertSame(1, $card['failed']);
+        $this->assertSame(8, $card['active']);
         $this->assertSame(1, $card['delivered']);
+        $this->assertSame('10.00', $card['cod_unpaid']);
+        $this->assertArrayNotHasKey('to_handover', $card);
+        $this->assertArrayNotHasKey('shipping', $card);
+        $this->assertArrayNotHasKey('failed', $card);
     }
 
     public function test_cod_unpaid_excludes_cancelled_and_uses_cod_amount(): void

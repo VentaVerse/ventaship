@@ -1,6 +1,7 @@
 @php
     use App\Fulfillment\DisplayPhase;
     use App\Fulfillment\ShipmentList;
+    use App\Fulfillment\StatusFilter;
     use App\Shipments\TrackingLink;
     use App\Support\Money;
 
@@ -18,19 +19,19 @@
         'cod_void' => ['COD · Void', 'mute'],
         default => ['Prepaid', 'mute'],
     };
-    $phases = [
-        'draft' => ['Draft', 'mute'], 'booking' => ['Booking', 'cool'], 'attention' => ['Needs attention', 'attn'],
-        'to_handover' => ['To handover', 'cool'], 'in_transit' => ['Shipping', 'cool'], 'delivered' => ['Delivered', 'good'],
-        'failed' => ['Failed', 'bad'], 'lost_damaged' => ['Lost / damaged', 'bad'], 'returning' => ['Returning', 'attn'],
-        'cancelled' => ['Cancelled', 'mute'],
+    $tones = [
+        'draft' => 'mute', 'booking' => 'cool', 'attention' => 'attn', 'to_handover' => 'cool', 'in_transit' => 'cool',
+        'delivered' => 'good', 'failed' => 'bad', 'lost_damaged' => 'bad', 'returning' => 'attn', 'cancelled' => 'mute',
     ];
-    [$phaseLabel, $phaseTone] = $phases[$phase] ?? [ucfirst(str_replace('_', ' ', $phase)), 'mute'];
+    $statusTone = $tones[$phase] ?? 'mute';
+    $statusKey = StatusFilter::keyFor($shipment);
+    $statusLabel = StatusFilter::labelFor($shipment);
     $tracking = $shipment->tracking_number ? TrackingLink::for($shipment) : null;
     $courierName = $shipment->courier ? \App\Fulfillment\Couriers::name($shipment->courier) : null;
     $service = $shipment->service ? \Illuminate\Support\Str::title(str_replace('_', ' ', $shipment->service)) : null;
     $refs = collect([$shipment->courier_ref, $shipment->client_reference])->filter()->implode(' · ');
 @endphp
-<div class="fl-row" data-id="{{ $shipment->public_id }}" data-phase="{{ $phase }}">
+<div class="fl-row" data-id="{{ $shipment->public_id }}" data-status="{{ $statusKey }}">
     <input type="checkbox" class="fl-row__check" name="ids[]" value="{{ $shipment->public_id }}" aria-label="Select {{ $name ?: 'shipment' }}">
     <div>
         <div class="fl-row__name {{ $name ? '' : 'is-removed' }}">{{ $name ?: 'Removed' }}</div>
@@ -54,10 +55,9 @@
         <x-ui.badge :tone="$pay[1]">{{ $pay[0] }}</x-ui.badge>
     </div>
     <div class="fl-row__end">
+        <x-ui.badge :tone="$statusTone">{{ $statusLabel }}</x-ui.badge>
         @if($shipment->state === 'draft' && Route::has('shipments.book'))
             <x-ui.button size="sm" variant="primary" type="submit" form="book-{{ $shipment->public_id }}">Book</x-ui.button>
-        @else
-            <x-ui.badge :tone="$phaseTone">{{ $phaseLabel }}</x-ui.badge>
         @endif
         <span class="fl-row__src">{{ ShipmentList::sourceLabel($shipment) }}</span>
     </div>

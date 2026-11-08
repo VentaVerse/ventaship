@@ -35,19 +35,19 @@ class FulfillmentPageTest extends TestCase
         ], $over));
     }
 
-    public function test_page_renders_cards_tabs_and_rows(): void
+    public function test_page_renders_cards_views_and_rows(): void
     {
         $this->ship('to_handover', [
-            'courier_ref' => 'VS-24-00182', 'payment_method' => 'cod', 'payment_state' => 'cod_unpaid',
+            'courier_ref' => 'VS-24-00182', 'state' => 'booked', 'payment_method' => 'cod', 'payment_state' => 'cod_unpaid',
             'cod_amount' => '1240.00', 'total' => '1500.00',
             'recipient' => ['first_name' => 'Maria', 'last_name' => 'Santos', 'city' => 'Pasig City'],
             'items_count' => 2,
         ]);
 
         $this->get('/')->assertOk()
-            ->assertSeeText(['Fulfillment', 'All', 'Unpaid', 'To ship', 'Shipping', 'Failed', 'Lost & damaged', 'Delivered', 'Returning', 'Cancelled'])
+            ->assertSeeText(['Shipments', 'All', 'Active', 'Finished', 'All statuses'])
             ->assertSeeText(['QuadX', 'Live', 'Connected', 'LBC', 'No account'])
-            ->assertSeeText(['VS-24-00182', 'Maria Santos', 'Pasig City', '2 items', '₱1,240.00', 'COD · Unpaid', 'To handover', 'VentaCart Pro'])
+            ->assertSeeText(['VS-24-00182', 'Maria Santos', 'Pasig City', '2 items', '₱1,240.00', 'COD · Unpaid', 'Booked', 'VentaCart Pro'])
             ->assertDontSee('Connect LBC');
     }
 
@@ -55,17 +55,17 @@ class FulfillmentPageTest extends TestCase
     {
         $this->ship('delivered', ['recipient' => null, 'pii_purged_at' => now()]);
 
-        $this->get('/?tab=delivered')->assertOk()->assertSeeText('Removed');
+        $this->get('/?view=finished')->assertOk()->assertSeeText('Removed');
     }
 
     public function test_pagination_keeps_filters(): void
     {
         Shipment::factory()->count(51)->create([
-            'client_app_id' => null, 'source' => 'manual', 'phase' => 'draft', 'courier_account_id' => $this->account->id,
+            'client_app_id' => null, 'source' => 'manual', 'phase' => 'draft', 'state' => 'draft', 'courier_account_id' => $this->account->id,
         ]);
 
-        $html = $this->get('/?tab=to_ship&chip=to_pack&source=manual')->assertOk()->getContent();
-        $this->assertStringContainsString('tab=to_ship&amp;chip=to_pack&amp;source=manual&amp;page=2', $html);
+        $html = $this->get('/?view=active&status=ventaship:draft&source=manual')->assertOk()->getContent();
+        $this->assertStringContainsString('view=active&amp;status=ventaship%3Adraft&amp;source=manual&amp;page=2', $html);
     }
 
     public function test_connect_button_hidden_without_accounts_route(): void
@@ -91,19 +91,45 @@ class FulfillmentPageTest extends TestCase
         $this->assertStringNotContainsString('book-'.$booked->public_id, $html);
     }
 
-    public function test_poll_returns_counts_and_phases(): void
+    public function test_page_title_and_nav_say_shipments(): void
     {
-        $a = $this->ship('draft');
-        $b = $this->ship('delivered');
+        $this->get('/')->assertOk()
+            ->assertSee('<title>Shipments', false)
+            ->assertSeeText('Shipments')
+            ->assertDontSeeText('Fulfillment');
+    }
+
+    public function test_old_tab_query_is_ignored(): void
+    {
+        $this->ship('delivered', ['recipient' => ['first_name' => 'Zed', 'last_name' => 'Q']]);
+        $this->ship('draft', ['state' => 'draft', 'recipient' => ['first_name' => 'Amy', 'last_name' => 'W']]);
+
+        $this->get('/?tab=failed&chip=to_pack')->assertOk()->assertSeeText(['Zed Q', 'Amy W']);
+    }
+
+    public function test_filter_bar_has_views_and_status_select_with_counts(): void
+    {
+        $this->ship('in_transit', ['courier' => 'quadx', 'courier_status' => 'out_for_delivery']);
+        $this->ship('delivered', ['courier' => 'quadx', 'courier_status' => 'delivered']);
+
+        $this->get('/?view=active')->assertOk()
+            ->assertSeeText(['QuadX · Out for delivery (1)'])
+            ->assertSee('name="status"', false)
+            ->assertSee('data-status="quadx:out_for_delivery"', false)
+            ->assertDontSee('data-status="quadx:delivered"', false);
+    }
+
+    public function test_poll_returns_status_keys_without_nulls(): void
+    {
+        $a = $this->ship('draft', ['state' => 'draft', 'courier_status' => null]);
+        $b = $this->ship('delivered', ['courier' => 'quadx', 'courier_status' => 'delivered']);
 
         $this->getJson('/fulfillment/poll?ids='.$a->public_id.','.$b->public_id.',shp_nope')
             ->assertOk()
-            ->assertJsonPath('phases.'.$a->public_id, 'draft')
-            ->assertJsonPath('phases.'.$b->public_id, 'delivered')
-            ->assertJsonMissingPath('phases.shp_nope')
-            ->assertJsonPath('counts.to_ship', 1)
-            ->assertJsonPath('counts.delivered', 1)
-            ->assertJsonPath('counts.to_pack', 1);
+            ->assertJsonPath('statuses.'.$a->public_id, 'ventaship:draft')
+            ->assertJsonPath('statuses.'.$b->public_id, 'quadx:delivered')
+            ->assertJsonMissingPath('statuses.shp_nope')
+            ->assertJsonPath('counts', ['all' => 2, 'active' => 1, 'finished' => 1]);
     }
 
     public function test_poll_is_sent_as_xhr_and_never_becomes_the_previous_url(): void
@@ -121,7 +147,7 @@ class FulfillmentPageTest extends TestCase
         $rows = Shipment::factory()->count(120)->create(['courier_account_id' => $this->account->id, 'phase' => 'draft']);
 
         $res = $this->getJson('/fulfillment/poll?ids='.$rows->pluck('public_id')->implode(','))->assertOk();
-        $this->assertCount(100, $res->json('phases'));
+        $this->assertCount(100, $res->json('statuses'));
     }
 
     public function test_guest_cannot_poll(): void
