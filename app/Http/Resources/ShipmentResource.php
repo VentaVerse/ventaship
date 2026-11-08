@@ -2,16 +2,13 @@
 
 namespace App\Http\Resources;
 
-use App\Couriers\Contracts\ProvidesPublicTrackingUrl;
-use App\Couriers\CourierOrder;
-use App\Couriers\CourierRegistry;
 use App\Models\Shipment;
 use App\Shipments\PhaseResolver;
+use App\Shipments\TrackingLink;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Log;
-use Throwable;
 
 /**
  * One shipment as clients see it, in API answers and in webhook `data` (base plan §2 "Shipment resource").
@@ -55,7 +52,7 @@ class ShipmentResource extends JsonResource
             'courier_status' => $s->courier_status,
             'courier_status_label' => $this->statusLabel($s),
             'tracking_number' => $s->tracking_number,
-            'tracking_url' => $this->trackingUrl($s),
+            'tracking_url' => TrackingLink::for($s),
             'label_available' => $s->state === 'booked' && $s->tracking_number !== null,
             'method' => $s->method,
             'service' => $s->service,
@@ -114,29 +111,5 @@ class ShipmentResource extends JsonResource
         }
 
         return app(PhaseResolver::class)->label($s->courier, $s->courier_status);
-    }
-
-    /** The courier's public tracker wins over its API links (owner ruling 2026-09-03); never fatal to the answer. */
-    private function trackingUrl(Shipment $s): ?string
-    {
-        if ($s->tracking_number === null || $s->courier === null || ! CourierRegistry::has($s->courier)) {
-            return null;
-        }
-
-        try {
-            $courier = CourierRegistry::describe($s->courier);
-            if ($courier instanceof ProvidesPublicTrackingUrl) {
-                $url = $courier->publicTrackingUrl($s->tracking_number, is_array($s->meta) ? $s->meta : []);
-                if ($url !== null) {
-                    return $url;
-                }
-            }
-
-            return $courier->trackingLinks(CourierOrder::fromApi($s))[0]['url'] ?? null;
-        } catch (Throwable $e) {
-            Log::warning('Tracking URL could not be built', ['shipment' => $s->public_id, 'error' => $e->getMessage()]);
-
-            return null;
-        }
     }
 }
