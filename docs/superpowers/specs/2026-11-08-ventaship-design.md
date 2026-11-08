@@ -264,3 +264,39 @@ The courier accent shows on the logo tile only, with no coloured card border.
 - The CSV template columns. Start from the manual entry fields: recipient name, phone, address lines, barangay, city, province, postcode, COD or prepaid, COD amount, declared value, item summary, weight, courier and service. Add a downloadable sample.
 - Dark-mode token values.
 - Courier-health metrics, taken from `courier_calls` and `webhook_receipts`.
+
+## 9. Direction change (2026-11-08, owner): courier dashboard, not a fulfilment process
+
+**Ventaship is the courier dashboard and gateway.** It is what you would use if you logged into SPX, LBC and QuadX directly, but one screen for all three, plus the API. It is **not** a fourth fulfilment process. VentaSync, VentaCart and VentaCart Pro already have fulfilment processes, and a fourth would be redundant and confusing.
+
+**The platforms keep their own fulfilment.**
+- A platform books through the API.
+- It receives signed webhooks carrying `courier_status`, `courier_status_label` and `phase`.
+- It maps those onto its own order statuses on its own side.
+- The Part 1 API and webhooks are unchanged.
+
+**In Ventaship:**
+- **Shipments page.** One list of bookings. The tabs are plain filters with no workflow: All · Awaiting pickup · In transit · Delivered · Problem · Returned · Cancelled. Courier cards, waybill printing, Cancel and COD amount/state stay.
+- **Add shipment** books on save. The form takes:
+  - customer details
+  - courier account
+  - payment method (COD or prepaid)
+  - parcel and items
+  - the sender (pickup), defaulted from Settings
+- **There is no "book later" in the UI.** A shipment the courier refused stays editable, and you rebook it.
+- **CRUD:**
+  - Edit and delete are allowed only while nothing exists at the courier: a draft (from the API) or a failed booking.
+  - A booked shipment is cancelled, never deleted.
+- **No background processing on the Pi.** There is no cron, scheduler or queue workers (owner rule). Anything clicked in the UI (Add/Book, Cancel) talks to the courier during the request. API-created work waits in the queue until a "Run waiting jobs" button runs it (tracker t26). Status polling runs from a "Check statuses now" button (t25).
+
+**Dropped:**
+- the Status mapping screen and its seeder (D10 item, tracker t24)
+- the fulfilment-style tabs and chips from D5/D6: To pack, To handover, Unpaid
+
+Ventaship keeps its built-in courier→phase defaults only to give platforms the shared `phase`. The owner's 2026-11-08 choices for those defaults:
+- **SPX:** 5002 Damaged and 5003 Lost → `lost_damaged`; 3001 On Hold → `attention`.
+- **QuadX:** the owner's 31 statuses.
+
+The courier references live in `docs/couriers/`.
+
+**Superseded by this section:** D5's tab list, all of D6, and the D10 items for Status mapping and the shipment drawer. The drawer is replaced by a shipment detail page.
