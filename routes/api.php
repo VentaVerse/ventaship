@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\CourierAccountsController;
 use App\Http\Controllers\Api\V1\CouriersController;
 use App\Http\Controllers\Api\V1\CoverageController;
+use App\Http\Controllers\Api\V1\LabelsController;
 use App\Http\Controllers\Api\V1\PickupSlotsController;
 use App\Http\Controllers\Api\V1\PingController;
 use App\Http\Controllers\Api\V1\QuotesController;
@@ -28,6 +29,8 @@ Route::middleware(['client.auth', 'throttle:api'])->group(function () {
     Route::get('shipments/{shipment}', [ShipmentsController::class, 'show']);
     Route::post('shipments/{shipment}/cancel', [ShipmentsController::class, 'cancel'])->middleware('idempotent');
     Route::get('shipments/{shipment}/events', [ShipmentsController::class, 'events']);
+    Route::get('shipments/{shipment}/label', [LabelsController::class, 'show']);
+    Route::post('labels', [LabelsController::class, 'store'])->middleware('throttle:api-labels');
     Route::post('shipments/{shipment}/refresh', [ShipmentsController::class, 'refresh']);
     Route::post('shipments/{shipment}/submit', [ShipmentsController::class, 'submit'])->middleware(['throttle:api-create', 'idempotent']);
 });

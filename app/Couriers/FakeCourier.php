@@ -34,6 +34,11 @@ final class FakeCourier implements Courier
 
     private ?string $pdf = null;
 
+    private ?string $labelUrl = null;
+
+    /** @var array<string, mixed>|null a raw printLabel() answer, returned as is */
+    private ?array $labelAnswer = null;
+
     /** @var array<string, mixed> extra keys merged into a successful createShipment() answer */
     private array $bookingExtra = [];
 
@@ -98,6 +103,22 @@ final class FakeCourier implements Courier
     public function label(string $pdfBytes): self
     {
         $this->pdf = $pdfBytes;
+
+        return $this;
+    }
+
+    /** printLabel() answers a provider link (as QuadX does) that the caller must download itself. */
+    public function labelAt(string $url): self
+    {
+        $this->labelUrl = $url;
+
+        return $this;
+    }
+
+    /** @param  array<string, mixed>  $answer */
+    public function labelAnswer(array $answer): self
+    {
+        $this->labelAnswer = $answer;
 
         return $this;
     }
@@ -241,6 +262,12 @@ final class FakeCourier implements Courier
     {
         $this->record(__FUNCTION__, [$trackingNumber, $format]);
 
+        if ($this->labelAnswer !== null) {
+            return $this->labelAnswer;
+        }
+        if ($this->labelUrl !== null) {
+            return ['success' => true, 'url' => $this->labelUrl, 'manifest_url' => null];
+        }
         if ($this->pdf === null) {
             return ['success' => false, 'error' => 'The test courier has no label.'];
         }

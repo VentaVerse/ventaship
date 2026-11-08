@@ -859,7 +859,7 @@ class SpxFulfillment implements Courier
         if (!$disk->exists($path)) {
             $stored = $this->fetchAndStoreLabel($order, $path);
             if (!$stored['ok']) {
-                return ['success' => false, 'error' => $stored['error']];
+                return ['success' => false, 'error' => $stored['error']] + (isset($stored['unsafe']) ? ['unsafe' => true] : []);
             }
         }
 
@@ -939,6 +939,13 @@ class SpxFulfillment implements Courier
         if (empty($awbLink)) {
             $desc = $result['description'] ?? 'SPX could not generate a label for this order.';
             return ['ok' => false, 'error' => "SPX label generation failed: {$desc}"];
+        }
+
+        // The link comes out of SPX's answer: only an https link on SPX's own hosts is ever fetched.
+        if (!\App\Couriers\Support\LabelHosts::allows('spx', $awbLink)) {
+            Log::warning('SPX label link refused: host not on the allow-list', ['host' => parse_url((string) $awbLink, PHP_URL_HOST)]);
+
+            return ['ok' => false, 'unsafe' => true, 'error' => 'SPX returned a label link that is not on an SPX host.'];
         }
 
         try {

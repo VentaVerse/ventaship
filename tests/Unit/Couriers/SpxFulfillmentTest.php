@@ -950,6 +950,27 @@ class SpxFulfillmentTest extends TestCase
         Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v1/order/batch_get_shipping_label'));
     }
 
+    public function test_print_label_refuses_an_awb_link_off_the_spx_allow_list(): void
+    {
+        $this->configureAccountCredentials();
+        Storage::fake('local');
+        $this->makeSpxOrder('SPEPH000000000009');
+
+        Http::fake([
+            '*/v2/order/batch_get_shipping_label*' => Http::response([
+                'ret_code' => 0, 'message' => 'success.',
+                'data' => ['batch_no' => 207982800897461, 'task_status' => 4, 'awb_link' => 'https://evil.example/abc.pdf'],
+            ]),
+        ]);
+
+        $result = $this->courier()->printLabel('SPEPH000000000009', 'zebra');
+
+        $this->assertFalse($result['success']);
+        $this->assertTrue($result['unsafe']);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'evil.example'));
+        Storage::disk('local')->assertMissing('labels/spx/SPEPH000000000009.pdf');
+    }
+
     public function test_print_label_serves_the_cached_file_on_a_second_request_without_any_http_call(): void
     {
         $this->configureAccountCredentials();

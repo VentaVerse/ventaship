@@ -124,7 +124,7 @@ class ShipmentQueriesTest extends TestCase
         $this->assertGreaterThan(0, OutgoingEvent::query()->where('type', 'shipment.status_changed')->count());
 
         // A new timestamp: the same signature twice is refused as a replay.
-        $this->post("/api/v1/shipments/{$s->public_id}/refresh", [], ['X-Timestamp' => (string) (time() + 1)])
+        $this->post("/api/v1/shipments/{$s->public_id}/refresh", [], ['X-Timestamp' => $this->uniqueTimestamp()])
             ->assertStatus(429)
             ->assertJsonPath('code', 'rate_limited')
             ->assertJsonPath('retryable', true)
@@ -163,6 +163,7 @@ class ShipmentQueriesTest extends TestCase
 
         $res = $this->signedJson('POST', '/api/v1/shipments?wait=20', $this->shipmentBody(['account_id' => $account->public_id]), [
             'Idempotency-Key' => (string) Str::uuid(),
+            'X-Timestamp' => $this->uniqueTimestamp(),
         ], $this->client);
 
         $res->assertStatus(202)
@@ -178,6 +179,7 @@ class ShipmentQueriesTest extends TestCase
 
         $res = $this->signedJson('POST', '/api/v1/shipments?wait=999', $this->shipmentBody(), [
             'Idempotency-Key' => (string) Str::uuid(),
+            'X-Timestamp' => $this->uniqueTimestamp(),
         ], $this->client);
 
         $res->assertStatus(202)->assertJsonPath('data.state', 'queued');
@@ -215,11 +217,11 @@ class ShipmentQueriesTest extends TestCase
 
     public function get($uri, array $headers = [])
     {
-        return $this->signedJson('GET', $uri, [], $headers, $this->client);
+        return $this->signedJson('GET', $uri, [], $headers + ['X-Timestamp' => $this->uniqueTimestamp()], $this->client);
     }
 
     public function post($uri, array $data = [], array $headers = [])
     {
-        return $this->signedJson('POST', $uri, $data, $headers, $this->client);
+        return $this->signedJson('POST', $uri, $data, $headers + ['X-Timestamp' => $this->uniqueTimestamp()], $this->client);
     }
 }
