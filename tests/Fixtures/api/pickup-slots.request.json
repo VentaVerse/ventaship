@@ -1,0 +1,11 @@
+{
+    "courier": "lbc",
+    "pickup": {
+        "address_1": "5 Shaw Blvd",
+        "barangay": "Wack-Wack",
+        "city": "Mandaluyong",
+        "state": "Metro Manila",
+        "postcode": "1550"
+    },
+    "parcel": {"type": "box", "weight_kg": 1.2}
+}

@@ -1,0 +1,49 @@
+{
+    "courier": "quadx",
+    "client_reference": "4211",
+    "order_label": "#4211",
+    "method": "pickup",
+    "service": "next_day",
+    "parcel": {
+        "type": "box",
+        "weight_kg": 1.2,
+        "length_cm": 20,
+        "width_cm": 15,
+        "height_cm": 10
+    },
+    "payment": {
+        "method": "cod",
+        "cod_amount": 1290.00,
+        "declared_value": 1290.00
+    },
+    "pickup": {
+        "contact_name": "Venta Warehouse",
+        "contact_phone": "09181234567",
+        "address_1": "5 Shaw Blvd",
+        "barangay": "Wack-Wack",
+        "city": "Mandaluyong",
+        "state": "Metro Manila",
+        "postcode": "1550",
+        "country": "PH"
+    },
+    "recipient": {
+        "first_name": "Juan",
+        "last_name": "Dela Cruz",
+        "phone": "+63 917 123 4567",
+        "email": "juan@example.com",
+        "address_1": "1 Rizal St",
+        "barangay": "Poblacion",
+        "city": "Makati",
+        "state": "Metro Manila",
+        "postcode": "1210",
+        "country": "PH"
+    },
+    "items": [
+        {"name": "Blue Tee", "quantity": 2, "price": 500.00, "weight_kg": 0.4},
+        {"name": "Cap", "quantity": 1, "price": 200.00, "weight_kg": 0.4}
+    ],
+    "total": 1290.00,
+    "subtotal": 1200.00,
+    "note": "Call before delivery",
+    "metadata": {"shop_id": "501", "order_id": 4211}
+}

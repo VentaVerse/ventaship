@@ -1,0 +1,8 @@
+{
+    "courier": "quadx",
+    "client_reference": "4212",
+    "payment": {"method": "cod", "cod_amount": "1,290.00"},
+    "pickup": {"contact_name": "Venta Warehouse", "contact_phone": "09181234567", "address_1": "5 Shaw Blvd", "city": "Mandaluyong", "state": "Metro Manila"},
+    "recipient": {"first_name": "Juan", "phone": "028123456", "address_1": "1 Rizal St", "city": "Makati", "state": "Metro Manila"},
+    "items": [{"name": "Blue Tee", "quantity": 1}]
+}

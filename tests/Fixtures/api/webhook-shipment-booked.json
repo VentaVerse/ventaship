@@ -1,0 +1,54 @@
+{
+    "id": "evt_01m6ws8t78527apmvv67den8je",
+    "type": "shipment.booked",
+    "created_at": "2026-11-08T09:00:02+08:00",
+    "sequence": 2,
+    "app": "app_01m6ws8t5ha0d1kyd1c8qxq4sq",
+    "data": {
+        "shipment": {
+            "id": "shp_01m6ws8t67jsavfxwwv98f8a12",
+            "client_reference": "4211",
+            "order_label": "#4211",
+            "source": "api",
+            "account": {
+                "id": "acc_01m6ws8t5jz37691krkab4ph1f",
+                "courier": "quadx",
+                "label": "QuadX main"
+            },
+            "courier": "quadx",
+            "state": "booked",
+            "cancel_state": null,
+            "phase": "to_handover",
+            "courier_status": "for_pickup",
+            "courier_status_label": "For pickup",
+            "tracking_number": "QX-TEST-0001",
+            "tracking_url": "https://app.staging.gogoxpress.com/track/QX-TEST-0001",
+            "label_available": true,
+            "method": "pickup",
+            "service": "next_day",
+            "pickup_date": null,
+            "fee": {
+                "amount": "77.00",
+                "currency": "PHP"
+            },
+            "payment_method": "cod",
+            "payment_state": "cod_unpaid",
+            "cod_amount": "1290.00",
+            "declared_value": "1290.00",
+            "items_count": 3,
+            "items_summary": "Blue Tee ×2, Cap ×1",
+            "notice": null,
+            "error": null,
+            "needs_attention": false,
+            "attention_reason": null,
+            "created_at": "2026-11-08T09:00:00+08:00",
+            "booked_at": "2026-11-08T09:00:02+08:00",
+            "updated_at": "2026-11-08T09:00:02+08:00",
+            "metadata": {
+                "shop_id": "501",
+                "order_id": 4211
+            }
+        },
+        "event": null
+    }
+}

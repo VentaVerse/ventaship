@@ -1,0 +1,215 @@
+{
+    "data": [
+        {
+            "key": "lbc",
+            "name": "LBC",
+            "methods": [
+                "pickup"
+            ],
+            "cancel": false,
+            "pickup_slots": true,
+            "quotes": true,
+            "coverage": true,
+            "webhooks": false,
+            "poll_only": true,
+            "label_formats": [
+                "pdf"
+            ],
+            "service_types": [
+                {
+                    "value": "REGULAR",
+                    "label": "Rider pickup"
+                }
+            ],
+            "parcel_options": [
+                {
+                    "value": "16",
+                    "label": "Own box"
+                },
+                {
+                    "value": "165",
+                    "label": "Kilobox Mini"
+                },
+                {
+                    "value": "6",
+                    "label": "Kilobox Small"
+                },
+                {
+                    "value": "164",
+                    "label": "Kilobox Slim"
+                },
+                {
+                    "value": "63",
+                    "label": "Kilobox Medium"
+                },
+                {
+                    "value": "7",
+                    "label": "Kilobox Large"
+                },
+                {
+                    "value": "64",
+                    "label": "Kilobox XL"
+                },
+                {
+                    "value": "45",
+                    "label": "N-Pack Small"
+                },
+                {
+                    "value": "8",
+                    "label": "N-Pack Large"
+                },
+                {
+                    "value": "62",
+                    "label": "N-Pouch SS"
+                },
+                {
+                    "value": "3",
+                    "label": "N-Pouch Regular"
+                },
+                {
+                    "value": "61",
+                    "label": "N-Pouch XL"
+                },
+                {
+                    "value": "9",
+                    "label": "X-Pouch"
+                },
+                {
+                    "value": "2",
+                    "label": "Plastic"
+                },
+                {
+                    "value": "4",
+                    "label": "Crate"
+                },
+                {
+                    "value": "79",
+                    "label": "Piece"
+                },
+                {
+                    "value": "80",
+                    "label": "Sack"
+                }
+            ],
+            "shipping_payment_options": [
+                {
+                    "value": "account",
+                    "label": "Charged to my LBC account"
+                }
+            ]
+        },
+        {
+            "key": "quadx",
+            "name": "QuadX",
+            "methods": [
+                "pickup"
+            ],
+            "cancel": true,
+            "pickup_slots": false,
+            "quotes": true,
+            "coverage": true,
+            "webhooks": true,
+            "poll_only": false,
+            "label_formats": [
+                "zebra",
+                "fuji"
+            ],
+            "service_types": [
+                {
+                    "value": "same_day_pickup",
+                    "label": "Same Day Pickup"
+                },
+                {
+                    "value": "next_day",
+                    "label": "Next Day Pickup"
+                }
+            ],
+            "parcel_options": [
+                {
+                    "value": "small-pouch",
+                    "label": "White Small Pouch"
+                },
+                {
+                    "value": "medium-pouch",
+                    "label": "Blue Medium Pouch"
+                },
+                {
+                    "value": "big-pouch",
+                    "label": "Red Large Pouch"
+                },
+                {
+                    "value": "box",
+                    "label": "Box"
+                },
+                {
+                    "value": "oversized",
+                    "label": "Oversized"
+                }
+            ],
+            "shipping_payment_options": [
+                {
+                    "value": "cash",
+                    "label": "I'll shoulder it: Cash on pickup"
+                },
+                {
+                    "value": "gcash",
+                    "label": "I'll shoulder it: GCash at pickup"
+                },
+                {
+                    "value": "net_off",
+                    "label": "I'll shoulder it: Deduct from my remittance / bill me"
+                }
+            ]
+        },
+        {
+            "key": "spx",
+            "name": "SPX",
+            "methods": [
+                "pickup"
+            ],
+            "cancel": true,
+            "pickup_slots": true,
+            "quotes": true,
+            "coverage": true,
+            "webhooks": true,
+            "poll_only": false,
+            "label_formats": [
+                "pdf"
+            ],
+            "service_types": [
+                {
+                    "value": "standard",
+                    "label": "Standard Service"
+                }
+            ],
+            "parcel_options": [
+                {
+                    "value": "small",
+                    "label": "Small (25×20×10cm, up to 3kg)"
+                },
+                {
+                    "value": "medium",
+                    "label": "Medium (35×25×15cm, up to 5kg)"
+                },
+                {
+                    "value": "large",
+                    "label": "Large (45×35×20cm, up to 10kg)"
+                },
+                {
+                    "value": "custom",
+                    "label": "Custom dimensions…"
+                }
+            ],
+            "shipping_payment_options": [
+                {
+                    "value": "sender_pay",
+                    "label": "I'll shoulder it: Sender pays the shipping fee"
+                },
+                {
+                    "value": "receiver_pay",
+                    "label": "Customer pays the shipping fee (Receiver pay)"
+                }
+            ]
+        }
+    ]
+}

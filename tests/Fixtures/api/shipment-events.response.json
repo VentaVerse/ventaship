@@ -1,0 +1,28 @@
+{
+    "data": [
+        {
+            "courier_status": "for_pickup",
+            "label": "For pickup",
+            "phase": "to_handover",
+            "occurred_at": "2026-11-08T09:00:02+08:00",
+            "remarks": null,
+            "source": "system"
+        },
+        {
+            "courier_status": "picked_up",
+            "label": "Picked up",
+            "phase": "in_transit",
+            "occurred_at": "2026-11-08T10:00:00+08:00",
+            "remarks": "Picked up by rider",
+            "source": "webhook"
+        },
+        {
+            "courier_status": "in_transit",
+            "label": "In transit",
+            "phase": "in_transit",
+            "occurred_at": "2026-11-08T13:00:00+08:00",
+            "remarks": "Departed sorting hub",
+            "source": "webhook"
+        }
+    ]
+}

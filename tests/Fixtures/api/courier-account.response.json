@@ -1,0 +1,26 @@
+{
+    "data": {
+        "id": "acc_01m6ws8t06hsthfpfmv692k221",
+        "courier": "quadx",
+        "label": "QuadX main",
+        "mode": "staging",
+        "status": "active",
+        "is_default": true,
+        "issues": [],
+        "capabilities": {
+            "methods": [
+                "pickup"
+            ],
+            "cancel": true,
+            "pickup_slots": false,
+            "quotes": true,
+            "coverage": true,
+            "webhooks": true,
+            "poll_only": false,
+            "label_formats": [
+                "zebra",
+                "fuji"
+            ]
+        }
+    }
+}

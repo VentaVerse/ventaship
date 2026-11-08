@@ -223,6 +223,19 @@ class CreateShipmentTest extends TestCase
             ->assertStatus(422)->assertJsonValidationErrors(['recipient.address_1'], 'errors');
     }
 
+    public function test_parties_codes_is_always_a_json_object(): void
+    {
+        $this->fakeDefaultAccount();
+        $id = $this->create($this->shipmentBody())->assertStatus(202)->json('data.id');
+
+        $body = json_decode((string) $this->signed('GET', "/api/v1/shipments/{$id}?include=parties")->assertOk()->getContent());
+
+        // recipient sent `codes: []`, pickup sent three codes: both are objects on the wire.
+        $this->assertInstanceOf(\stdClass::class, $body->data->recipient->codes);
+        $this->assertSame([], get_object_vars($body->data->recipient->codes));
+        $this->assertSame('1380500000', $body->data->pickup->codes->city);
+    }
+
     public function test_show_hides_parties_unless_asked(): void
     {
         $this->fakeDefaultAccount();

@@ -81,14 +81,24 @@ class ShipmentResource extends JsonResource
         ];
 
         if ($this->parties) {
-            $data['pickup'] = $s->pickup;
-            $data['recipient'] = $s->recipient;
+            $data['pickup'] = $this->party($s->pickup);
+            $data['recipient'] = $this->party($s->recipient);
             $data['items'] = $s->items ?? [];
             $data['note'] = $s->courier_note;
             $data['parcel'] = data_get($s->options, 'parcel');
         }
 
         return $data;
+    }
+
+    /** `codes` is an object on the wire even when empty (stored as an empty PHP array, which would encode as `[]`). */
+    private function party(mixed $party): mixed
+    {
+        if (is_array($party) && array_key_exists('codes', $party) && ($party['codes'] === [] || $party['codes'] === null)) {
+            $party['codes'] = (object) [];
+        }
+
+        return $party;
     }
 
     private function time(?CarbonInterface $at): ?string

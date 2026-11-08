@@ -1,0 +1,8 @@
+{
+    "error": "A live shipment already uses this client_reference.",
+    "code": "active_shipment_exists",
+    "retryable": false,
+    "errors": {
+        "shipment": "shp_01m6ws8tb1bwpeqzhnjjn1swmt"
+    }
+}

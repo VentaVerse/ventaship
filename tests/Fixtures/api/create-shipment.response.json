@@ -1,0 +1,43 @@
+{
+    "data": {
+        "id": "shp_01m6ws8t67jsavfxwwv98f8a12",
+        "client_reference": "4211",
+        "order_label": "#4211",
+        "source": "api",
+        "account": {
+            "id": "acc_01m6ws8t5jz37691krkab4ph1f",
+            "courier": "quadx",
+            "label": "QuadX main"
+        },
+        "courier": "quadx",
+        "state": "queued",
+        "cancel_state": null,
+        "phase": null,
+        "courier_status": null,
+        "courier_status_label": null,
+        "tracking_number": null,
+        "tracking_url": null,
+        "label_available": false,
+        "method": "pickup",
+        "service": "next_day",
+        "pickup_date": null,
+        "fee": null,
+        "payment_method": "cod",
+        "payment_state": "cod_unpaid",
+        "cod_amount": "1290.00",
+        "declared_value": "1290.00",
+        "items_count": 3,
+        "items_summary": "Blue Tee ×2, Cap ×1",
+        "notice": null,
+        "error": null,
+        "needs_attention": false,
+        "attention_reason": null,
+        "created_at": "2026-11-08T09:00:00+08:00",
+        "booked_at": null,
+        "updated_at": "2026-11-08T09:00:00+08:00",
+        "metadata": {
+            "shop_id": "501",
+            "order_id": 4211
+        }
+    }
+}

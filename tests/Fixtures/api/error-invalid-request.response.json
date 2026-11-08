@@ -1,0 +1,15 @@
+{
+    "error": "The request is invalid.",
+    "code": "invalid_request",
+    "retryable": false,
+    "errors": {
+        "payment.cod_amount": [
+            "The payment.cod amount field must be a number.",
+            "The payment.cod amount field must have 0-2 decimal places.",
+            "The payment.cod amount field must be greater than 0."
+        ],
+        "recipient.phone": [
+            "The recipient.phone must be a Philippine mobile number, such as 09171234567."
+        ]
+    }
+}
