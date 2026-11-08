@@ -119,7 +119,6 @@
                         @endforeach
                     </div>
                 @endforeach
-                <p class="x-sr" aria-live="polite" x-text="status"></p>
             </div>
         @endif
 
@@ -146,12 +145,78 @@
             </div>
         @endif
 
-        {{-- Task 5: Webhook block (and LBC tracking series) goes here. --}}
+        @if($webhook)
+            <div class="st-sec">
+                <h2 class="st-h">Webhook</h2>
+                <div class="st-row">
+                    @if($webhook['masked'])
+                        <x-ui.webhook-url :label="'Address for ' . $name" :masked="$webhook['masked']" :revealUrl="route('accounts.reveal', [$account, 'webhook_url'])" />
+                    @else
+                        <div class="fm-field">
+                            <span class="fm-label">Address for {{ $name }}</span>
+                            <div><x-ui.badge tone="attn">Not set</x-ui.badge></div>
+                        </div>
+                    @endif
+                </div>
+                <div class="st-row">
+                    <div class="fm-field">
+                        <span class="fm-label">Public address</span>
+                        <div class="ac-addr">
+                            @if($webhook['base'])
+                                <span class="ac-addr__url">{{ $webhook['base'] }}</span>
+                            @else
+                                <x-ui.badge tone="attn">Not set</x-ui.badge>
+                            @endif
+                            <x-ui.button size="sm" :href="route('settings.edit', ['tab' => 'couriers'])">{{ $webhook['base'] ? 'Change' : 'Set address' }}</x-ui.button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
+
+        @if($blocks !== null)
+            <div class="st-sec">
+                <h2 class="st-h">Number blocks</h2>
+                @if($blocks === [])
+                    <x-ui.empty title="No blocks" />
+                @else
+                    <div class="ac-blocks-wrap">
+                        <table class="ac-blocks">
+                            <thead><tr><th scope="col">First</th><th scope="col">Last</th><th scope="col">Next</th><th scope="col">Remaining</th></tr></thead>
+                            <tbody>
+                                @foreach($blocks as $b)
+                                    <tr>
+                                        <td>{{ $b['first'] }}</td>
+                                        <td>{{ $b['last'] }}</td>
+                                        <td>{{ $b['next'] ?? '–' }}</td>
+                                        <td>{{ number_format($b['remaining']) }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+                <div class="st-row ac-block-add">
+                    <x-ui.field label="First" name="first" for="f-block-first">
+                        <x-ui.input id="f-block-first" name="first" form="series-form" class="st-ctl" value="{{ old('first') }}" inputmode="numeric" maxlength="20" autocomplete="off" />
+                    </x-ui.field>
+                    <x-ui.field label="Last" name="last" for="f-block-last">
+                        <x-ui.input id="f-block-last" name="last" form="series-form" class="st-ctl" value="{{ old('last') }}" inputmode="numeric" maxlength="20" autocomplete="off" />
+                    </x-ui.field>
+                    <x-ui.button type="submit" form="series-form">Add block</x-ui.button>
+                </div>
+            </div>
+        @endif
+
+        <p class="x-sr" aria-live="polite" x-text="status"></p>
 
         <div class="st-bar">
             <x-ui.button :href="route('accounts.show', $account)">Discard</x-ui.button>
             <x-ui.button variant="primary" type="submit">Save</x-ui.button>
         </div>
     </form>
+    @if($blocks !== null)
+        <form id="series-form" method="POST" action="{{ route('accounts.series', $account) }}" novalidate>@csrf</form>
+    @endif
 </section>
 @endsection

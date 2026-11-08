@@ -143,7 +143,14 @@ Alpine.data('credentialField', (config) => ({
         return `0:${String(this.left).padStart(2, '0')}`;
     },
 
+    init() {
+        // A shown value must not survive in a page restored from the back/forward cache.
+        this.onPageHide = () => { if (this.state === 'viewing') { this.rest(); } };
+        window.addEventListener('pagehide', this.onPageHide);
+    },
+
     destroy() {
+        window.removeEventListener('pagehide', this.onPageHide);
         this.stopTimers();
     },
 
@@ -164,12 +171,7 @@ Alpine.data('credentialField', (config) => ({
         this.state = config.isSet ? 'masked' : 'unset';
     },
 
-    async view() {
-        if (this.busy || this.state !== 'masked' || !config.url) {
-            return;
-        }
-        this.busy = true;
-        this.error = '';
+    async fetchValue() {
         try {
             const res = await fetch(config.url, {
                 method: 'POST',
@@ -184,19 +186,53 @@ Alpine.data('credentialField', (config) => ({
             const body = await res.json().catch(() => ({}));
             if (!res.ok || typeof body.value !== 'string') {
                 this.error = res.status === 429 && body.message ? body.message : 'Could not show it.';
+                return null;
+            }
+            return body.value;
+        } catch (e) {
+            this.error = 'Could not show it.';
+            return null;
+        }
+    },
+
+    async view() {
+        if (this.busy || this.state !== 'masked' || !config.url) {
+            return;
+        }
+        this.busy = true;
+        this.error = '';
+        try {
+            const value = await this.fetchValue();
+            if (value === null || this.state !== 'masked') {
                 return;
             }
-            if (this.state !== 'masked') {
-                return;
-            }
-            this.$refs.input.value = body.value;
+            this.$refs.input.value = value;
             this.state = 'viewing';
             this.left = CREDENTIAL_SHOW_MS / 1000;
             this.timer = setTimeout(() => this.hide(), CREDENTIAL_SHOW_MS);
             this.ticker = setInterval(() => { this.left = Math.max(0, this.left - 1); }, 1000);
             this.announce('Shown for 30 seconds');
+        } finally {
+            this.busy = false;
+        }
+    },
+
+    /** Copies the full value; fetches it first (audited like View) when it is not on screen. */
+    async copy() {
+        if (this.busy || !config.url) {
+            return;
+        }
+        this.busy = true;
+        this.error = '';
+        try {
+            const value = this.state === 'viewing' ? this.$refs.input.value : await this.fetchValue();
+            if (value === null) {
+                return;
+            }
+            await navigator.clipboard.writeText(value);
+            this.announce('Copied');
         } catch (e) {
-            this.error = 'Could not show it.';
+            this.error = 'Could not copy it.';
         } finally {
             this.busy = false;
         }

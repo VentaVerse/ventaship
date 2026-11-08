@@ -8,6 +8,7 @@ use App\Couriers\TrackingNumbers\TrackingNumberSeriesService;
 use App\Fulfillment\Couriers;
 use App\Models\AuditEntry;
 use App\Models\CourierAccount;
+use App\Support\Settings;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\DB;
@@ -46,7 +47,7 @@ class CourierAccounts
     {
         $label = trim($label);
         if (! CourierRegistry::has($courier)) {
-            throw new CourierAccountException('Unknown courier. Available: ' . implode(', ', CourierRegistry::keys()) . '.');
+            throw new CourierAccountException('Unknown courier. Available: '.implode(', ', CourierRegistry::keys()).'.');
         }
         if ($label === '' || mb_strlen($label) > 255) {
             throw new CourierAccountException('The label must be 1 to 255 characters.');
@@ -141,7 +142,7 @@ class CourierAccounts
         }
         $options = array_column($field['options'] ?? [], 'value');
         if ($options !== [] && ! in_array($value, $options, true)) {
-            throw new CourierAccountException('The value must be one of: ' . implode(', ', $options) . '.');
+            throw new CourierAccountException('The value must be one of: '.implode(', ', $options).'.');
         }
 
         DB::transaction(function () use ($account, $key, $value, $field, $actor) {
@@ -174,7 +175,7 @@ class CourierAccounts
             throw new CourierAccountException('No such account.');
         }
         if (! in_array($mode, $modes, true)) {
-            throw new CourierAccountException("The mode for {$account->courier} must be one of: " . implode(', ', $modes) . '.');
+            throw new CourierAccountException("The mode for {$account->courier} must be one of: ".implode(', ', $modes).'.');
         }
 
         return DB::transaction(function () use ($account, $mode, $actor) {
@@ -267,7 +268,7 @@ class CourierAccounts
     public function setAllowLiveBooking(CourierAccount $account, bool $allow, ?array $actor = null): bool
     {
         if (! in_array($account->courier, ['lbc', 'spx'], true)) {
-            throw new CourierAccountException('Live booking is not switched per account for ' . $account->courier . '.');
+            throw new CourierAccountException('Live booking is not switched per account for '.$account->courier.'.');
         }
         if ((bool) $account->allow_live_booking === $allow) {
             return false;
@@ -325,9 +326,9 @@ class CourierAccounts
 
         $first = trim($first);
         $last = trim($last);
-        $digits = '/^[1-9]\d{0,' . (TrackingNumberSeriesService::MAX_DIGITS - 1) . '}$/';
+        $digits = '/^[1-9]\d{0,'.(TrackingNumberSeriesService::MAX_DIGITS - 1).'}$/';
         if (! preg_match($digits, $first) || ! preg_match($digits, $last)) {
-            throw new CourierAccountException('The first and last numbers must be whole numbers of at most ' . TrackingNumberSeriesService::MAX_DIGITS . ' digits.');
+            throw new CourierAccountException('The first and last numbers must be whole numbers of at most '.TrackingNumberSeriesService::MAX_DIGITS.' digits.');
         }
 
         try {
@@ -357,6 +358,41 @@ class CourierAccounts
         $this->audit($actor, 'courier_account.secret_viewed', $account, ['key' => $key]);
 
         return $value;
+    }
+
+    /** Pseudo key for the webhook address, revealed through the same endpoint as the secrets. */
+    public const WEBHOOK_KEY = 'webhook_url';
+
+    /**
+     * The address a courier posts status updates to: the configured public base, the webhook path and the account's
+     * token. Null for a courier without a per-account webhook, or while no public address is set. With $masked the
+     * token part is dots, so the result is safe to render.
+     */
+    public function webhookAddress(CourierAccount $account, bool $masked = false): ?string
+    {
+        $base = app(Settings::class)->publicBaseUrl();
+        $token = $account->webhook_token;
+        if ($base === null || ! in_array($account->courier, ['quadx', 'spx'], true) || ! is_string($token) || $token === '') {
+            return null;
+        }
+        $token = $masked ? str_repeat('•', 16) : $token;
+        $path = $account->courier === 'quadx'
+            ? route('webhooks.quadx', absolute: false).'?token='.$token
+            : str_replace('TOKEN', $token, route('webhooks.spx.token', 'TOKEN', absolute: false));
+
+        return rtrim($base, '/').$path;
+    }
+
+    /** @param  array{type: string, id: mixed, ip: ?string}  $actor */
+    public function revealWebhookAddress(CourierAccount $account, array $actor): string
+    {
+        $url = $this->webhookAddress($account);
+        if ($url === null) {
+            throw new CourierAccountException('Not set.');
+        }
+        $this->audit($actor, 'courier_account.webhook_viewed', $account, []);
+
+        return $url;
     }
 
     /** @return ?array{length: int, last4: string} */

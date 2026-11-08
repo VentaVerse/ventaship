@@ -6,8 +6,10 @@ use App\Couriers\AccountSettings;
 use App\Couriers\CourierAccountException;
 use App\Couriers\CourierAccounts;
 use App\Couriers\CourierRegistry;
+use App\Couriers\TrackingNumbers\TrackingNumberSeries;
 use App\Http\Controllers\Controller;
 use App\Models\CourierAccount;
+use App\Support\Settings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -71,6 +73,11 @@ class CourierAccountsController extends Controller
             'fields' => $fields,
             'hasLatch' => in_array($account->courier, ['lbc', 'spx'], true),
             'keyGroups' => $this->keyGroups($account, $accounts),
+            'webhook' => in_array($account->courier, ['quadx', 'spx'], true) ? [
+                'base' => app(Settings::class)->publicBaseUrl(),
+                'masked' => $accounts->webhookAddress($account, true),
+            ] : null,
+            'blocks' => $account->courier === 'lbc' ? $this->blocks($account) : null,
         ]);
     }
 
@@ -85,7 +92,7 @@ class CourierAccountsController extends Controller
             'settings' => ['nullable', 'array'],
             'settings.*' => ['nullable', 'string'],
             'secrets' => ['nullable', 'array'],
-            'secrets.*' => ['nullable', 'string', 'max:' . CourierAccounts::MAX_VALUE_LENGTH],
+            'secrets.*' => ['nullable', 'string', 'max:'.CourierAccounts::MAX_VALUE_LENGTH],
         ]);
 
         $actor = ['type' => 'admin', 'id' => $request->user()->getAuthIdentifier(), 'ip' => $request->ip()];
@@ -153,15 +160,31 @@ class CourierAccountsController extends Controller
     /** One stored secret, for the View button. Throttled per admin by the route; audited with the key name only. */
     public function reveal(Request $request, CourierAccount $account, string $key, CourierAccounts $accounts): JsonResponse
     {
-        abort_unless(in_array($key, array_column($this->secretFields($account, $accounts), 'key'), true), 404);
+        $actor = ['type' => 'admin', 'id' => $request->user()->getAuthIdentifier(), 'ip' => $request->ip()];
+        $webhook = $key === CourierAccounts::WEBHOOK_KEY;
+        abort_unless($webhook || in_array($key, array_column($this->secretFields($account, $accounts), 'key'), true), 404);
 
         try {
-            $value = $accounts->revealSecret($account, $key, ['type' => 'admin', 'id' => $request->user()->getAuthIdentifier(), 'ip' => $request->ip()]);
+            $value = $webhook ? $accounts->revealWebhookAddress($account, $actor) : $accounts->revealSecret($account, $key, $actor);
         } catch (CourierAccountException) {
             abort(404);
         }
 
         return response()->json(['value' => $value])->withHeaders(['Cache-Control' => 'no-store', 'Pragma' => 'no-cache']);
+    }
+
+    public function series(Request $request, CourierAccount $account, CourierAccounts $accounts): RedirectResponse
+    {
+        abort_unless($account->courier === 'lbc', 404);
+        $data = $request->validate(['first' => ['required', 'string', 'max:20'], 'last' => ['required', 'string', 'max:20']]);
+
+        try {
+            $accounts->addLbcSeries($account, $data['first'], $data['last'], ['type' => 'admin', 'id' => $request->user()->getAuthIdentifier(), 'ip' => $request->ip()]);
+        } catch (CourierAccountException $e) {
+            return back()->withInput()->withErrors(['first' => $e->getMessage(), 'last' => $e->getMessage()]);
+        }
+
+        return redirect(route('accounts.show', $account))->with('status', 'Added');
     }
 
     public function test(CourierAccount $account, CourierAccounts $accounts): RedirectResponse
@@ -171,7 +194,18 @@ class CourierAccountsController extends Controller
 
         return $result['ok']
             ? $back->with('status', 'Connected')
-            : $back->withErrors(['test' => 'Check failed: ' . $result['message']]);
+            : $back->withErrors(['test' => 'Check failed: '.$result['message']]);
+    }
+
+    /** @return array<int, array{first: int, last: int, next: ?int, remaining: int}> */
+    private function blocks(CourierAccount $account): array
+    {
+        return TrackingNumberSeries::query()->where('courier_account_id', $account->id)->orderBy('first_number')->get()->map(function (TrackingNumberSeries $b) {
+            $next = $b->last_issued_number === null ? $b->first_number : $b->last_issued_number + 1;
+            $remaining = max(0, $b->last_number - $next + 1);
+
+            return ['first' => $b->first_number, 'last' => $b->last_number, 'next' => $remaining > 0 ? $next : null, 'remaining' => $remaining];
+        })->all();
     }
 
     /** Which mode-scoped key set each account mode uses. A courier not listed has keys that ignore the mode. */
