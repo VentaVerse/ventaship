@@ -30,7 +30,7 @@
     </x-ui.field>
 
     <label class="lg-check">
-        <input type="checkbox" name="remember" value="1" @checked(old('remember', true))>
+        <input type="checkbox" name="remember" value="1" @checked(session()->hasOldInput() ? old('remember') : true)>
         Keep me signed in
     </label>
 

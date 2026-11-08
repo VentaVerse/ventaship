@@ -76,6 +76,17 @@ class LoginTest extends TestCase
         $this->followingRedirects()->get('/login')->assertSee('Wrong email or password.')->assertSee('ana@example.com');
     }
 
+    public function test_remember_box_is_checked_by_default_and_keeps_an_unchecked_choice(): void
+    {
+        $this->admin();
+        $this->get('/login')->assertSee('name="remember" value="1" checked', false);
+
+        $this->from('/login')->post('/login', ['email' => 'ana@example.com', 'password' => 'nope']);
+        $html = $this->followingRedirects()->get('/login')->getContent();
+        $this->assertStringNotContainsString('name="remember" value="1" checked', $html);
+        $this->assertStringContainsString('name="remember"', $html);
+    }
+
     public function test_login_is_throttled(): void
     {
         $this->admin();

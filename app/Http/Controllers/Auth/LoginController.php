@@ -29,15 +29,14 @@ class LoginController extends Controller
             'password' => ['required', 'string', 'max:1024'],
         ], [], ['email' => 'email']);
 
-        $key = Str::lower($credentials['email']).'|'.$request->ip();
+        $credentials['email'] = Str::lower(trim($credentials['email']));
+        $key = $credentials['email'].'|'.$request->ip();
 
         if (RateLimiter::tooManyAttempts($key, self::MAX_ATTEMPTS)) {
             throw ValidationException::withMessages([
                 'email' => 'Too many attempts. Try again in '.RateLimiter::availableIn($key).' seconds.',
             ]);
         }
-
-        $credentials['email'] = Str::lower($credentials['email']);
 
         if (! Auth::guard('web')->attempt($credentials, $request->boolean('remember'))) {
             RateLimiter::hit($key, self::DECAY_SECONDS);
