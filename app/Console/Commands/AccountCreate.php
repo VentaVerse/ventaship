@@ -2,11 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\Couriers\CourierRegistry;
-use App\Models\CourierAccount;
+use App\Couriers\CourierAccountException;
+use App\Couriers\CourierAccounts;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class AccountCreate extends Command
 {
@@ -14,52 +12,18 @@ class AccountCreate extends Command
 
     protected $description = 'Create a courier account and print its id and inbound webhook URL';
 
-    private const MODES = ['staging', 'production'];
-
-    public function handle(): int
+    public function handle(CourierAccounts $accounts): int
     {
         $courier = (string) $this->argument('courier');
-        $label = trim((string) $this->argument('label'));
-        $mode = (string) $this->option('mode');
 
-        if (! CourierRegistry::has($courier)) {
-            $this->error('Unknown courier. Available: ' . implode(', ', CourierRegistry::keys()) . '.');
-
-            return self::FAILURE;
-        }
-        if ($label === '' || mb_strlen($label) > 255) {
-            $this->error('The label must be 1 to 255 characters.');
+        try {
+            $account = $accounts->create($courier, (string) $this->argument('label'), (string) $this->option('mode'), (bool) $this->option('default'));
+        } catch (CourierAccountException $e) {
+            $this->error($e->getMessage());
 
             return self::FAILURE;
         }
-        if (! in_array($mode, self::MODES, true)) {
-            $this->error('The mode must be staging or production.');
-
-            return self::FAILURE;
-        }
-
-        $token = Str::random(40);
-        $default = (bool) $this->option('default');
-
-        $account = DB::transaction(function () use ($courier, $label, $mode, $token, $default) {
-            if ($default) {
-                CourierAccount::withTrashed()
-                    ->where('default_slot', $courier)
-                    ->update(['default_slot' => null, 'is_default' => false]);
-            }
-
-            return CourierAccount::query()->create([
-                'courier' => $courier,
-                'label' => $label,
-                'mode' => $mode,
-                'status' => 'active',
-                'is_default' => $default,
-                'default_slot' => $default ? $courier : null,
-                'webhook_token' => $token,
-                'webhook_token_hash' => hash('sha256', $token),
-                'allow_live_booking' => false,
-            ]);
-        });
+        $token = $account->webhook_token;
 
         $base = rtrim((string) config('app.url'), '/');
         $url = match ($courier) {

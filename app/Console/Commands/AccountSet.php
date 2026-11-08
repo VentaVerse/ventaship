@@ -2,7 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Couriers\AccountSettings;
+use App\Couriers\CourierAccountException;
+use App\Couriers\CourierAccounts;
 use App\Couriers\CourierRegistry;
 use App\Models\CourierAccount;
 use Illuminate\Console\Command;
@@ -13,10 +14,7 @@ class AccountSet extends Command
 
     protected $description = "Set one of a courier account's settings (prompts hidden with --secret)";
 
-    /** The longest value accepted. Providers issue keys and tokens of very different shapes. */
-    private const MAX_LENGTH = 2048;
-
-    public function handle(): int
+    public function handle(CourierAccounts $accounts): int
     {
         $account = CourierAccount::query()->where('public_id', (string) $this->argument('account'))->first();
         if ($account === null || ! CourierRegistry::has($account->courier)) {
@@ -26,15 +24,15 @@ class AccountSet extends Command
         }
 
         $key = (string) $this->argument('key');
-        $field = collect(CourierRegistry::describe($account->courier)->settingsSchema())->firstWhere('key', $key);
-        if ($field === null) {
-            $this->error("Unknown setting for {$account->courier}.");
+        try {
+            $encrypted = $accounts->isSecret($account, $key);
+        } catch (CourierAccountException $e) {
+            $this->error($e->getMessage());
 
             return self::FAILURE;
         }
 
         $secret = (bool) $this->option('secret');
-        $encrypted = ! empty($field['encrypted']);
         if ($encrypted && ! $secret) {
             $this->error("{$key} is a secret. Run again with --secret and enter it at the prompt.");
 
@@ -50,32 +48,13 @@ class AccountSet extends Command
         if ($value === null && $secret) {
             $value = $this->secret("Value for {$key}");
         }
-        $value = $value === null ? '' : trim((string) $value);
 
-        if ($value === '') {
-            $this->error('A value is required.');
-
-            return self::FAILURE;
-        }
-        if (mb_strlen($value) > self::MAX_LENGTH) {
-            $this->error('The value is too long.');
+        try {
+            $accounts->setSetting($account, $key, $value === null ? '' : (string) $value);
+        } catch (CourierAccountException $e) {
+            $this->error($e->getMessage());
 
             return self::FAILURE;
-        }
-
-        $options = array_column($field['options'] ?? [], 'value');
-        if ($options !== [] && ! in_array($value, $options, true)) {
-            $this->error('The value must be one of: ' . implode(', ', $options) . '.');
-
-            return self::FAILURE;
-        }
-
-        $settings = AccountSettings::for($account);
-        $encrypted ? $settings->writeSecret($key, $value) : $settings->write($key, $value);
-
-        if ($key === 'spx_app_id') {
-            // SPX webhooks sent without a path token are routed by their app-id header to this account.
-            $account->forceFill(['external_ref' => $value])->save();
         }
 
         $this->info("Saved {$key} for {$account->public_id}.");

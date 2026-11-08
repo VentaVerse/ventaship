@@ -96,6 +96,15 @@
                     </div>
                 @endforeach
             </div>
+            <div class="st-sec">
+                <h2 class="st-h">Webhooks</h2>
+                <div class="st-row">
+                    <x-ui.field label="Public address" name="webhooks_public_base_url">
+                        <x-ui.input type="url" id="f-webhooks-public-base-url" name="webhooks_public_base_url" class="st-ctl x-mono"
+                                    value="{{ old('webhooks_public_base_url', $publicAddress ?? '') }}" maxlength="255" placeholder="https://your-domain" autocomplete="off" />
+                    </x-ui.field>
+                </div>
+            </div>
             @include('settings._bar', ['tab' => 'couriers'])
         </form>
     @else

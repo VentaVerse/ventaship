@@ -40,6 +40,14 @@ class Settings
         $this->cache[$key] = $stored;
     }
 
+    /** The public https address webhooks reach this install on, or null until it is set. */
+    public function publicBaseUrl(): ?string
+    {
+        $value = $this->get('webhooks.public_base_url');
+
+        return is_string($value) && $value !== '' ? $value : null;
+    }
+
     /** The default sender in the API's `pickup` input shape, or null until its required parts are all set. */
     public function pickup(): ?array
     {

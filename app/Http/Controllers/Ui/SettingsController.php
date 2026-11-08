@@ -58,6 +58,7 @@ class SettingsController extends Controller
             'prefix' => $settings->get('shipments.reference_prefix', 'VS'),
             'retention' => $settings->get('privacy.retention_days', 180),
             'switches' => collect(self::SWITCHES)->map(fn (string $key) => $settings->get($key) === true)->all(),
+            'publicAddress' => $settings->publicBaseUrl(),
             'sender' => collect(self::SENDER)->map(fn (string $key) => $settings->get($key))->all(),
             'admin' => $request->user(),
         ]);
@@ -101,7 +102,19 @@ class SettingsController extends Controller
             }
         } else {
             // A switch is on only for an explicit "1"; an unchecked or absent field is a strict false.
-            $new = [];
+            $data = $request->validate([
+                'webhooks_public_base_url' => ['nullable', 'string', 'max:255', function (string $attribute, mixed $value, \Closure $fail) {
+                    $parts = parse_url((string) $value);
+                    $valid = is_array($parts) && ($parts['scheme'] ?? null) === 'https' && ($parts['host'] ?? '') !== ''
+                        && array_intersect_key($parts, array_flip(['path', 'query', 'fragment', 'user', 'pass'])) === []
+                        && ! str_ends_with((string) $value, '/') && ! str_contains((string) $value, '?') && ! str_contains((string) $value, '#');
+                    if (! $valid) {
+                        $fail('Use https://your-domain');
+                    }
+                }],
+            ], ['webhooks_public_base_url.*' => 'Use https://your-domain']);
+            $address = trim((string) ($data['webhooks_public_base_url'] ?? ''));
+            $new = ['webhooks.public_base_url' => $address === '' ? null : $address];
             foreach (self::SWITCHES as $field => $key) {
                 $new[$key] = $request->input($field) === '1';
             }
