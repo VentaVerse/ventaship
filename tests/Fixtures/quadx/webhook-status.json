@@ -1,0 +1,11 @@
+{
+    "data": [
+        {
+            "reference_id": "VS000001",
+            "tracking_number": "QX-TEST-0001",
+            "status": "picked_up",
+            "status_updated_at": "2026-11-08T10:00:00+08:00",
+            "remarks": "Picked up by rider"
+        }
+    ]
+}

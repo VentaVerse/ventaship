@@ -43,5 +43,8 @@ class AppServiceProvider extends ServiceProvider
                 return Limit::perMinute($perMinute)->by($key !== null ? (string) $key->getKey() : 'ip:' . $request->ip());
             });
         }
+
+        // Courier webhooks carry no API key: per IP.
+        RateLimiter::for('courier-webhooks', fn (Request $request) => Limit::perMinute(300)->by('courier-webhooks:ip:' . $request->ip()));
     }
 }

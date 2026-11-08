@@ -61,11 +61,18 @@ class AccountCreate extends Command
             ]);
         });
 
-        $url = rtrim((string) config('app.url'), '/') . "/webhooks/{$courier}?token={$token}";
+        $base = rtrim((string) config('app.url'), '/');
+        $url = match ($courier) {
+            'quadx' => "{$base}/webhooks/quadx?token={$token}",
+            'spx' => "{$base}/webhooks/spx/{$token}",
+            default => null, // LBC sends no webhooks: it is polled
+        };
 
         $this->line("Account:     {$account->public_id}");
-        $this->line("Webhook URL: {$url}");
-        $this->warn('The webhook URL carries a secret token. Give it only to the courier.');
+        if ($url !== null) {
+            $this->line("Webhook URL: {$url}");
+            $this->warn('The webhook URL carries a secret token. Give it only to the courier.');
+        }
 
         return self::SUCCESS;
     }

@@ -25,6 +25,9 @@ final class Canceller
 
     public const NOT_PREPARED_REASON = 'Cancel could not be prepared — check the account settings';
 
+    /** Set by the sweep on a booked shipment whose requested cancel never reached the courier. */
+    public const STUCK_REASON = 'Cancel request stuck — check and retry';
+
     private const REASON_MAX = 255;
 
     /**
@@ -53,12 +56,12 @@ final class Canceller
                     break;
 
                 case 'booking':
-                    $row->forceFill(['cancel_state' => 'requested'])->save();
+                    $row->forceFill(['cancel_state' => 'requested', 'cancel_requested_at' => now()])->save();
                     break;
 
                 case 'unknown':
                     $row->forceFill([
-                        'cancel_state' => 'requested',
+                        'cancel_state' => 'requested', 'cancel_requested_at' => now(),
                         'needs_attention' => true,
                         'attention_reason' => self::UNKNOWN_BOOKING_REASON,
                     ])->save();
@@ -154,7 +157,7 @@ final class Canceller
             return false;
         }
 
-        $s->forceFill(['cancel_state' => 'requested'])->save();
+        $s->forceFill(['cancel_state' => 'requested', 'cancel_requested_at' => now()])->save();
 
         return true;
     }
@@ -170,7 +173,7 @@ final class Canceller
         ];
 
         // Only attention the cancel flow itself raised is cleared; an unrelated reason stays for the operator.
-        if (in_array($s->attention_reason, [self::OUTCOME_UNKNOWN_REASON, self::UNKNOWN_BOOKING_REASON, self::NOT_PREPARED_REASON], true)) {
+        if (in_array($s->attention_reason, [self::OUTCOME_UNKNOWN_REASON, self::UNKNOWN_BOOKING_REASON, self::NOT_PREPARED_REASON, self::STUCK_REASON], true)) {
             $changes += ['needs_attention' => false, 'attention_reason' => null];
         }
 

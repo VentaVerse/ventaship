@@ -10,8 +10,9 @@ use Throwable;
 /**
  * A scripted courier for tests: CourierRegistry::fake('quadx', FakeCourier::make()->booksAs('QX-1')).
  * It never makes a network call. Every courier call is recorded in $calls as ['method' => ..., 'args' => [...]].
+ * Not final: a test may extend it to add an optional courier interface (e.g. ThrottlesStatusPolling).
  */
-final class FakeCourier implements Courier
+class FakeCourier implements Courier
 {
     /** @var list<array{method: string, args: array<int, mixed>}> */
     public array $calls = [];
@@ -32,6 +33,9 @@ final class FakeCourier implements Courier
 
     private bool $cancelOk = true;
 
+    /** @var array<string, mixed>|null resolvePendingCreation()'s scripted answer */
+    private ?array $pendingAnswer = null;
+
     private ?string $pdf = null;
 
     private ?string $labelUrl = null;
@@ -45,9 +49,9 @@ final class FakeCourier implements Courier
     /** The registry signature, so the fake can stand in wherever a real courier is built. */
     public function __construct(?CourierAccount $account = null, ?AccountSettings $settings = null) {}
 
-    public static function make(string $key = 'quadx'): self
+    public static function make(string $key = 'quadx'): static
     {
-        $fake = new self();
+        $fake = new static();
         $fake->key = $key;
 
         return $fake;
@@ -89,6 +93,14 @@ final class FakeCourier implements Courier
     public function tracks(array $events): self
     {
         $this->events = array_values($events);
+
+        return $this;
+    }
+
+    /** @param  array<string, mixed>|null  $answer  null while still pending */
+    public function resolvesPendingAs(?array $answer): self
+    {
+        $this->pendingAnswer = $answer;
 
         return $this;
     }
@@ -191,7 +203,7 @@ final class FakeCourier implements Courier
     {
         $this->record(__FUNCTION__, [$order]);
 
-        return null;
+        return $this->pendingAnswer;
     }
 
     public function getTracking(string $trackingNumber): array

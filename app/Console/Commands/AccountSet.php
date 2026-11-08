@@ -73,6 +73,11 @@ class AccountSet extends Command
         $settings = AccountSettings::for($account);
         $encrypted ? $settings->writeSecret($key, $value) : $settings->write($key, $value);
 
+        if ($key === 'spx_app_id') {
+            // SPX webhooks sent without a path token are routed by their app-id header to this account.
+            $account->forceFill(['external_ref' => $value])->save();
+        }
+
         $this->info("Saved {$key} for {$account->public_id}.");
 
         return self::SUCCESS;

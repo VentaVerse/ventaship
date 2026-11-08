@@ -72,6 +72,27 @@ class AccountCommandsTest extends TestCase
         $this->assertStringNotContainsString($m[1], (string) $account->getRawOriginal('webhook_token'));
     }
 
+    public function test_create_prints_the_spx_path_token_url_and_none_for_lbc(): void
+    {
+        config(['app.url' => 'https://ship.example.test']);
+
+        Artisan::call('ventaship:account-create', ['courier' => 'spx', 'label' => 'Main SPX']);
+        $this->assertMatchesRegularExpression('#https://ship\.example\.test/webhooks/spx/[A-Za-z0-9]{40}\s#', Artisan::output());
+
+        Artisan::call('ventaship:account-create', ['courier' => 'lbc', 'label' => 'Main LBC']);
+        $this->assertStringNotContainsString('Webhook URL', Artisan::output());
+    }
+
+    public function test_setting_the_spx_app_id_sets_the_account_external_ref(): void
+    {
+        $account = CourierAccount::factory()->create(['courier' => 'spx']);
+
+        $this->artisan('ventaship:account-set', ['account' => $account->public_id, 'key' => 'spx_app_id', 'value' => '424242'])
+            ->assertSuccessful();
+
+        $this->assertSame('424242', $account->refresh()->external_ref);
+    }
+
     public function test_create_rejects_unknown_courier_and_mode(): void
     {
         $this->artisan('ventaship:account-create', ['courier' => 'dhl', 'label' => 'X'])->assertFailed();

@@ -111,6 +111,47 @@ final class BookingOutcomes
     }
 
     /**
+     * An SPX booking left `creating` now has its tracking number (the poller's resolvePendingCreation, or a webhook
+     * matched by courier_ref). Only a shipment still `booking` + `creating` changes, so the poller and a webhook
+     * resolving it at once book it once. `creating` is cleared so the cancel rules see a fresh booking; a requested
+     * cancel is sent to the courier. False when the shipment was no longer waiting.
+     *
+     * @param  array<string, mixed>  $meta
+     */
+    public function creationResolved(int $shipmentId, string $trackingNumber, array $meta = []): bool
+    {
+        $cancel = DB::transaction(function () use ($shipmentId, $trackingNumber, $meta) {
+            $s = $this->lock($shipmentId);
+            if ($s === null || $s->state !== 'booking' || $s->courier_status !== 'creating') {
+                return null;
+            }
+
+            $current = is_array($s->meta) ? $s->meta : [];
+            unset($current['pending']);
+
+            $s->forceFill([
+                'state' => 'booked',
+                'tracking_number' => $trackingNumber,
+                'courier_status' => null,
+                'meta' => array_replace($current, $meta),
+                'booked_at' => now(),
+                'error_code' => null,
+                'error_message' => null,
+            ])->save();
+
+            Outbox::record($s->clientApp, 'shipment.booked', ['event' => null], $s);
+
+            return $s->cancel_state === 'requested';
+        });
+
+        if ($cancel === true) {
+            CancelAtCourier::dispatch($shipmentId);
+        }
+
+        return $cancel !== null;
+    }
+
+    /**
      * Nothing was booked: `failed`, and the client reference is free again.
      *
      * @param  list<string>  $from  the states this refusal may replace

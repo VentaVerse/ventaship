@@ -54,13 +54,17 @@ final class TrackingRefresher
             throw $this->unavailable();
         }
 
-        $this->recordEvents($s, $result);
+        $this->recordTracking($s, $result, 'refresh');
 
         return $s->refresh();
     }
 
-    /** @param  array<string, mixed>  $result  getTracking()'s answer */
-    private function recordEvents(Shipment $s, array $result): void
+    /**
+     * Records every dated event of a getTracking() answer; the refresh endpoint and the poller share it.
+     *
+     * @param  array<string, mixed>  $result  getTracking()'s answer
+     */
+    public function recordTracking(Shipment $s, array $result, string $source): void
     {
         $timeline = is_array($result['timeline'] ?? null) ? $result['timeline'] : [];
         $recorded = false;
@@ -73,14 +77,14 @@ final class TrackingRefresher
             }
 
             $remarks = is_string($event['remarks'] ?? null) ? $event['remarks'] : null;
-            $this->recorder->record($s, $status, $at, 'refresh', $remarks, $event);
+            $this->recorder->record($s, $status, $at, $source, $remarks, $event);
             $recorded = true;
         }
 
         // No dated timeline: the current status is recorded only when it changed, so refreshing never piles up copies.
         $status = $result['status'] ?? null;
         if (! $recorded && is_string($status) && $status !== '' && $status !== $s->refresh()->courier_status) {
-            $this->recorder->record($s, $status, now(), 'refresh');
+            $this->recorder->record($s, $status, now(), $source);
         }
     }
 

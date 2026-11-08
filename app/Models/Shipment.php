@@ -40,6 +40,7 @@ class Shipment extends Model
             'booked_at' => 'datetime',
             'terminal_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            'cancel_requested_at' => 'datetime',
             'last_polled_at' => 'datetime',
             'next_poll_at' => 'datetime',
             'last_event_at' => 'datetime',

@@ -82,6 +82,34 @@ class SweepTest extends TestCase
         $this->assertSame('* * * * *', $event->expression);
     }
 
+    public function test_cancel_stuck_in_requested_is_flagged_without_a_courier_call(): void
+    {
+        Queue::fake();
+        $attributes = ['state' => 'booked', 'tracking_number' => 'QX-1', 'cancel_state' => 'requested', 'booked_at' => now()->subHours(2)];
+        $stuck = $this->shipment($attributes + ['cancel_requested_at' => now()->subMinutes(31)]);
+        $fresh = $this->shipment($attributes + ['cancel_requested_at' => now()->subMinutes(29)]);
+        $justBooked = $this->shipment(array_replace($attributes, ['booked_at' => now()->subMinutes(5)]) + ['cancel_requested_at' => now()->subHour()]);
+        $running = $this->shipment($attributes + ['cancel_requested_at' => now()->subHour()]);
+        $flagged = $this->shipment($attributes + ['cancel_requested_at' => now()->subHour(), 'needs_attention' => true, 'attention_reason' => 'Something else']);
+        $lock = Cache::lock("shipment-cancel:{$running->id}", 300);
+        $lock->get();
+
+        $this->artisan('ventaship:shipments-sweep')->assertExitCode(0);
+        $this->artisan('ventaship:shipments-sweep')->assertExitCode(0);
+
+        $stuck->refresh();
+        $this->assertTrue($stuck->needs_attention);
+        $this->assertSame('Cancel request stuck — check and retry', $stuck->attention_reason);
+        $this->assertSame('requested', $stuck->cancel_state);
+        foreach ([$fresh, $justBooked, $running] as $s) {
+            $this->assertFalse($s->refresh()->needs_attention);
+        }
+        $this->assertSame('Something else', $flagged->refresh()->attention_reason);
+        $this->assertSame(0, OutgoingEvent::query()->count());
+        Queue::assertNothingPushed();
+        $lock->release();
+    }
+
     public function test_resolve_not_booked_fails_an_unknown_shipment(): void
     {
         $s = $this->unknown();

@@ -1,0 +1,310 @@
+<?php
+
+namespace Tests\Feature\Webhooks;
+
+use App\Models\ClientApp;
+use App\Models\CourierAccount;
+use App\Models\OutgoingEvent;
+use App\Models\Shipment;
+use App\Models\ShipmentEvent;
+use App\Models\WebhookReceipt;
+use App\Webhooks\Inbound\Jobs\ProcessReceipt;
+use App\Webhooks\Inbound\Jobs\RelayReceipt;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request as HttpRequest;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Testing\TestResponse;
+use Tests\Concerns\BuildsCourierAccounts;
+use Tests\TestCase;
+
+class InboundQuadXTest extends TestCase
+{
+    use BuildsCourierAccounts, RefreshDatabase;
+
+    private const TOKEN = 'qx-webhook-token-0123456789abcdefghijklmn';
+
+    private CourierAccount $account;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->account = $this->quadxAccount(attributes: [
+            'webhook_token' => self::TOKEN,
+            'webhook_token_hash' => hash('sha256', self::TOKEN),
+        ]);
+    }
+
+    public function test_valid_token_stores_receipt_acks_and_records_event(): void
+    {
+        $s = $this->bookedShipment();
+        $raw = $this->fixtureBody();
+
+        $this->postRaw('/webhooks/quadx?token='.self::TOKEN, $raw, ['User-Agent' => 'QuadX-Hooks/2', 'Cookie' => 'x=1'])
+            ->assertOk()
+            ->assertJson(['ok' => true]);
+
+        $receipt = WebhookReceipt::query()->sole();
+        $this->assertSame('quadx', $receipt->courier);
+        $this->assertSame($this->account->id, (int) $receipt->courier_account_id);
+        $this->assertSame('token', $receipt->routed_by);
+        $this->assertSame('processed', $receipt->status);
+        $this->assertSame($raw, $receipt->body, 'the raw body is stored byte for byte');
+        $this->assertSame(['content-type' => 'application/json', 'user-agent' => 'QuadX-Hooks/2'], $receipt->headers);
+        $this->assertNotNull($receipt->processed_at);
+
+        $event = ShipmentEvent::query()->sole();
+        $this->assertSame($s->id, (int) $event->shipment_id);
+        $this->assertSame('webhook', $event->source);
+        $this->assertSame('picked_up', $event->courier_status);
+        $this->assertSame('Picked up by rider', $event->remarks);
+        $this->assertSame($receipt->id, (int) $event->receipt_id);
+        $this->assertSame('picked_up', $s->refresh()->courier_status);
+        $this->assertSame('shipment.status_changed', OutgoingEvent::query()->sole()->type);
+    }
+
+    public function test_route_is_stateless_and_csrf_free(): void
+    {
+        $this->bookedShipment();
+
+        $response = $this->postRaw('/webhooks/quadx?token='.self::TOKEN, $this->fixtureBody());
+
+        $response->assertOk();
+        $this->assertSame([], $response->headers->getCookies(), 'no session or XSRF cookie is set');
+    }
+
+    public function test_processing_runs_on_the_inbound_queue(): void
+    {
+        Queue::fake();
+
+        $this->postRaw('/webhooks/quadx?token='.self::TOKEN, $this->fixtureBody())->assertOk();
+
+        Queue::assertPushedOn('inbound', ProcessReceipt::class);
+        $this->assertSame('received', WebhookReceipt::query()->sole()->status);
+    }
+
+    public function test_bad_token_403_and_not_stored_in_full(): void
+    {
+        $spx = CourierAccount::factory()->create([
+            'courier' => 'spx',
+            'webhook_token' => 'spx-account-token-0000000000000000000000',
+            'webhook_token_hash' => hash('sha256', 'spx-account-token-0000000000000000000000'),
+        ]);
+
+        // No token at all, and a known token that belongs to another courier's account.
+        $this->postRaw('/webhooks/quadx', $this->fixtureBody())->assertForbidden();
+        $this->postRaw('/webhooks/quadx?token=spx-account-token-0000000000000000000000', $this->fixtureBody())->assertForbidden();
+
+        $rows = WebhookReceipt::query()->orderBy('id')->get();
+        $this->assertCount(2, $rows);
+        foreach ($rows as $row) {
+            $this->assertSame('rejected', $row->status);
+            $this->assertNull($row->body);
+            $this->assertNull($row->headers);
+        }
+        $this->assertNull($rows[0]->courier_account_id);
+        $this->assertSame($spx->id, (int) $rows[1]->courier_account_id);
+        $this->assertSame(0, ShipmentEvent::query()->count());
+    }
+
+    public function test_unknown_token_is_unrouted_404_and_kept_at_most_16_kb(): void
+    {
+        $raw = json_encode(['data' => [['tracking_number' => 'QX-1', 'remarks' => str_repeat('a', 20000)]]]);
+
+        $this->postRaw('/webhooks/quadx?token=nobody-has-this-token', $raw)->assertNotFound();
+
+        $receipt = WebhookReceipt::query()->sole();
+        $this->assertSame('unrouted', $receipt->status);
+        $this->assertNull($receipt->courier_account_id);
+        $this->assertSame(16384, strlen($receipt->body));
+        $this->assertSame(substr($raw, 0, 16384), $receipt->body);
+    }
+
+    public function test_body_over_64_kb_is_stored_truncated_and_still_acked(): void
+    {
+        $raw = json_encode(['data' => [['tracking_number' => 'QX-TEST-0001', 'remarks' => str_repeat('b', 70000)]]]);
+
+        $this->postRaw('/webhooks/quadx?token='.self::TOKEN, $raw)->assertOk();
+
+        $receipt = WebhookReceipt::query()->sole();
+        $this->assertSame(65536, strlen($receipt->body));
+        $this->assertSame('failed', $receipt->status);
+        $this->assertSame('body truncated', $receipt->error);
+    }
+
+    public function test_unmatched_is_200_and_relayed_verbatim_when_relay_url_set(): void
+    {
+        $relay = 'https://store.example.test/webhooks/courier/quadx?token=core-own-token';
+        $this->account->forceFill(['relay_url' => $relay])->save();
+        Http::fake(['store.example.test/*' => Http::response(['ok' => true])]);
+
+        // Odd spacing and key order: a re-encoded body would not match.
+        $raw = "{ \"data\" : [ {\"tracking_number\":\"QX-NOT-OURS\", \"status\":\"delivered\",\n \"status_updated_at\":\"2026-11-08T11:00:00+08:00\"} ] }";
+
+        $this->postRaw('/webhooks/quadx?token='.self::TOKEN, $raw, ['User-Agent' => 'QuadX-Hooks/2', 'X-Request-Id' => 'req-77', 'X-Other' => 'dropped'])
+            ->assertOk();
+
+        $receipt = WebhookReceipt::query()->sole();
+        $this->assertSame('unmatched', $receipt->status);
+        $this->assertSame(1, $receipt->relay_attempts);
+
+        Http::assertSentCount(1);
+        Http::assertSent(function (HttpRequest $r) use ($raw, $relay) {
+            return $r->url() === $relay
+                && $r->method() === 'POST'
+                && $r->body() === $raw
+                && $r->header('Content-Type') === ['application/json']
+                && $r->header('User-Agent') === ['QuadX-Hooks/2']
+                && $r->header('X-Request-Id') === ['req-77']
+                && ! $r->hasHeader('X-Other');
+        });
+    }
+
+    public function test_unmatched_without_relay_url_is_200_and_not_sent_anywhere(): void
+    {
+        Http::fake();
+        $raw = '{"data":[{"tracking_number":"QX-NOT-OURS","status":"delivered"}]}';
+
+        $this->postRaw('/webhooks/quadx?token='.self::TOKEN, $raw)->assertOk();
+
+        $this->assertSame('unmatched', WebhookReceipt::query()->sole()->status);
+        Http::assertNothingSent();
+    }
+
+    public function test_relay_failure_is_retried_with_backoff(): void
+    {
+        $job = new RelayReceipt(1);
+
+        $this->assertSame(3, $job->tries);
+        $this->assertSame([60, 300, 900], $job->backoff());
+        $this->assertSame('inbound', $job->queue);
+    }
+
+    public function test_relay_refuses_non_http_urls(): void
+    {
+        $this->account->forceFill(['relay_url' => 'file:///etc/passwd'])->save();
+        Http::fake();
+
+        $this->postRaw('/webhooks/quadx?token='.self::TOKEN, '{"data":[{"tracking_number":"QX-NOT-OURS","status":"delivered"}]}')
+            ->assertOk();
+
+        Http::assertNothingSent();
+        $this->assertSame(0, WebhookReceipt::query()->sole()->relay_attempts);
+    }
+
+    public function test_duplicate_webhook_records_once(): void
+    {
+        $s = $this->bookedShipment();
+
+        $this->postRaw('/webhooks/quadx?token='.self::TOKEN, $this->fixtureBody())->assertOk();
+        $this->postRaw('/webhooks/quadx?token='.self::TOKEN, $this->fixtureBody())->assertOk();
+
+        $this->assertSame(2, WebhookReceipt::query()->count());
+        $this->assertSame(1, ShipmentEvent::query()->where('shipment_id', $s->id)->count());
+        $this->assertSame(1, OutgoingEvent::query()->count());
+    }
+
+    public function test_reference_matches_only_a_shipment_still_booking(): void
+    {
+        $booked = $this->bookedShipment(['tracking_number' => 'QX-OTHER', 'courier_ref' => 'VS000001']);
+
+        $raw = '{"data":[{"reference_id":"VS000001","tracking_number":"QX-UNKNOWN","status":"picked_up","status_updated_at":"2026-11-08T10:00:00+08:00"}]}';
+        $this->postRaw('/webhooks/quadx?token='.self::TOKEN, $raw)->assertOk();
+
+        $this->assertSame('unmatched', WebhookReceipt::query()->sole()->status);
+        $this->assertSame(0, ShipmentEvent::query()->where('shipment_id', $booked->id)->count());
+    }
+
+    public function test_unparseable_body_fails_the_receipt_without_blocking_the_next(): void
+    {
+        $s = $this->bookedShipment();
+
+        $this->postRaw('/webhooks/quadx?token='.self::TOKEN, '{not json')->assertOk();
+        $this->postRaw('/webhooks/quadx?token='.self::TOKEN, $this->fixtureBody())->assertOk();
+
+        [$bad, $good] = WebhookReceipt::query()->orderBy('id')->get()->all();
+        $this->assertSame('failed', $bad->status);
+        $this->assertStringContainsString('JSON', (string) $bad->error);
+        $this->assertNotNull($bad->processed_at);
+        $this->assertSame('processed', $good->status);
+        $this->assertSame(1, ShipmentEvent::query()->where('shipment_id', $s->id)->count());
+    }
+
+    public function test_reprocess_picks_up_receipts_left_unprocessed_for_two_minutes(): void
+    {
+        $s = $this->bookedShipment();
+        $old = $this->receipt(now()->subMinutes(3));
+        $recent = $this->receipt(now()->subSeconds(30));
+
+        $this->artisan('ventaship:receipts-reprocess')->assertExitCode(0);
+
+        $this->assertSame('processed', $old->refresh()->status);
+        $this->assertSame('received', $recent->refresh()->status);
+        $this->assertSame(1, ShipmentEvent::query()->where('shipment_id', $s->id)->count());
+    }
+
+    public function test_reprocess_queues_a_receipt_again_at_most_every_five_minutes(): void
+    {
+        Queue::fake();
+        $this->receipt(now()->subMinutes(3));
+
+        $this->artisan('ventaship:receipts-reprocess')->assertExitCode(0);
+        $this->artisan('ventaship:receipts-reprocess')->assertExitCode(0);
+
+        Queue::assertPushed(ProcessReceipt::class, 1);
+        Queue::assertPushedOn('inbound', ProcessReceipt::class);
+    }
+
+    public function test_webhook_routes_are_rate_limited_per_ip(): void
+    {
+        $limiter = app(\Illuminate\Cache\RateLimiter::class)->limiter('courier-webhooks');
+        $limit = $limiter(\Illuminate\Http\Request::create('/webhooks/quadx', 'POST', server: ['REMOTE_ADDR' => '10.0.0.9']));
+
+        $this->assertSame(300, $limit->maxAttempts);
+        $this->assertSame(60, $limit->decaySeconds);
+        $this->assertStringContainsString('10.0.0.9', (string) $limit->key);
+    }
+
+    private function receipt(\DateTimeInterface $at): WebhookReceipt
+    {
+        return WebhookReceipt::query()->create([
+            'courier' => 'quadx',
+            'courier_account_id' => $this->account->id,
+            'routed_by' => 'token',
+            'status' => 'received',
+            'headers' => ['content-type' => 'application/json'],
+            'body' => $this->fixtureBody(),
+            'received_at' => $at,
+        ]);
+    }
+
+    private function bookedShipment(array $attributes = []): Shipment
+    {
+        return Shipment::factory()->create($attributes + [
+            'client_app_id' => ClientApp::factory(),
+            'courier_account_id' => $this->account->id,
+            'courier' => 'quadx',
+            'state' => 'booked',
+            'tracking_number' => 'QX-TEST-0001',
+            'courier_ref' => 'VS000001',
+            'booked_at' => now()->subHour(),
+        ]);
+    }
+
+    private function fixtureBody(): string
+    {
+        return (string) file_get_contents(base_path('tests/Fixtures/quadx/webhook-status.json'));
+    }
+
+    /** @param  array<string, string>  $headers */
+    private function postRaw(string $uri, string $raw, array $headers = []): TestResponse
+    {
+        $server = ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json'];
+        foreach ($headers as $name => $value) {
+            $server['HTTP_'.strtoupper(str_replace('-', '_', $name))] = $value;
+        }
+
+        return $this->call('POST', $uri, [], [], [], $server, $raw);
+    }
+}
