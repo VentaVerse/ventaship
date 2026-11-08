@@ -231,4 +231,71 @@ class ShipmentCreateTest extends TestCase
         $this->get('/shipments/new')->assertRedirect('/login');
         $this->assertSame(0, Shipment::query()->count());
     }
+
+    public function test_form_renders_customer_and_sender_inputs_without_stray_directives(): void
+    {
+        $this->sender();
+
+        $html = $this->get('/shipments/new')->assertOk()->getContent();
+
+        foreach (['recipient[first_name]', 'recipient[phone]', 'pickup[contact_name]', 'pickup[city]'] as $name) {
+            $this->assertStringContainsString('name="'.$name.'"', $html);
+        }
+        $this->assertStringNotContainsString('@required(', $html);
+        $this->assertStringNotContainsString('$meta', $html);
+    }
+
+    public function test_stale_session_double_submit_redirects_via_cache_and_books_once(): void
+    {
+        $token = $this->token();
+        $this->fake->booksAs('QX-STALE');
+        $this->post('/shipments', $this->form([], $token));
+        $s = Shipment::query()->sole();
+
+        $this->withSession(['shipment_form_tokens' => [$token => null]])
+            ->post('/shipments', $this->form([], $token))
+            ->assertRedirect(route('shipments.show', $s));
+
+        $this->assertSame(1, Shipment::query()->count());
+        $this->assertCount(1, $this->fake->callsTo('createShipment'));
+    }
+
+    public function test_submit_while_lock_held_is_refused(): void
+    {
+        $token = $this->token();
+        $lock = \Illuminate\Support\Facades\Cache::lock('shipment-form:'.$token, 60);
+        $this->assertTrue($lock->get());
+
+        $this->post('/shipments', $this->form([], $token))->assertSessionHasErrors('form_token');
+
+        $this->assertSame(0, Shipment::query()->count());
+        $this->assertSame([], $this->fake->callsTo('createShipment'));
+        $lock->release();
+    }
+
+    public function test_insure_stays_checked_after_validation_error(): void
+    {
+        $this->from('/shipments/new')->post('/shipments', $this->form(['insure' => '1', 'recipient' => ['first_name' => '']]))
+            ->assertSessionHasErrors('recipient.first_name');
+
+        $this->assertMatchesRegularExpression('/type="checkbox"[^>]*name="insure"[^>]*checked/', $this->get('/shipments/new')->getContent());
+    }
+
+    public function test_blank_reference_is_not_flashed_back_on_error(): void
+    {
+        $this->from('/shipments/new')->post('/shipments', $this->form(['recipient' => ['first_name' => '']]))
+            ->assertSessionHasErrors('recipient.first_name');
+
+        $this->assertDoesNotMatchRegularExpression('/name="client_reference"[^>]*value="M-/', $this->get('/shipments/new')->getContent());
+    }
+
+    public function test_post_without_active_accounts_is_refused(): void
+    {
+        $form = $this->form();
+        CourierAccount::query()->delete();
+
+        $this->post('/shipments', $form)->assertSessionHasErrors();
+
+        $this->assertSame(0, Shipment::query()->count());
+    }
 }

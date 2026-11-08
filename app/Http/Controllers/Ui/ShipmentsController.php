@@ -26,7 +26,9 @@ class ShipmentsController extends Controller
 
     private const TOKENS_MAX = 20;
 
-    private const LOCK_SECONDS = 90;
+    private const DONE_PREFIX = 'shipment-form-done:';
+
+    private const LOCK_SECONDS = 120;
 
     public function create(Request $request, Settings $settings): View
     {
@@ -59,6 +61,9 @@ class ShipmentsController extends Controller
         $token = (string) $request->input('form_token');
         $tokens = (array) $request->session()->get(self::TOKENS_KEY, []);
 
+        if (is_string($done = Cache::get(self::DONE_PREFIX.$token))) {
+            return $this->toShipment($done, null);
+        }
         if (! array_key_exists($token, $tokens)) {
             return $this->expired();
         }
@@ -73,12 +78,18 @@ class ShipmentsController extends Controller
         }
 
         try {
+            if (is_string($done = Cache::get(self::DONE_PREFIX.$token))) {
+                return $this->toShipment($done, null);
+            }
+
             try {
-                $shipment = $creator->create(null, $form->validated(), 'manual', now: true);
+                $shipment = $creator->create(null, $form->shipmentData(), 'manual', now: true);
             } catch (ApiError $e) {
                 return back()->withInput()->withErrors($this->apiErrors($e));
             }
 
+            // The session is only saved after this response, so the outcome is also kept where a concurrent request sees it.
+            Cache::put(self::DONE_PREFIX.$token, $shipment->public_id, now()->addDay());
             $this->rememberToken($request, $token, $shipment->public_id);
             $this->audit($request, $shipment);
         } finally {

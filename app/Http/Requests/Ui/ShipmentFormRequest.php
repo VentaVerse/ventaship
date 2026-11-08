@@ -35,7 +35,7 @@ class ShipmentFormRequest extends FormRequest
         $this->merge([
             'payment' => $payment,
             'account_id' => $account === '' ? null : $account,
-            'client_reference' => $reference === '' ? self::generateReference() : $reference,
+            'client_reference' => $reference === '' ? null : $reference,
             'insure' => $this->boolean('insure'),
             'submit' => true,
         ]);
@@ -48,7 +48,7 @@ class ShipmentFormRequest extends FormRequest
 
         return [
             'account_id' => ['required', 'string', 'max:30'],
-            'client_reference' => ['required', 'string', 'max:64', 'regex:/^[^\x00-\x1F\x7F]+$/u'],
+            'client_reference' => ['nullable', 'string', 'max:64', 'regex:/^[^\x00-\x1F\x7F]+$/u'],
             'service' => ['nullable', 'string', 'max:64'],
             'insure' => ['boolean'],
             'items' => ['required', 'array', 'min:1', 'max:100'],
@@ -58,6 +58,15 @@ class ShipmentFormRequest extends FormRequest
             'items.*.price' => $money,
         ] + $this->parcelRules() + $this->paymentRules() + $this->pickupRules() + $this->recipientRules()
             + ['parcel.weight_kg' => ['required', 'numeric', 'gt:0', 'max:1000']];
+    }
+
+    /** The validated input, with the order reference generated when it was left blank. @return array<string, mixed> */
+    public function shipmentData(): array
+    {
+        $data = $this->validated();
+        $data['client_reference'] ??= self::generateReference();
+
+        return $data;
     }
 
     /** @return array<string, string> */

@@ -165,7 +165,7 @@
             <div class="st-row">
                 <label class="sh-check">
                     <input type="hidden" name="insure" value="0">
-                    <input type="checkbox" name="insure" value="1" @checked(old('insure') === '1')>
+                    <input type="checkbox" name="insure" value="1" @checked(filter_var(old('insure'), FILTER_VALIDATE_BOOLEAN))>
                     <span>Insure</span>
                 </label>
             </div>
