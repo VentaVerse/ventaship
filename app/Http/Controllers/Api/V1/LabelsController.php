@@ -45,7 +45,8 @@ class LabelsController extends Controller
             ->keyBy('public_id');
 
         $paths = [];
-        $courierDown = false;
+        $courierFailed = false;
+        $retryable = false;
         foreach ($requested as $id) {
             if (($s = $found->get($id)) === null) {
                 continue;
@@ -53,13 +54,16 @@ class LabelsController extends Controller
             try {
                 $paths[$id] = Storage::disk('local')->path($this->labels->get($s)->path);
             } catch (ApiError $e) {
-                $courierDown = $courierDown || $e->status === 502;
+                if ($e->status === 502) {
+                    $courierFailed = true;
+                    $retryable = $retryable || $e->retryable;
+                }
             }
         }
 
         if ($paths === []) {
-            throw $courierDown
-                ? new ApiError(502, 'courier_unavailable', 'The labels could not be fetched from the courier.', true)
+            throw $courierFailed
+                ? new ApiError(502, 'courier_unavailable', 'The labels could not be fetched from the courier.', $retryable)
                 : new ApiError(409, 'label_not_ready', 'None of these shipments has a waybill to print.');
         }
 

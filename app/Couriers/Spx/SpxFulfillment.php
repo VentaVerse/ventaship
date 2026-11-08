@@ -949,7 +949,7 @@ class SpxFulfillment implements Courier
         }
 
         try {
-            $pdf = Http::timeout(30)->get($awbLink);
+            $pdf = Http::timeout(30)->withoutRedirecting()->get($awbLink);
         } catch (\Throwable $e) {
             return ['ok' => false, 'error' => 'Failed to download the SPX label PDF: ' . $e->getMessage()];
         }

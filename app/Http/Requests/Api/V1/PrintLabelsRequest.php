@@ -19,7 +19,7 @@ class PrintLabelsRequest extends FormRequest
     {
         return [
             'shipment_ids' => ['required', 'array', 'min:1', 'max:'.self::MAX_IDS],
-            'shipment_ids.*' => ['required', 'string', 'max:40', 'distinct'],
+            'shipment_ids.*' => ['required', 'string', 'regex:/^shp_[0-9a-z]{26}$/D', 'distinct'],
         ];
     }
 

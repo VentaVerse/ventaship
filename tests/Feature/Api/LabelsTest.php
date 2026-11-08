@@ -158,14 +158,14 @@ class LabelsTest extends TestCase
         $unbooked = Shipment::factory()->create($this->attrs(['state' => 'queued', 'tracking_number' => null]));
         $foreign = Shipment::factory()->create($this->attrs(['client_app_id' => ClientApp::factory()->create()->id, 'state' => 'booked', 'tracking_number' => 'QX-7']));
 
-        $res = $this->post('/api/v1/labels', ['shipment_ids' => [$one->public_id, $unbooked->public_id, $two->public_id, $foreign->public_id, 'shp_unknown']])
+        $res = $this->post('/api/v1/labels', ['shipment_ids' => [$one->public_id, $unbooked->public_id, $two->public_id, $foreign->public_id, $this->unknownId()]])
             ->assertOk();
 
         $this->assertStringStartsWith('application/pdf', $res->headers->get('Content-Type'));
         $this->assertStringStartsWith('%PDF-', $res->getContent());
         $this->assertSame(2, $this->pageCount($res->getContent()));
         $this->assertSame(
-            implode(',', [$unbooked->public_id, $foreign->public_id, 'shp_unknown']),
+            implode(',', [$unbooked->public_id, $foreign->public_id, $this->unknownId()]),
             $res->headers->get('Ventaship-Skipped'),
         );
         $this->assertSame([], glob(storage_path('app/tmp/*')) ?: []);
@@ -223,7 +223,7 @@ class LabelsTest extends TestCase
         CourierRegistry::fake('quadx', FakeCourier::make('quadx'));
         $queued = Shipment::factory()->create($this->attrs(['state' => 'queued', 'tracking_number' => null]));
 
-        $this->post('/api/v1/labels', ['shipment_ids' => [$queued->public_id, 'shp_unknown']])
+        $this->post('/api/v1/labels', ['shipment_ids' => [$queued->public_id, $this->unknownId()]])
             ->assertStatus(409)->assertJsonPath('code', 'label_not_ready');
     }
 
@@ -231,19 +231,64 @@ class LabelsTest extends TestCase
     {
         $this->post('/api/v1/labels', ['shipment_ids' => []])->assertStatus(422);
         $this->post('/api/v1/labels', [])->assertStatus(422);
-        $ids = array_map(fn ($i) => "shp_{$i}", range(1, 51));
+        $ids = array_map(fn ($i) => 'shp_'.str_pad((string) $i, 26, '0', STR_PAD_LEFT), range(1, 51));
         $this->post('/api/v1/labels', ['shipment_ids' => $ids])->assertStatus(422);
-        $this->post('/api/v1/labels', ['shipment_ids' => ['shp_1', 'shp_1']])->assertStatus(422);
+        $this->post('/api/v1/labels', ['shipment_ids' => [$this->unknownId(), $this->unknownId()]])->assertStatus(422);
     }
 
     public function test_labels_endpoint_is_throttled(): void
     {
         CourierRegistry::fake('quadx', FakeCourier::make('quadx'));
         for ($i = 0; $i < 10; $i++) {
-            $this->post('/api/v1/labels', ['shipment_ids' => ['shp_x']])->assertStatus(409);
+            $this->post('/api/v1/labels', ['shipment_ids' => [$this->unknownId()]])->assertStatus(409);
         }
 
-        $this->post('/api/v1/labels', ['shipment_ids' => ['shp_x']])->assertStatus(429);
+        $this->post('/api/v1/labels', ['shipment_ids' => [$this->unknownId()]])->assertStatus(429);
+    }
+
+    private function unknownId(): string
+    {
+        return 'shp_'.str_repeat('0', 26);
+    }
+
+    public function test_redirect_from_an_allowed_host_is_a_failure_and_nothing_is_stored(): void
+    {
+        Http::fake([self::URL => Http::response('', 302, ['Location' => 'http://169.254.169.254/'])]);
+        CourierRegistry::fake('quadx', FakeCourier::make('quadx')->labelAt(self::URL));
+        $s = $this->booked('QX-1');
+
+        $this->get("/api/v1/shipments/{$s->public_id}/label")->assertStatus(502)->assertJsonPath('code', 'courier_unavailable');
+        Http::assertSentCount(1);
+        Storage::disk('local')->assertMissing('labels/quadx/QX-1.pdf');
+        $this->assertSame(0, ShipmentLabel::query()->count());
+    }
+
+    public function test_batch_502_is_not_retryable_when_every_failure_is_permanent(): void
+    {
+        Http::fake();
+        CourierRegistry::fake('quadx', FakeCourier::make('quadx')->labelAt('https://evil.example/a.pdf'));
+        $s = $this->booked('QX-1');
+
+        $this->post('/api/v1/labels', ['shipment_ids' => [$s->public_id]])
+            ->assertStatus(502)->assertJsonPath('retryable', false);
+    }
+
+    public function test_batch_502_is_retryable_when_a_failure_is_retryable(): void
+    {
+        Http::fake([self::URL => Http::response('', 500)]);
+        CourierRegistry::fake('quadx', FakeCourier::make('quadx')->labelAt(self::URL));
+        $s = $this->booked('QX-1');
+
+        $this->post('/api/v1/labels', ['shipment_ids' => [$s->public_id]])
+            ->assertStatus(502)->assertJsonPath('retryable', true);
+    }
+
+    public function test_ids_must_have_the_shipment_id_format(): void
+    {
+        foreach (['shp_a,shp_b', "shp_x\r\nX-Evil: 1", 'abc', 'SHP_'.str_repeat('0', 26), $this->unknownId().'x'] as $bad) {
+            $this->post('/api/v1/labels', ['shipment_ids' => [$bad]])
+                ->assertStatus(422)->assertJsonPath('code', 'invalid_request');
+        }
     }
 
     private function booked(string $tracking): Shipment

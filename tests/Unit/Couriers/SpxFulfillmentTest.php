@@ -971,6 +971,27 @@ class SpxFulfillmentTest extends TestCase
         Storage::disk('local')->assertMissing('labels/spx/SPEPH000000000009.pdf');
     }
 
+    public function test_print_label_treats_a_redirect_from_an_allowed_host_as_a_failure(): void
+    {
+        $this->configureAccountCredentials();
+        Storage::fake('local');
+        $this->makeSpxOrder('SPEPH000000000008');
+
+        Http::fake([
+            '*/v2/order/batch_get_shipping_label*' => Http::response([
+                'ret_code' => 0, 'message' => 'success.',
+                'data' => ['batch_no' => 207982800897461, 'task_status' => 4, 'awb_link' => 'https://test-stable.spx.co.th/r.pdf'],
+            ]),
+            'https://test-stable.spx.co.th/r.pdf' => Http::response('', 302, ['Location' => 'http://169.254.169.254/x']),
+        ]);
+
+        $result = $this->courier()->printLabel('SPEPH000000000008', 'zebra');
+
+        $this->assertFalse($result['success']);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '169.254'));
+        Storage::disk('local')->assertMissing('labels/spx/SPEPH000000000008.pdf');
+    }
+
     public function test_print_label_serves_the_cached_file_on_a_second_request_without_any_http_call(): void
     {
         $this->configureAccountCredentials();
