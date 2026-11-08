@@ -2,6 +2,7 @@
 
 use App\Api\ApiError;
 use App\Http\Middleware\AuthenticateClient;
+use App\Http\Middleware\EnforceIdempotency;
 use App\Http\Middleware\LogApiRequest;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -18,7 +19,10 @@ return Application::configure(basePath: dirname(__DIR__))
         apiPrefix: 'api/v1',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->alias(['client.auth' => AuthenticateClient::class]);
+        $middleware->alias([
+            'client.auth' => AuthenticateClient::class,
+            'idempotent' => EnforceIdempotency::class,
+        ]);
         $middleware->api(prepend: [LogApiRequest::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
