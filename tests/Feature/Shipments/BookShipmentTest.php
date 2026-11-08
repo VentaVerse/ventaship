@@ -72,10 +72,12 @@ class BookShipmentTest extends TestCase
         $this->assertCount(1, $fake->callsTo('createShipment'));
 
         $types = OutgoingEvent::query()->orderBy('sequence')->pluck('type')->all();
-        $this->assertSame(['shipment.booked', 'shipment.status_changed'], $types);
+        $this->assertSame(['shipment.status_changed', 'shipment.booked'], $types);
         $booked = OutgoingEvent::query()->where('type', 'shipment.booked')->sole();
         $this->assertSame('booked', $booked->payload['shipment']['state']);
         $this->assertSame('QX-1', $booked->payload['shipment']['tracking_number']);
+        $this->assertSame('pending', $booked->payload['shipment']['courier_status']);
+        $this->assertNotNull($booked->payload['shipment']['phase']);
     }
 
     public function test_spx_creating_stays_booking_without_attention(): void
@@ -263,6 +265,48 @@ class BookShipmentTest extends TestCase
 
         $payload = OutgoingEvent::query()->sole()->payload;
         $this->assertSame($this->account->public_id, $payload['shipment']['account']['id']);
+    }
+
+    public function test_unconfirmed_booking_keeps_the_couriers_attention_and_notice(): void
+    {
+        CourierRegistry::fake('quadx', FakeCourier::make()->booksAs('500000000001', 'unconfirmed')->booksWithExtra([
+            'notice' => 'Only 12 LBC tracking numbers are left. Request a new block from LBC.',
+            'attention_reason' => 'LBC did not confirm pickup request 500000000001: timed out. Check with LBC whether the pickup exists.',
+        ]));
+        $s = $this->queued();
+
+        Bus::dispatchSync(new BookShipment($s->id));
+
+        $s->refresh();
+        $this->assertSame('booked', $s->state);
+        $this->assertSame('unconfirmed', $s->courier_status);
+        $this->assertTrue($s->needs_attention);
+        $this->assertStringStartsWith('LBC did not confirm pickup request 500000000001', $s->attention_reason);
+        $this->assertSame('Only 12 LBC tracking numbers are left. Request a new block from LBC.', $s->notice);
+        $booked = OutgoingEvent::query()->where('type', 'shipment.booked')->sole();
+        $this->assertTrue($booked->payload['shipment']['needs_attention']);
+    }
+
+    public function test_booked_but_not_saved_keeps_tracking_and_meta_on_the_unknown_row(): void
+    {
+        CourierRegistry::fake('quadx', FakeCourier::make()->booksAs('QX-LOST'));
+        $s = $this->queued();
+        // Seam: the write of the booked state fails after the courier has booked.
+        Shipment::saving(function (Shipment $row) {
+            if ($row->state === 'booked') {
+                throw new RuntimeException('database went away');
+            }
+        });
+
+        Bus::dispatchSync(new BookShipment($s->id));
+
+        $s->refresh();
+        $this->assertSame('unknown', $s->state);
+        $this->assertSame('QX-LOST', $s->tracking_number);
+        $this->assertTrue($s->meta['fake']);
+        $this->assertTrue($s->needs_attention);
+        $this->assertSame('4211', $s->active_reference);
+        $this->assertSame(['shipment.unknown'], OutgoingEvent::query()->pluck('type')->all());
     }
 
     private function queued(array $attributes = []): Shipment

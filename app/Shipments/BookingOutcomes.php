@@ -41,13 +41,22 @@ final class BookingOutcomes
      * The courier booked it. SPX may answer `creating` with no tracking number yet: the shipment stays `booking`
      * (no attention) and the poller finishes it. A requested cancel is sent to the courier once booked.
      *
+     * A courier `attention_reason` (LBC did not confirm the pickup) flags the shipment; its `notice` is stored.
+     *
      * @param  array<string, mixed>  $meta  the courier's booking meta
      */
-    public function booked(int $shipmentId, ?string $trackingNumber, ?string $status, array $meta, ?string $fee): void
-    {
+    public function booked(
+        int $shipmentId,
+        ?string $trackingNumber,
+        ?string $status,
+        array $meta,
+        ?string $fee,
+        ?string $notice = null,
+        ?string $attentionReason = null,
+    ): void {
         $creating = $status === 'creating';
 
-        $cancel = DB::transaction(function () use ($shipmentId, $trackingNumber, $status, $meta, $fee, $creating) {
+        $cancel = DB::transaction(function () use ($shipmentId, $trackingNumber, $status, $meta, $fee, $creating, $notice, $attentionReason) {
             $s = $this->lock($shipmentId);
             if ($s === null) {
                 return false;
@@ -75,21 +84,23 @@ final class BookingOutcomes
                 'fee_amount' => $fee ?? $s->fee_amount,
                 'fee_currency' => $fee !== null ? 'PHP' : $s->fee_currency,
                 'booked_at' => $creating ? null : now(),
+                'notice' => $notice ?? $s->notice,
                 'error_code' => null,
                 'error_message' => null,
-                'needs_attention' => false,
-                'attention_reason' => null,
+                'needs_attention' => $attentionReason !== null,
+                'attention_reason' => $attentionReason !== null ? mb_substr($attentionReason, 0, 255) : null,
             ])->save();
 
             if ($creating) {
                 return false;
             }
 
-            Outbox::record($s->clientApp, 'shipment.booked', ['event' => null], $s);
-
+            // Status first, so the booked webhook's snapshot already carries courier_status and phase.
             if ($status !== null && $status !== '') {
                 $this->recorder->record($s, $status, now(), 'system');
             }
+
+            Outbox::record($s->clientApp, 'shipment.booked', ['event' => null], $s);
 
             return $s->cancel_state === 'requested';
         });
@@ -130,10 +141,13 @@ final class BookingOutcomes
     /**
      * The outcome is not known: `unknown` plus attention, reference kept. Never retried; an operator resolves it.
      * With $staleBefore (the sweep), only a booking started before then and not waiting on SPX `creating`.
+     * A tracking number and meta the courier did return (its answer could not be saved) are kept on the row.
+     *
+     * @param  array<string, mixed>  $meta
      */
-    public function unknown(int $shipmentId, ?CarbonInterface $staleBefore = null): ?Shipment
+    public function unknown(int $shipmentId, ?CarbonInterface $staleBefore = null, ?string $trackingNumber = null, array $meta = []): ?Shipment
     {
-        return DB::transaction(function () use ($shipmentId, $staleBefore) {
+        return DB::transaction(function () use ($shipmentId, $staleBefore, $trackingNumber, $meta) {
             $s = $this->lock($shipmentId);
             if ($s === null || $s->state !== 'booking') {
                 return null;
@@ -146,6 +160,8 @@ final class BookingOutcomes
 
             $s->forceFill([
                 'state' => 'unknown',
+                'tracking_number' => $trackingNumber ?? $s->tracking_number,
+                'meta' => $meta === [] ? $s->meta : array_replace(is_array($s->meta) ? $s->meta : [], $meta),
                 'needs_attention' => true,
                 'attention_reason' => self::UNKNOWN_REASON,
             ])->save();

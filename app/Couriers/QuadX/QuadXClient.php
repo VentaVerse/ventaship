@@ -160,7 +160,9 @@ class QuadXClient
             ];
         } catch (\Throwable $e) {
             Log::error('QuadX request failed', ['method' => $method, 'path' => $path, 'error' => $e->getMessage()]);
-            return ['ok' => false, 'status' => 0, 'body' => [], 'error' => $e->getMessage()];
+            // `transport`: the request may have reached QuadX (a read timeout after the POST left), so the
+            // outcome of a write is not known. Not set for "not configured" above, where nothing was sent.
+            return ['ok' => false, 'status' => 0, 'body' => [], 'error' => $e->getMessage(), 'transport' => true];
         }
     }
 

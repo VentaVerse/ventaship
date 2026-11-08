@@ -77,7 +77,12 @@ interface Courier
      *   length_cm:float, width_cm:float, height_cm:float,
      *   buyer_payment:string ('cod'|'prepaid'), shipping_payment:string
      * }
-     * @return array{success:bool, tracking_number?:string, status?:string, meta?:array, error?:string}
+     * `outcome_unknown` (with success false): the request may have reached the courier (transport error,
+     * timeout, a 5xx answer), so it is NOT a refusal; the caller marks the booking unknown and never retries it.
+     * `notice` and `attention_reason` (with success true): stored on the shipment; an attention reason flags it.
+     *
+     * @return array{success:bool, tracking_number?:string, status?:string, meta?:array, error?:string,
+     *               outcome_unknown?:bool, notice?:string|null, attention_reason?:string|null}
      */
     public function createShipment(CourierOrder $order, array $opts): array;
 

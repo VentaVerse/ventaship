@@ -136,6 +136,14 @@ class BookShipment implements ShouldQueue
     /** @param  array<string, mixed>  $result  createShipment()'s answer */
     private function record(BookingOutcomes $outcomes, Shipment $s, Courier $courier, array $result): void
     {
+        if (($result['success'] ?? false) !== true && ($result['outcome_unknown'] ?? false) === true) {
+            // The request may have reached the courier: not a refusal, so the reference is kept.
+            Log::error('Booking outcome unknown: the courier could not confirm', ['shipment' => $s->public_id]);
+            $outcomes->unknown($s->id);
+
+            return;
+        }
+
         if (($result['success'] ?? false) !== true) {
             $error = is_string($result['error'] ?? null) && $result['error'] !== '' ? $result['error'] : 'The courier refused the booking.';
             $outcomes->failed($s->id, 'courier_refused', $error);
@@ -156,13 +164,14 @@ class BookShipment implements ShouldQueue
         }
 
         try {
-            $outcomes->booked($s->id, $tracking, $status, $meta, $this->fee($courier, $result, $meta, $s));
+            $outcomes->booked($s->id, $tracking, $status, $meta, $this->fee($courier, $result, $meta, $s),
+                $this->text($result['notice'] ?? null), $this->text($result['attention_reason'] ?? null));
         } catch (Throwable $e) {
             // Booked at the courier but not written here: the tracking number must not be lost.
             Log::critical('Courier booked the shipment but the result could not be saved', [
                 'shipment' => $s->public_id, 'tracking_number' => $tracking, 'exception' => $e::class,
             ]);
-            $outcomes->unknown($s->id);
+            $outcomes->unknown($s->id, trackingNumber: $tracking, meta: $meta);
         }
     }
 
@@ -181,6 +190,11 @@ class BookShipment implements ShouldQueue
 
             return null;
         }
+    }
+
+    private function text(mixed $value): ?string
+    {
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
     }
 
     /** Class and shipment only: courier exception messages can carry URLs, credentials or personal data. */

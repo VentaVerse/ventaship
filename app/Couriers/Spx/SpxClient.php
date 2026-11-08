@@ -396,7 +396,7 @@ class SpxClient
 
         if ($retCode !== 0) {
             Log::warning('SPX API error', ['path' => $path, 'ret_code' => $retCode, 'message' => $message]);
-            throw new SpxApiException($message !== '' ? $message : "SPX error {$retCode}", $retCode);
+            throw new SpxApiException($message !== '' ? $message : "SPX error {$retCode}", $retCode, $response->status());
         }
 
         $data = $json['data'] ?? [];

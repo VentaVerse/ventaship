@@ -319,14 +319,21 @@ class SpxFulfillment implements Courier
             // A lock is off: nothing was sent, and the caller must see why rather than a booking failure.
             throw $e;
         } catch (SpxApiException $e) {
-            return ['success' => false, 'error' => "SPX booking failed: {$e->getMessage()} (ret_code {$e->retCode})"];
+            // A clear refusal, unless it came with a server error: then SPX may have taken the order anyway.
+            return array_filter([
+                'success' => false,
+                'error' => "SPX booking failed: {$e->getMessage()} (ret_code {$e->retCode})",
+                'outcome_unknown' => $e->httpStatus >= 500 ?: null,
+            ], fn ($v) => $v !== null);
         } catch (\Throwable $e) {
-            return ['success' => false, 'error' => 'SPX booking failed: ' . $e->getMessage()];
+            // Transport failure, timeout or a non-envelope answer (a 5xx page): the order may exist at SPX.
+            return ['success' => false, 'error' => 'SPX booking failed: ' . $e->getMessage(), 'outcome_unknown' => true];
         }
 
         $batchNo = $createData['batch_no'] ?? null;
         if (!$batchNo) {
-            return ['success' => false, 'error' => 'SPX did not return a batch number for this booking.'];
+            // SPX accepted the request (ret_code 0) but gave nothing to follow it by.
+            return ['success' => false, 'error' => 'SPX did not return a batch number for this booking.', 'outcome_unknown' => true];
         }
 
         $meta = [

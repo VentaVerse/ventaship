@@ -155,7 +155,15 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
 
         $res = $this->client->createOrder($payload);
         if (!$res['ok']) {
-            return ['success' => false, 'error' => $res['error'] ?? 'QuadX booking failed.'];
+            // A transport error or a 5xx answer to the create may still have booked the parcel: the outcome is
+            // unknown and the caller must not treat it as a refusal (which would invite a second booking).
+            $unknown = ($res['transport'] ?? false) === true || (int) ($res['status'] ?? 0) >= 500;
+
+            return array_filter([
+                'success' => false,
+                'error' => $res['error'] ?? 'QuadX booking failed.',
+                'outcome_unknown' => $unknown ?: null,
+            ], fn ($v) => $v !== null);
         }
 
         $b = $res['body'];

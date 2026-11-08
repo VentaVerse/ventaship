@@ -13,7 +13,8 @@ namespace App\Couriers\Spx;
  */
 class SpxApiException extends \RuntimeException
 {
-    public function __construct(string $message, public readonly int $retCode)
+    /** @param  int  $httpStatus  the HTTP status the envelope came with (0 when not known) */
+    public function __construct(string $message, public readonly int $retCode, public readonly int $httpStatus = 0)
     {
         parent::__construct($message);
     }

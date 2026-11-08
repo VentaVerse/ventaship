@@ -34,6 +34,9 @@ final class FakeCourier implements Courier
 
     private ?string $pdf = null;
 
+    /** @var array<string, mixed> extra keys merged into a successful createShipment() answer */
+    private array $bookingExtra = [];
+
     /** The registry signature, so the fake can stand in wherever a real courier is built. */
     public function __construct(?CourierAccount $account = null, ?AccountSettings $settings = null) {}
 
@@ -50,6 +53,14 @@ final class FakeCourier implements Courier
         $this->trackingNumber = $tn;
         $this->bookedStatus = $status;
         $this->refusal = null;
+
+        return $this;
+    }
+
+    /** Extra keys on a successful booking answer, e.g. ['notice' => ..., 'attention_reason' => ...]. */
+    public function booksWithExtra(array $extra): self
+    {
+        $this->bookingExtra = $extra;
 
         return $this;
     }
@@ -140,7 +151,7 @@ final class FakeCourier implements Courier
             return ['success' => false, 'error' => $this->refusal];
         }
 
-        return [
+        return $this->bookingExtra + [
             'success' => true,
             'tracking_number' => $this->trackingNumber,
             'status' => $this->bookedStatus,
