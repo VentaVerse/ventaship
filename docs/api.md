@@ -1316,7 +1316,7 @@ The shipment's courier timeline, oldest first.
     "data": [
         {
             "courier_status": "for_pickup",
-            "label": "For pickup",
+            "label": "Ready for pickup",
             "phase": "to_handover",
             "occurred_at": "2026-11-08T09:00:02+08:00",
             "remarks": null,
@@ -1403,7 +1403,7 @@ You rarely need this: couriers' webhooks and Ventaship's polling keep shipments 
     "events": [
         {
             "courier_status": "for_pickup",
-            "label": "For pickup",
+            "label": "Ready for pickup",
             "phase": "to_handover",
             "occurred_at": "2026-11-08T09:00:02+08:00",
             "remarks": null,
@@ -1550,7 +1550,7 @@ The same object in every answer and in every shipment webhook (`data.shipment`),
 | `cancel_state` | string\|null | see [8.4](#84-cancel_state) |
 | `phase` | string\|null | where the parcel is, see [8.2](#82-phase); `null` until the courier reports a status |
 | `courier_status` | string\|null | the courier's latest status code |
-| `courier_status_label` | string\|null | its display wording |
+| `courier_status_label` | string\|null | its display wording. Labels are the courier's official wording and may change; map from `courier_status`. |
 | `tracking_number` | string\|null | set once booked |
 | `tracking_url` | string\|null | the courier's public tracking page, when it has one |
 | `label_available` | bool | `true` when `GET /shipments/{id}/label` can answer a PDF (state `booked` with a tracking number) |
@@ -1795,7 +1795,7 @@ For every `shipment.*` type, `data` is:
             "cancel_state": null,
             "phase": "to_handover",
             "courier_status": "for_pickup",
-            "courier_status_label": "For pickup",
+            "courier_status_label": "Ready for pickup",
             "tracking_number": "QX-TEST-0001",
             "tracking_url": "https://app.staging.gogoxpress.com/track/QX-TEST-0001",
             "label_available": true,

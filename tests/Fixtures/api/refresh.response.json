@@ -47,7 +47,7 @@
     "events": [
         {
             "courier_status": "for_pickup",
-            "label": "For pickup",
+            "label": "Ready for pickup",
             "phase": "to_handover",
             "occurred_at": "2026-11-08T09:00:02+08:00",
             "remarks": null,
