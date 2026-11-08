@@ -5,8 +5,8 @@
 
     $r = is_array($shipment->recipient) ? $shipment->recipient : null;
     $name = $r ? trim(($r['first_name'] ?? '').' '.($r['last_name'] ?? '')) : '';
-    $name = $name !== '' ? $name : ($r['name'] ?? null);
-    $city = $r['address']['city'] ?? ($r['city'] ?? null);
+    $name = $name !== '' ? $name : null;
+    $city = $r['city'] ?? null;
     $phase = $shipment->phase ?? 'draft';
     $isCod = str_starts_with((string) $shipment->payment_state, 'cod_');
     $amount = $isCod ? $shipment->cod_amount : $shipment->total;
@@ -25,8 +25,8 @@
     ];
     [$phaseLabel, $phaseTone] = $phases[$phase] ?? [ucfirst(str_replace('_', ' ', $phase)), 'mute'];
     $tracking = $shipment->tracking_number ? TrackingLink::for($shipment) : null;
-    $names = ['quadx' => 'QuadX', 'spx' => 'SPX', 'lbc' => 'LBC'];
-    $courierName = $shipment->courier ? ($names[$shipment->courier] ?? $shipment->courier) : null;
+    $courierName = $shipment->courier ? \App\Fulfillment\Couriers::name($shipment->courier) : null;
+    $service = $shipment->service ? \Illuminate\Support\Str::title(str_replace('_', ' ', $shipment->service)) : null;
     $refs = collect([$shipment->courier_ref, $shipment->client_reference])->filter()->implode(' · ');
 @endphp
 <div class="fl-row" data-id="{{ $shipment->public_id }}" data-phase="{{ $phase }}">
@@ -38,8 +38,8 @@
     </div>
     <div>
         @if($shipment->tracking_number)
-            <div class="fl-row__courier fl-row__courier--{{ $shipment->courier }}"><span class="fl-row__dot" aria-hidden="true"></span>{{ collect([$courierName, $shipment->service])->filter()->implode(' · ') }}</div>
-            @if($tracking)
+            <div class="fl-row__courier fl-row__courier--{{ $shipment->courier }}"><span class="fl-row__dot" aria-hidden="true"></span>{{ collect([$courierName, $service])->filter()->implode(' · ') }}</div>
+            @if($tracking && preg_match('#^https?://#i', $tracking))
                 <a class="fl-row__track" href="{{ $tracking }}" target="_blank" rel="noopener">{{ $shipment->tracking_number }}</a>
             @else
                 <span class="fl-row__track is-plain">{{ $shipment->tracking_number }}</span>
@@ -54,7 +54,7 @@
     </div>
     <div class="fl-row__end">
         @if($phase === 'draft' && Route::has('shipments.book'))
-            <x-ui.button size="sm" variant="primary" type="submit" form="bulk" formaction="{{ route('shipments.book', $shipment->public_id) }}">Book</x-ui.button>
+            <x-ui.button size="sm" variant="primary" type="submit" form="book-{{ $shipment->public_id }}">Book</x-ui.button>
         @endif
         <x-ui.badge :tone="$phaseTone">{{ $phaseLabel }}</x-ui.badge>
         <span class="fl-row__src">{{ ShipmentList::sourceLabel($shipment) }}</span>

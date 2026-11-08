@@ -1,23 +1,20 @@
 @php
+    use App\Fulfillment\Couriers;
+
     $account = $card['account'];
-    $names = ['quadx' => 'QuadX', 'spx' => 'SPX', 'lbc' => 'LBC'];
-    $codes = ['quadx' => 'QX', 'spx' => 'SPX', 'lbc' => 'LBC'];
-    $mode = $account ? ($account->mode === 'production' ? ['Live', 'good'] : [strtolower($account->mode) === 'uat' ? 'UAT' : ucfirst($account->mode), 'cool']) : null;
+    $modeWord = $account ? ($account->mode === 'production' ? 'Live' : (strtolower($account->mode) === 'uat' ? 'UAT' : ucfirst($account->mode))) : null;
     $check = $account ? ($account->last_check_ok === null ? ['Not checked', 'mute'] : ($account->last_check_ok ? ['Connected', 'good'] : ['Check failed', 'bad'])) : null;
 @endphp
 
 @if($account)
     <article class="x-card fl-card fl-card--{{ $card['courier'] }}">
         <header class="fl-card__head">
-            <span class="fl-card__logo">{{ $codes[$card['courier']] ?? strtoupper($card['courier']) }}</span>
-            <div>
-                <h2 class="fl-card__name">{{ $names[$card['courier']] ?? $card['courier'] }}</h2>
-                <div class="fl-card__sub">{{ $card['name'] }}</div>
+            <span class="fl-card__logo">{{ Couriers::code($card['courier']) }}</span>
+            <div class="fl-card__title">
+                <h2 class="fl-card__name">{{ Couriers::name($card['courier']) }}</h2>
+                <div class="fl-card__sub">{{ $card['name'] }} · {{ $modeWord }}</div>
             </div>
-            <div class="fl-card__badges">
-                <x-ui.badge :tone="$mode[1]">{{ $mode[0] }}</x-ui.badge>
-                <x-ui.badge :tone="$check[1]">{{ $check[0] }}</x-ui.badge>
-            </div>
+            <x-ui.badge :tone="$check[1]" class="fl-card__badge">{{ $check[0] }}</x-ui.badge>
         </header>
         <div class="fl-card__stats">
             <div class="fl-big x-num">{{ $card['to_ship'] }}<small>To ship</small></div>
@@ -33,16 +30,14 @@
 @else
     <article class="x-card fl-card fl-card--off">
         <header class="fl-card__head">
-            <span class="fl-card__logo">{{ $codes[$card['courier']] ?? strtoupper($card['courier']) }}</span>
-            <div>
-                <h2 class="fl-card__name">{{ $card['name'] }}</h2>
-                <div class="fl-card__sub">No account</div>
-            </div>
+            <span class="fl-card__logo">{{ Couriers::code($card['courier']) }}</span>
+            <h2 class="fl-card__name">{{ $card['name'] }}</h2>
         </header>
-        @if(Route::has('accounts.create'))
-            <div class="fl-card__off">
+        <div class="fl-card__off">
+            <span class="fl-card__none">No account</span>
+            @if(Route::has('accounts.create'))
                 <x-ui.button size="sm" :href="route('accounts.create', ['courier' => $card['courier']])">Connect {{ $card['name'] }}</x-ui.button>
-            </div>
-        @endif
+            @endif
+        </div>
     </article>
 @endif

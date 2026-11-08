@@ -24,7 +24,6 @@
         display: flex;
         align-items: center;
         gap: 10px;
-        flex-wrap: wrap;
     }
 
     .fl-card__logo {
@@ -50,11 +49,19 @@
         color: var(--bl-ink-3);
     }
 
-    .fl-card__badges {
+    .fl-card__title {
+        min-width: 0;
+        flex: 1;
+    }
+
+    .fl-card__badge {
         margin-left: auto;
-        display: flex;
-        gap: 6px;
-        flex-wrap: wrap;
+        flex: none;
+    }
+
+    .fl-card__none {
+        font-size: 12.5px;
+        color: var(--bl-ink-3);
     }
 
     .fl-card__stats {
@@ -128,7 +135,10 @@
     .fl-card__off {
         flex: 1;
         display: flex;
-        align-items: center;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-start;
+        gap: 10px;
         min-height: 110px;
     }
 
@@ -171,7 +181,7 @@
 
     .fl-row {
         display: grid;
-        grid-template-columns: 22px minmax(0, 1.6fr) minmax(0, 1.1fr) minmax(0, 1fr) auto;
+        grid-template-columns: 22px minmax(0, 1.6fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(130px, auto);
         gap: 14px;
         align-items: center;
         padding: 14px 18px;

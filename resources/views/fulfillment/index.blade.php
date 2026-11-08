@@ -63,7 +63,7 @@
         </x-ui.select>
     </form>
 
-    <form id="bulk" method="POST" action="{{ Route::has('shipments.bulk') ? route('shipments.bulk') : '' }}">
+    <form id="bulk" method="POST">
         @csrf
         @forelse($shipments as $shipment)
             @include('fulfillment._row', ['shipment' => $shipment])
@@ -71,6 +71,17 @@
             <x-ui.empty title="No shipments" />
         @endforelse
     </form>
+
+    @if(Route::has('shipments.book'))
+        @foreach($shipments as $shipment)
+            @if(($shipment->phase ?? 'draft') === 'draft')
+                <form id="book-{{ $shipment->public_id }}" method="POST" action="{{ route('shipments.book') }}">
+                    @csrf
+                    <input type="hidden" name="ids[]" value="{{ $shipment->public_id }}">
+                </form>
+            @endif
+        @endforeach
+    @endif
 
     <x-ui.pager :paginator="$shipments" class="fl-pager" />
 </section>

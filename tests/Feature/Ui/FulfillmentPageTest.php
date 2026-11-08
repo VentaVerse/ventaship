@@ -40,7 +40,7 @@ class FulfillmentPageTest extends TestCase
         $this->ship('to_handover', [
             'courier_ref' => 'VS-24-00182', 'payment_method' => 'cod', 'payment_state' => 'cod_unpaid',
             'cod_amount' => '1240.00', 'total' => '1500.00',
-            'recipient' => ['first_name' => 'Maria', 'last_name' => 'Santos', 'address' => ['city' => 'Pasig City']],
+            'recipient' => ['first_name' => 'Maria', 'last_name' => 'Santos', 'city' => 'Pasig City'],
             'items_count' => 2,
         ]);
 
@@ -75,6 +75,20 @@ class FulfillmentPageTest extends TestCase
         Route::get('/_accounts/create', fn () => 'x')->name('accounts.create');
         app('router')->getRoutes()->refreshNameLookups();
         $this->get('/')->assertSeeText('Connect LBC');
+    }
+
+    public function test_draft_row_book_form_posts_single_id(): void
+    {
+        Route::post('/shipments/book', fn () => 'x')->name('shipments.book');
+        app('router')->getRoutes()->refreshNameLookups();
+        $draft = $this->ship('draft');
+        $booked = $this->ship('to_handover');
+
+        $html = $this->get('/')->assertOk()->getContent();
+        $this->assertStringContainsString('id="book-'.$draft->public_id.'"', $html);
+        $this->assertStringContainsString('form="book-'.$draft->public_id.'"', $html);
+        $this->assertMatchesRegularExpression('#<form id="book-'.$draft->public_id.'" method="POST" action="[^"]*/shipments/book">\s*<input type="hidden" name="_token"[^>]*>\s*<input type="hidden" name="ids\[\]" value="'.$draft->public_id.'">#', $html);
+        $this->assertStringNotContainsString('book-'.$booked->public_id, $html);
     }
 
     public function test_poll_returns_counts_and_phases(): void
