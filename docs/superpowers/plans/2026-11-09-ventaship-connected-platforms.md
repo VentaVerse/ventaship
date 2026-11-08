@@ -162,3 +162,20 @@ The header has **Add platform**. With no platforms, `<x-ui.empty>` shows "No pla
 - No bodies.
 
 **Tests:** both lists render, are scoped to the app, and show no payload bodies or secrets. Resend success and failure. Guest redirect.
+
+---
+
+### Task 5: Switch API authentication to Laravel Sanctum (owner, 2026-11-09)
+
+**Owner decision:** "I think we are doing sanctum only." The client API authenticates with a Sanctum token only. The HMAC request signing (`X-Signature`, `X-Timestamp`, replay window) is removed. Runs after Task 3 and before Task 4.
+
+**What changes:**
+- Install `laravel/sanctum`. `ClientApp` uses `HasApiTokens`; tokens live in `personal_access_tokens` (tokenable = client app). Token prefix `vsk_` (Sanctum `token_prefix`).
+- Viewable again: add `token_encrypted` (text, nullable, vault cast) to `personal_access_tokens`; `PlatformApps::issueKey` stores it, `revealKey` returns the full `{id}|vsk_…` token. Revoke deletes or marks the token (no reuse); a revoked token is refused by the API.
+- `/api/v1` routes use `auth:sanctum`, then the existing checks: tokenable must be a `ClientApp` (else 401), app disabled → `403 app_disabled`. All 401s stay `unauthorized` with no reason. Idempotency, `api_requests` logging, rate limits and error envelopes stay; they reference the token id instead of `api_key_id`.
+- Existing `api_keys` rows: migrate each active key into `personal_access_tokens` keeping its SHA-256 hash (Sanctum looks up a token without `|` by hash), name, last used and encrypted copy, so issued keys keep working. Then drop the signing columns/table and `AuthenticateClient`'s signature code.
+- UI Keys section: one masked **API token** row per key (View, Copy); no Signing secret row. CLI `key-issue` prints the token (one line), no secret.
+- Outgoing webhooks are unchanged: Ventaship still signs them with the webhook secret (the platform verifies they came from Ventaship; Sanctum cannot cover that direction).
+- `docs/api.md` §2 rewritten: `Authorization: Bearer {token}` only; PHP and Node client examples, fixtures and `ApiExamplesTest` updated. Webhook verification section unchanged.
+
+**Tests:** a revealed token authenticates `GET /api/v1/ping` (200) with only the Bearer header; revoked → 401; disabled app → 403; a migrated pre-existing key still authenticates; no signature headers required; the existing API suites pass with signing removed from their helper.
