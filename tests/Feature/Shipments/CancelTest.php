@@ -30,8 +30,6 @@ class CancelTest extends TestCase
 
     private CourierAccount $account;
 
-    private int $tick = 0;
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -270,6 +268,34 @@ class CancelTest extends TestCase
         $this->assertSame(1, OutgoingEvent::query()->count());
     }
 
+    public function test_a_failure_preparing_the_cancel_is_failed_not_refused(): void
+    {
+        // Seam: the courier cannot even be built for this account, before any courier contact.
+        $bad = CourierAccount::factory()->create(['courier' => 'nosuch', 'status' => 'active']);
+        $s = $this->booked(['courier_account_id' => $bad->id]);
+
+        $this->cancel($s)->assertOk()->assertJsonPath('data.cancel_state', 'failed');
+
+        $s->refresh();
+        $this->assertSame('booked', $s->state);
+        $this->assertTrue($s->needs_attention);
+        $this->assertSame('Cancel could not be prepared — check the account settings', $s->attention_reason);
+        $this->assertSame('shipment.cancel_failed', OutgoingEvent::query()->sole()->type);
+    }
+
+    public function test_successful_cancel_keeps_an_unrelated_attention_reason(): void
+    {
+        CourierRegistry::fake('quadx', FakeCourier::make());
+        $s = $this->booked(['needs_attention' => true, 'attention_reason' => 'LBC did not confirm the pickup request']);
+
+        $this->cancelAndRunJob($s);
+
+        $s->refresh();
+        $this->assertSame('cancelled', $s->state);
+        $this->assertTrue($s->needs_attention);
+        $this->assertSame('LBC did not confirm the pickup request', $s->attention_reason);
+    }
+
     public function test_failed_hook_marks_a_stuck_cancel_failed(): void
     {
         $s = $this->booked(['cancel_state' => 'requested']);
@@ -354,7 +380,7 @@ class CancelTest extends TestCase
     private function cancel(Shipment $s): TestResponse
     {
         return $this->signedJson('POST', "/api/v1/shipments/{$s->public_id}/cancel", [],
-            ['Idempotency-Key' => (string) Str::uuid(), 'X-Timestamp' => (string) (time() - $this->tick++)], $this->client);
+            ['Idempotency-Key' => (string) Str::uuid(), 'X-Timestamp' => $this->uniqueTimestamp()], $this->client);
     }
 
     private function shipment(array $attributes = []): Shipment

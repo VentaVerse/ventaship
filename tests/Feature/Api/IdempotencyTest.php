@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Api\ApiError;
 use App\Models\IdempotencyKey;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Tests\Concerns\SignsApiRequests;
 use Tests\TestCase;
@@ -15,15 +16,13 @@ class IdempotencyTest extends TestCase
 
     private int $calls = 0;
 
-    private int $tick = 0;
-
     protected function setUp(): void
     {
         parent::setUp();
         $this->calls = 0;
 
         Route::middleware(['api', 'client.auth', 'idempotent'])->prefix('api/v1')->group(function () {
-            Route::post('_test/echo', function (\Illuminate\Http\Request $request) {
+            Route::post('_test/echo', function (Request $request) {
                 $this->calls++;
                 $mode = $request->input('mode');
                 if ($mode === 'boom') {
@@ -43,7 +42,7 @@ class IdempotencyTest extends TestCase
 
     private function send(array $body, ?string $key = 'k1', ?array $client = null)
     {
-        return $this->signedJson('POST', '/api/v1/_test/echo', $body, array_filter(['Idempotency-Key' => $key, 'X-Timestamp' => (string) (time() - $this->tick++)]), $client);
+        return $this->signedJson('POST', '/api/v1/_test/echo', $body, array_filter(['Idempotency-Key' => $key, 'X-Timestamp' => $this->uniqueTimestamp()]), $client);
     }
 
     public function test_same_key_same_body_replays_with_header(): void

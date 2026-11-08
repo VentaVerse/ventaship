@@ -21,6 +21,10 @@ final class Canceller
 {
     public const OUTCOME_UNKNOWN_REASON = 'Cancel outcome unknown — check the courier portal';
 
+    public const UNKNOWN_BOOKING_REASON = 'Cancel requested while the booking outcome is unknown — resolve the booking first';
+
+    public const NOT_PREPARED_REASON = 'Cancel could not be prepared — check the account settings';
+
     private const REASON_MAX = 255;
 
     /**
@@ -56,7 +60,7 @@ final class Canceller
                     $row->forceFill([
                         'cancel_state' => 'requested',
                         'needs_attention' => true,
-                        'attention_reason' => 'Cancel requested while the booking outcome is unknown — resolve the booking first',
+                        'attention_reason' => self::UNKNOWN_BOOKING_REASON,
                     ])->save();
                     break;
 
@@ -145,7 +149,7 @@ final class Canceller
             }
         } catch (Throwable $e) {
             Log::error('Cancel could not be prepared', ['shipment' => $s->public_id, 'exception' => $e::class]);
-            $this->cancelFailed($s, 'refused', 'The courier could not be reached to cancel — check the courier portal');
+            $this->cancelFailed($s, 'failed', self::NOT_PREPARED_REASON);
 
             return false;
         }
@@ -163,9 +167,12 @@ final class Canceller
             'cancelled_at' => now(),
             'active_reference' => null,
             'payment_state' => PaymentState::after($s, 'cancelled'),
-            'needs_attention' => false,
-            'attention_reason' => null,
         ];
+
+        // Only attention the cancel flow itself raised is cleared; an unrelated reason stays for the operator.
+        if (in_array($s->attention_reason, [self::OUTCOME_UNKNOWN_REASON, self::UNKNOWN_BOOKING_REASON, self::NOT_PREPARED_REASON], true)) {
+            $changes += ['needs_attention' => false, 'attention_reason' => null];
+        }
 
         if (! $keepState) {
             $changes += ['state' => 'cancelled', 'phase' => 'cancelled'];

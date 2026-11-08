@@ -18,8 +18,6 @@ class ReadEndpointsTest extends TestCase
 {
     use BuildsCourierAccounts, BuildsShipments, RefreshDatabase, SignsApiRequests;
 
-    private int $tick = 0;
-
     private array $client;
 
     protected function setUp(): void
@@ -228,6 +226,6 @@ class ReadEndpointsTest extends TestCase
 
     private function signed(string $method, string $uri, array $data = [], array $headers = []): TestResponse
     {
-        return $this->signedJson($method, $uri, $data, $headers + ['X-Timestamp' => (string) (time() - $this->tick++)], $this->client);
+        return $this->signedJson($method, $uri, $data, $headers + ['X-Timestamp' => $this->uniqueTimestamp()], $this->client);
     }
 }

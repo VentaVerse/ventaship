@@ -10,11 +10,23 @@ use Illuminate\Testing\TestResponse;
 
 trait SignsApiRequests
 {
+    private ?int $timestampBase = null;
+
+    private int $timestampTick = 0;
+
+    /** A strictly unique, in-tolerance timestamp per call: a fixed base per test, so a second boundary cannot repeat one. */
+    protected function uniqueTimestamp(): string
+    {
+        $this->timestampBase ??= time();
+
+        return (string) ($this->timestampBase - $this->timestampTick++);
+    }
+
     /** @return array{app: ClientApp, key: string, secret: string} */
     protected function makeClient(?string $webhookUrl = null): array
     {
         $app = ClientApp::factory()->create(['name' => 'VentaCart Pro', 'webhook_url' => $webhookUrl]);
-        $key = 'vsk_' . Str::random(40);
+        $key = 'vsk_'.Str::random(40);
         $secret = Str::random(48);
         ApiKey::query()->create([
             'client_app_id' => $app->getKey(),
@@ -40,7 +52,7 @@ trait SignsApiRequests
         $ts = (int) ($headers['X-Timestamp'] ?? time());
 
         $headers = array_merge([
-            'Authorization' => 'Bearer ' . $client['key'],
+            'Authorization' => 'Bearer '.$client['key'],
             'X-Timestamp' => (string) $ts,
             'X-Signature' => Signature::sign($client['secret'], $ts, $method, $uri, $body),
             'Accept' => 'application/json',
