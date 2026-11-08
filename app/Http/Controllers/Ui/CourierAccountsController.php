@@ -106,44 +106,50 @@ class CourierAccountsController extends Controller
         };
 
         DB::beginTransaction();
-        $attempt('label', fn () => $accounts->rename($account, $data['label'], $actor));
-        $attempt('mode', fn () => $accounts->setMode($account, $data['mode'], $actor));
-        if (array_key_exists('default', $data) && $data['default'] !== null) {
-            $attempt('default', fn () => $accounts->setDefault($account, (bool) $data['default'], $actor));
-        }
-        if (array_key_exists('active', $data) && $data['active'] !== null) {
-            $attempt('active', fn () => $accounts->setActive($account, (bool) $data['active'], $actor));
-        }
-        if (in_array($account->courier, ['lbc', 'spx'], true) && ($data['allow_live_booking'] ?? null) !== null) {
-            $attempt('allow_live_booking', fn () => $accounts->setAllowLiveBooking($account, (bool) $data['allow_live_booking'], $actor));
-        }
+        try {
+            $attempt('label', fn () => $accounts->rename($account, $data['label'], $actor));
+            $attempt('mode', fn () => $accounts->setMode($account, $data['mode'], $actor));
+            if (array_key_exists('default', $data) && $data['default'] !== null) {
+                $attempt('default', fn () => $accounts->setDefault($account, (bool) $data['default'], $actor));
+            }
+            if (array_key_exists('active', $data) && $data['active'] !== null) {
+                $attempt('active', fn () => $accounts->setActive($account, (bool) $data['active'], $actor));
+            }
+            if (in_array($account->courier, ['lbc', 'spx'], true) && ($data['allow_live_booking'] ?? null) !== null) {
+                $attempt('allow_live_booking', fn () => $accounts->setAllowLiveBooking($account, (bool) $data['allow_live_booking'], $actor));
+            }
 
-        // Only plain booking-default fields are writable here; secrets and mode-scoped keys have their own controls.
-        $current = AccountSettings::for($account);
-        $plain = array_column($accounts->plainFields($account), 'key');
-        foreach ($data['settings'] ?? [] as $key => $value) {
-            if (! in_array($key, $plain, true)) {
-                continue;
+            // Only plain booking-default fields are writable here; secrets and mode-scoped keys have their own controls.
+            $current = AccountSettings::for($account);
+            $plain = array_column($accounts->plainFields($account), 'key');
+            foreach ($data['settings'] ?? [] as $key => $value) {
+                if (! in_array($key, $plain, true)) {
+                    continue;
+                }
+                $value = trim((string) $value);
+                $stored = (string) $current->read($key, '');
+                if ($value === $stored) {
+                    continue;
+                }
+                $attempt("settings.{$key}", fn () => $value === ''
+                    ? $accounts->clearSetting($account, $key, $actor)
+                    : $accounts->setSetting($account, $key, $value, $actor));
             }
-            $value = trim((string) $value);
-            $stored = (string) $current->read($key, '');
-            if ($value === $stored) {
-                continue;
-            }
-            $attempt("settings.{$key}", fn () => $value === ''
-                ? $accounts->clearSetting($account, $key, $actor)
-                : $accounts->setSetting($account, $key, $value, $actor));
-        }
 
-        // Only an edited key arrives (an untouched masked field has no name); blanks and anything that is not one of
-        // this courier's encrypted keys are ignored.
-        $secretKeys = array_column($this->secretFields($account, $accounts), 'key');
-        foreach ($data['secrets'] ?? [] as $key => $value) {
-            $value = trim((string) $value);
-            if ($value === '' || ! in_array($key, $secretKeys, true) || $value === $current->secret($key)) {
-                continue;
+            // Only an edited key arrives (an untouched masked field has no name); blanks and anything that is not one of
+            // this courier's encrypted keys are ignored.
+            $secretKeys = array_column($this->secretFields($account, $accounts), 'key');
+            foreach ($data['secrets'] ?? [] as $key => $value) {
+                $value = trim((string) $value);
+                if ($value === '' || ! in_array($key, $secretKeys, true) || $value === $current->secret($key)) {
+                    continue;
+                }
+                $attempt("secrets.{$key}", fn () => $accounts->setSetting($account, $key, $value, $actor));
             }
-            $attempt("secrets.{$key}", fn () => $accounts->setSetting($account, $key, $value, $actor));
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            throw $e;
         }
 
         if ($errors !== []) {

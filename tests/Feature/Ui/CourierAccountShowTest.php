@@ -233,6 +233,25 @@ class CourierAccountShowTest extends TestCase
         $this->assertFalse($s->refresh()->last_check_ok);
     }
 
+    public function test_unexpected_exception_during_save_rolls_back_and_surfaces(): void
+    {
+        $a = $this->account('quadx');
+        $this->withoutExceptionHandling();
+        $this->mock(\App\Couriers\CourierAccounts::class, function ($m) {
+            $m->shouldReceive('rename')->andThrow(new \InvalidArgumentException('boom'));
+        });
+        $level = \Illuminate\Support\Facades\DB::transactionLevel();
+
+        try {
+            $this->actingAs($this->admin())->put(route('accounts.update', $a), ['label' => 'New', 'mode' => 'staging']);
+            $this->fail('The exception should surface.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertSame('boom', $e->getMessage());
+        }
+
+        $this->assertSame($level, \Illuminate\Support\Facades\DB::transactionLevel());
+    }
+
     public function test_unknown_account_404(): void
     {
         $admin = $this->admin();
