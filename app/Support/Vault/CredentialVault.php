@@ -34,6 +34,11 @@ class CredentialVault
             throw new RuntimeException('VENTASHIP_VAULT_KEY missing');
         }
 
-        return $this->encrypter = new Encrypter(base64_decode($key, true) ?: '', 'aes-256-gcm');
+        $raw = base64_decode($key, true);
+        if ($raw === false || strlen($raw) !== 32) {
+            throw new RuntimeException('VENTASHIP_VAULT_KEY must be base64 of 32 bytes');
+        }
+
+        return $this->encrypter = new Encrypter($raw, 'aes-256-gcm');
     }
 }
