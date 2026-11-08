@@ -1182,9 +1182,14 @@ class SpxFulfillment implements Courier
         try {
             $data = $this->client->verifyAccount();
         } catch (SpxApiException $e) {
-            return ['ok' => false, 'message' => "Failed: {$e->getMessage()} (ret_code {$e->retCode})"];
+            return ['ok' => false, 'message' => Str::limit("Failed: {$e->getMessage()} (ret_code {$e->retCode})", 157)];
         } catch (\Throwable $e) {
-            return ['ok' => false, 'message' => 'Failed: ' . $e->getMessage()];
+            // The client wraps a transport failure in a RuntimeException.
+            if ($e instanceof \Illuminate\Http\Client\ConnectionException || $e->getPrevious() instanceof \Illuminate\Http\Client\ConnectionException) {
+                return ['ok' => false, 'transport' => true, 'message' => 'No answer from SPX.'];
+            }
+
+            return ['ok' => false, 'message' => Str::limit('Failed: ' . $e->getMessage(), 157)];
         }
 
         return !empty($data['match_result'])

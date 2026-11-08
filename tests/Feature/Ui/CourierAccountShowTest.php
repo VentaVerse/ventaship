@@ -212,6 +212,27 @@ class CourierAccountShowTest extends TestCase
         $this->assertFalse($a->refresh()->last_check_ok);
     }
 
+    public function test_real_adapter_timeout_flashes_short_message(): void
+    {
+        Http::fake(fn () => throw new ConnectionException('cURL error 28: Operation timed out for https://api.staging.quadx.xyz/v2/orders/statuses'));
+        $a = $this->account('quadx');
+        AccountSettings::for($a)->writeSecret('quadx_staging_api_key', 'qx-key-0001');
+        AccountSettings::for($a)->writeSecret('quadx_staging_secret_key', 'qx-secret-0001');
+        $s = $this->account('spx', ['label' => 'Spx']);
+        AccountSettings::for($s)->write('spx_app_id', '424242');
+        AccountSettings::for($s)->writeSecret('spx_secret_key', 'fake-app-secret');
+        AccountSettings::for($s)->write('spx_user_id', '999999');
+        AccountSettings::for($s)->writeSecret('spx_user_secret', 'fake-user-secret');
+
+        $this->actingAs($this->admin())->post(route('accounts.test', $a))
+            ->assertSessionHasErrors(['test' => 'Check failed: No answer from QuadX.']);
+        $this->assertFalse($a->refresh()->last_check_ok);
+
+        $this->actingAs($this->admin())->post(route('accounts.test', $s))
+            ->assertSessionHasErrors(['test' => 'Check failed: No answer from SPX.']);
+        $this->assertFalse($s->refresh()->last_check_ok);
+    }
+
     public function test_unknown_account_404(): void
     {
         $admin = $this->admin();

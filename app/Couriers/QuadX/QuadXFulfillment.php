@@ -887,9 +887,15 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
             return ['ok' => false, 'message' => 'API key/secret not set.'];
         }
         $res = $this->client->getStatuses();
-        return $res['ok']
-            ? ['ok' => true, 'message' => 'Connected. QuadX reachable and credentials valid.']
-            : ['ok' => false, 'message' => 'Failed: ' . ($res['error'] ?? 'unknown (HTTP ' . $res['status'] . ')')];
+        if ($res['ok']) {
+            return ['ok' => true, 'message' => 'Connected. QuadX reachable and credentials valid.'];
+        }
+        if (!empty($res['transport'])) {
+            // No raw transport text (it carries the URL): the service shows its own short message.
+            return ['ok' => false, 'transport' => true, 'message' => 'No answer from QuadX.'];
+        }
+
+        return ['ok' => false, 'message' => \Illuminate\Support\Str::limit('Failed: ' . ($res['error'] ?? 'unknown (HTTP ' . $res['status'] . ')'), 157)];
     }
 
     public function refreshStatusLabels(): array

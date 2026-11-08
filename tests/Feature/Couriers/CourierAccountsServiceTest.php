@@ -131,6 +131,28 @@ class CourierAccountsServiceTest extends TestCase
         $this->assertSame(0, AuditEntry::query()->where('action', 'courier_account.mode_changed')->count());
     }
 
+    public function test_real_adapter_timeouts_show_the_short_no_answer_message(): void
+    {
+        Http::fake(fn () => throw new ConnectionException('cURL error 28: Operation timed out after 40001 milliseconds for https://api.staging.quadx.xyz/v2/orders/statuses'));
+
+        foreach (['quadx' => $this->quadxAccount(), 'spx' => $this->spxAccount()] as $courier => $account) {
+            $result = $this->service()->test($account);
+
+            $this->assertSame(['ok' => false, 'message' => 'No answer from ' . ($courier === 'spx' ? 'SPX' : 'QuadX') . '.'], $result);
+            $this->assertFalse((bool) $account->fresh()->last_check_ok);
+        }
+    }
+
+    public function test_real_adapter_other_failures_stay_short_without_urls(): void
+    {
+        Http::fake(fn () => Http::response(['message' => str_repeat('x', 400)], 500));
+
+        $result = $this->service()->test($this->quadxAccount());
+
+        $this->assertFalse($result['ok']);
+        $this->assertLessThanOrEqual(160, mb_strlen($result['message']));
+    }
+
     public function test_test_connection_timeout_is_failure_not_exception(): void
     {
         $account = CourierAccount::factory()->create(['courier' => 'quadx']);

@@ -289,7 +289,7 @@ class CourierAccounts
         return $this->schemas[$account->courier] ??= CourierRegistry::describe($account->courier)->settingsSchema();
     }
 
-    /** @return array{ok: bool, message: string} */
+    /** @return array{ok: bool, message: string} A `transport` flag in the courier's result means no answer arrived. */
     public function test(CourierAccount $account): array
     {
         $name = Couriers::name((string) $account->courier);
@@ -300,7 +300,9 @@ class CourierAccounts
                 ['account_id' => $account->getKey(), 'operation' => 'test_connection'],
             );
             $ok = (bool) ($result['ok'] ?? false);
-            $message = (string) ($result['message'] ?? '');
+            $message = ! empty($result['transport'])
+                ? "No answer from {$name}."
+                : Str::limit((string) ($result['message'] ?? ''), 157);
         } catch (ConnectionException) {
             $ok = false;
             $message = "No answer from {$name}.";
