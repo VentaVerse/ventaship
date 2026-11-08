@@ -29,5 +29,40 @@ Alpine.data('confirmDialog', () => ({
     },
 }));
 
+Alpine.data('fulfillmentPoll', (config) => ({
+    counts: config.counts,
+    timer: null,
+
+    init() {
+        this.timer = setInterval(() => this.poll(), 20000);
+    },
+
+    destroy() {
+        clearInterval(this.timer);
+    },
+
+    async poll() {
+        if (document.visibilityState !== 'visible') {
+            return;
+        }
+        const rows = [...this.$root.querySelectorAll('[data-id]')].slice(0, 100);
+        const params = new URLSearchParams({ ...config.query, ids: rows.map((r) => r.dataset.id).join(',') });
+        try {
+            const res = await fetch(`${config.url}?${params}`, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+            if (!res.ok) {
+                return;
+            }
+            const data = await res.json();
+            this.counts = data.counts;
+            const changed = rows.some((r) => data.phases[r.dataset.id] !== undefined && data.phases[r.dataset.id] !== r.dataset.phase);
+            if (changed && !this.$root.querySelector('input[name="ids[]"]:checked')) {
+                window.location.reload();
+            }
+        } catch (e) {
+            // next tick retries
+        }
+    },
+}));
+
 window.Alpine = Alpine;
 Alpine.start();

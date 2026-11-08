@@ -1,7 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
-use App\Http\Controllers\FulfillmentController;
+use App\Http\Controllers\Ui\FulfillmentController;
 use App\Http\Controllers\Webhooks\CourierWebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -13,6 +13,7 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::post('logout', [LoginController::class, 'destroy'])->name('logout');
     Route::get('/', [FulfillmentController::class, 'index'])->name('fulfillment');
+    Route::get('fulfillment/poll', [FulfillmentController::class, 'poll'])->name('fulfillment.poll');
 });
 
 // Courier webhooks: no session, cookies or CSRF (the whole `web` group is dropped), throttled per IP.
