@@ -60,6 +60,11 @@ class ShipmentsController extends Controller
         }
 
         $data = $form->shipmentData(false);
+        // The form no longer shows the recipient's email; one stored through the API stays.
+        $email = data_get($shipment->recipient, 'email');
+        if (is_array($data['recipient'] ?? null) && blank($data['recipient']['email'] ?? null) && filled($email)) {
+            $data['recipient']['email'] = $email;
+        }
 
         try {
             if (! $form->boolean('book')) {

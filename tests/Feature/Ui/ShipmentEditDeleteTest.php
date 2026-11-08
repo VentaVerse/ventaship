@@ -139,6 +139,20 @@ class ShipmentEditDeleteTest extends TestCase
         $this->get(route('shipments.edit', $s->public_id))->assertOk();
     }
 
+    public function test_edit_keeps_stored_recipient_email(): void
+    {
+        $s = $this->failedManual();
+        $s->forceFill(['recipient' => ['email' => 'juan@example.com'] + (array) $s->recipient])->save();
+
+        $form = $this->form(['recipient' => ['first_name' => 'Pedro']]);
+        unset($form['recipient']['email'], $form['recipient']['address_2']);
+        $this->put(route('shipments.update', $s->public_id), $form)->assertSessionHasNoErrors();
+
+        $s->refresh();
+        $this->assertSame('Pedro', $s->recipient['first_name']);
+        $this->assertSame('juan@example.com', $s->recipient['email']);
+    }
+
     public function test_edit_refused_for_booked(): void
     {
         $s = Shipment::factory()->create(['source' => 'manual', 'state' => 'booked', 'courier_account_id' => $this->account->id, 'recipient' => ['first_name' => 'Maria']]);

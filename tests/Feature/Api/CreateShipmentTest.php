@@ -3,6 +3,8 @@
 namespace Tests\Feature\Api;
 
 use App\Models\CourierAccount;
+use App\Shipments\CourierFormFields;
+use Carbon\CarbonImmutable;
 use App\Models\Shipment;
 use App\Shipments\Jobs\BookShipment;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -337,6 +339,26 @@ class CreateShipmentTest extends TestCase
             $this->create($this->shipmentBody(['client_reference' => Str::random(8), 'pickup_date' => $date]))
                 ->assertStatus(422)->assertJsonValidationErrors(['pickup_date'], 'errors');
         }
+    }
+
+    public function test_lbc_pickup_date_must_be_a_bookable_day(): void
+    {
+        $this->fakeDefaultAccount('lbc');
+        $dates = array_column(CourierFormFields::lbcDates(), 'value');
+        $first = CarbonImmutable::parse($dates[0]);
+        $sunday = $first->next(CarbonImmutable::SUNDAY)->format('Y-m-d');
+        $beyond = CarbonImmutable::parse(end($dates))->addDay()->format('Y-m-d');
+        if ($beyond === CarbonImmutable::parse($beyond)->next(CarbonImmutable::SUNDAY)->subWeek()->format('Y-m-d')) {
+            $beyond = CarbonImmutable::parse($beyond)->addDay()->format('Y-m-d');
+        }
+
+        $body = fn (string $date) => $this->shipmentBody(['courier' => 'lbc', 'client_reference' => Str::random(8), 'pickup_date' => $date, 'parcel' => ['type' => '45', 'weight_kg' => 1]]);
+
+        foreach ([$sunday, $first->subDay()->format('Y-m-d'), $beyond, now('Asia/Manila')->format('Y-m-d')] as $bad) {
+            $this->create($body($bad))->assertStatus(422)->assertJsonValidationErrors(['pickup_date'], 'errors');
+        }
+        $this->create($body($dates[0]))->assertStatus(202);
+        $this->create($body(end($dates)))->assertStatus(202);
     }
 
     public function test_create_requires_idempotency_key(): void

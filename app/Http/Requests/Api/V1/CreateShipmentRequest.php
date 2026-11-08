@@ -3,6 +3,9 @@
 namespace App\Http\Requests\Api\V1;
 
 use App\Http\Requests\Api\V1\Concerns\ValidatesShipmentParts;
+use App\Couriers\AccountResolver;
+use App\Shipments\CourierFormFields;
+use App\Api\ApiError;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -30,7 +33,7 @@ class CreateShipmentRequest extends FormRequest
             'order_label' => ['nullable', 'string', 'max:64'],
             'submit' => ['sometimes', 'boolean'],
             'method' => ['nullable', 'string', 'in:pickup,dropoff'],
-            'pickup_date' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'pickup_date' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:today', $this->lbcPickupDate()],
             'pickup_slot' => ['nullable', 'string', 'max:255'],
             'service' => ['nullable', 'string', 'max:64'],
             'insure' => ['sometimes', 'boolean'],
@@ -45,6 +48,26 @@ class CreateShipmentRequest extends FormRequest
             'note' => ['nullable', 'string', 'max:500'],
             'metadata' => ['nullable', 'array', 'max:'.self::METADATA_MAX_KEYS, $this->flatMetadata()],
         ] + $this->parcelRules() + $this->paymentRules() + $this->pickupRules() + $this->recipientRules();
+    }
+
+    /** For an LBC account the date must be one LBC takes: a business day from the first bookable one, within the range the form offers. */
+    private function lbcPickupDate(): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail) {
+            if (! is_string($value) || $value === '') {
+                return;
+            }
+            try {
+                $account = AccountResolver::resolve($this->input('account_id'), $this->input('courier'));
+            } catch (ApiError) {
+                return;
+            }
+            if ($account->courier !== 'lbc' || in_array($value, array_column(CourierFormFields::lbcDates(), 'value'), true)) {
+                return;
+            }
+            $dates = CourierFormFields::lbcDates();
+            $fail('The :attribute must be a Monday to Saturday between '.$dates[0]['value'].' and '.end($dates)['value'].' for LBC.');
+        };
     }
 
     /** Metadata is echoed back on every answer and webhook: flat string keys, scalar values, small. */
