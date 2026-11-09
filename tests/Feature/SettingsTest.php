@@ -14,17 +14,17 @@ class SettingsTest extends TestCase
     public function test_bool_defaults_false_and_persists(): void
     {
         $settings = new Settings;
-        $this->assertFalse($settings->bool('safety.allow_live_lbc'));
-        $this->assertTrue($settings->bool('safety.allow_live_lbc', true));
+        $this->assertFalse($settings->bool('example.flag'));
+        $this->assertTrue($settings->bool('example.flag', true));
 
-        $settings->set('safety.allow_live_lbc', true);
+        $settings->set('example.flag', true);
 
-        $this->assertTrue($settings->bool('safety.allow_live_lbc'));
-        $this->assertTrue((new Settings)->bool('safety.allow_live_lbc'));
-        $this->assertSame('true', Setting::where('key', 'safety.allow_live_lbc')->value('value'));
+        $this->assertTrue($settings->bool('example.flag'));
+        $this->assertTrue((new Settings)->bool('example.flag'));
+        $this->assertSame('true', Setting::where('key', 'example.flag')->value('value'));
 
-        $settings->set('safety.allow_live_lbc', false);
-        $this->assertFalse((new Settings)->bool('safety.allow_live_lbc'));
+        $settings->set('example.flag', false);
+        $this->assertFalse((new Settings)->bool('example.flag'));
     }
 
     public function test_get_default_strings_and_scalars(): void
@@ -60,15 +60,15 @@ class SettingsTest extends TestCase
     {
         $first = app(Settings::class);
         $this->assertSame($first, app(Settings::class));
-        $this->assertFalse($first->bool('safety.allow_live_spx'));
+        $this->assertFalse($first->bool('example.other'));
 
-        Setting::create(['key' => 'safety.allow_live_spx', 'value' => 'true']);
-        $this->assertFalse($first->bool('safety.allow_live_spx'));
+        Setting::create(['key' => 'example.other', 'value' => 'true']);
+        $this->assertFalse($first->bool('example.other'));
 
         app()->forgetScopedInstances();
 
         $second = app(Settings::class);
         $this->assertNotSame($first, $second);
-        $this->assertTrue($second->bool('safety.allow_live_spx'));
+        $this->assertTrue($second->bool('example.other'));
     }
 }

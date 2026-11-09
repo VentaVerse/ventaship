@@ -40,14 +40,6 @@ class Settings
         $this->cache[$key] = $stored;
     }
 
-    /** The public https address webhooks reach this install on, or null until it is set. */
-    public function publicBaseUrl(): ?string
-    {
-        $value = $this->get('webhooks.public_base_url');
-
-        return is_string($value) && $value !== '' ? $value : null;
-    }
-
     /** @return array<string, string|null> */
     private function all(): array
     {

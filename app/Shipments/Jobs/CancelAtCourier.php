@@ -4,7 +4,6 @@ namespace App\Shipments\Jobs;
 
 use App\Couriers\Contracts\CancelsLocallyOnly;
 use App\Couriers\CourierRegistry;
-use App\Couriers\LiveBookingBlocked;
 use App\Models\Shipment;
 use App\Shipments\Canceller;
 use Illuminate\Bus\Queueable;
@@ -36,8 +35,6 @@ class CancelAtCourier implements ShouldQueue
     public bool $failOnTimeout = true;
 
     private const LOCK_SECONDS = 300;
-
-    public const LIVE_LOCKED_REASON = 'Live cancels are locked for this account — nothing was sent to the courier';
 
     public function __construct(public int $shipmentId)
     {
@@ -114,12 +111,6 @@ class CancelAtCourier implements ShouldQueue
                 fn () => $courier->cancelShipment($s->tracking_number),
                 ['account_id' => $s->courier_account_id, 'shipment_id' => $s->id, 'operation' => 'cancel_shipment'],
             );
-        } catch (LiveBookingBlocked $e) {
-            // A live lock is off: the request was never sent, so the outcome is known. Refused, not unknown.
-            Log::warning('Cancel blocked by a live lock', ['shipment' => $s->public_id, 'reason' => $e->getMessage()]);
-            $canceller->refused($s->id, self::LIVE_LOCKED_REASON);
-
-            return;
         } catch (Throwable $e) {
             Log::error('Cancel outcome unknown', ['shipment' => $s->public_id, 'exception' => $e::class]);
             $canceller->callFailed($s->id);

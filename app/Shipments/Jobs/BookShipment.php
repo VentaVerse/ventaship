@@ -8,7 +8,6 @@ use App\Couriers\Contracts\Courier;
 use App\Couriers\Contracts\ReportsShippingCost;
 use App\Couriers\CourierOrder;
 use App\Couriers\CourierRegistry;
-use App\Couriers\LiveBookingBlocked;
 use App\Models\Shipment;
 use App\Shipments\BookingOutcomes;
 use App\Shipments\CourierOptions;
@@ -106,10 +105,6 @@ class BookShipment implements ShouldQueue
                 fn () => $courier->createShipment($order, $opts),
                 ['account_id' => $s->courier_account_id, 'shipment_id' => $s->id, 'operation' => 'create_shipment'],
             );
-        } catch (LiveBookingBlocked $e) {
-            $outcomes->failed($s->id, 'live_booking_blocked', $e->getMessage());
-
-            return;
         } catch (Throwable $e) {
             $this->logException('Booking outcome unknown', $s, $e);
             $outcomes->unknown($s->id);

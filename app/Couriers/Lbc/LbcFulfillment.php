@@ -8,8 +8,6 @@ use App\Couriers\Contracts\Courier;
 use App\Couriers\Contracts\ProvidesPublicTrackingUrl;
 use App\Couriers\Contracts\ThrottlesStatusPolling;
 use App\Couriers\CourierOrder;
-use App\Couriers\LiveBookingBlocked;
-use App\Couriers\LiveGuard;
 use App\Couriers\PickupOrigin;
 use App\Couriers\PickupPoint;
 use App\Couriers\ServiceabilityService;
@@ -42,8 +40,7 @@ use Illuminate\Support\Facades\Storage;
  * subscription reach the same live gateway, and a pickup request with
  * either books a real pickup. LBC also has no cancel endpoint. So a booking
  * is sent once and never retried, cancelling only resets the booking here
- * (see localCancelNotice()), and a pickup or waybill request is refused by
- * LiveGuard unless every live lock is on (LbcClient::send()).
+ * (see localCancelNotice()).
  *
  * WE ISSUE THE TRACKING NUMBER. LBC assigns each account a block of numbers
  * (tracking_series, added with ventaship:lbc-series-add) and does not check
@@ -212,8 +209,7 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
 
     /**
      * Which key set this account sends. An unrecognised value falls back to
-     * `test`. Not the account's mode: both key sets reach the live gateway,
-     * and the account's production mode is one of LiveGuard's locks.
+     * `test`. Not the account's mode: both key sets reach the live gateway.
      */
     public function mode(): string
     {
@@ -645,19 +641,12 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
      * (spent, booked), rejected (released, nothing booked) or unknown (spent,
      * booked as unconfirmed with an `attention_reason`, so the shipment
      * cannot be booked a second time before somebody checks with LBC).
-     *
-     * @throws LiveBookingBlocked when a live lock is off: nothing is asked or
-     *                            sent, and no number is taken
      */
     public function createShipment(CourierOrder $order, array $opts): array
     {
         if (!$this->isEnabled()) {
             return ['success' => false, 'error' => 'LBC is not configured. Fill in its settings first.'];
         }
-
-        // Before anything else, so a blocked booking spends no lookups and
-        // no number. LbcClient::send() asks again before the request leaves.
-        LiveGuard::assertAllowed($this->account, 'pickup');
 
         try {
             $plan = $this->plan($order, $opts);
@@ -946,8 +935,6 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
      * (kept in courier_meta), then stored so every later print serves the
      * same file without asking LBC again. LBC renders whatever it is sent,
      * so the label is never rebuilt from today's shipment or settings.
-     *
-     * @throws LiveBookingBlocked when a live lock is off; nothing is sent
      */
     public function printLabel(string $trackingNumber, string $format): array
     {
@@ -978,8 +965,6 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
             try {
                 $label = (new LbcWaybillBuilder())->label($request, (string) ($request['Shipper'] ?? ''), (string) $order->courier_comment);
                 $pdf = $this->client->generateWaybill($label);
-            } catch (LiveBookingBlocked $e) {
-                throw $e;
             } catch (LbcException $e) {
                 return ['success' => false, 'error' => 'The LBC waybill could not be made. ' . $e->getMessage()];
             } catch (\Throwable $e) {

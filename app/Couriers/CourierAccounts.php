@@ -8,7 +8,6 @@ use App\Couriers\TrackingNumbers\TrackingNumberSeriesService;
 use App\Fulfillment\Couriers;
 use App\Models\AuditEntry;
 use App\Models\CourierAccount;
-use App\Support\Settings;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
@@ -76,7 +75,6 @@ class CourierAccounts
                 'default_slot' => $default ? $courier : null,
                 'webhook_token' => $token,
                 'webhook_token_hash' => hash('sha256', $token),
-                'allow_live_booking' => false,
             ]);
 
             $this->audit($actor, 'courier_account.created', $account, ['courier' => $courier, 'mode' => $mode]);
@@ -324,21 +322,6 @@ class CourierAccounts
         });
     }
 
-    /** The per-account live-booking latch. LBC and SPX only. @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor */
-    public function setAllowLiveBooking(CourierAccount $account, bool $allow, ?array $actor = null): bool
-    {
-        if (! in_array($account->courier, ['lbc', 'spx'], true)) {
-            throw new CourierAccountException('Live booking is not switched per account for '.$account->courier.'.');
-        }
-        if ((bool) $account->allow_live_booking === $allow) {
-            return false;
-        }
-        $account->forceFill(['allow_live_booking' => $allow])->save();
-        $this->audit($actor, 'courier_account.live_latch_changed', $account, ['allow_live_booking' => $allow]);
-
-        return true;
-    }
-
     /** The settings schema for this account's courier. @return array<int, array<string, mixed>> */
     public function schema(CourierAccount $account): array
     {
@@ -426,15 +409,15 @@ class CourierAccounts
     public const WEBHOOK_KEY = 'webhook_url';
 
     /**
-     * The address a courier posts status updates to: the configured public base, the webhook path and the account's
-     * token. Null for a courier without a per-account webhook, or while no public address is set. With $masked the
-     * token part is dots, so the result is safe to render.
+     * The address a courier posts status updates to: APP_URL, the webhook path and the account's token. Null for a
+     * courier without a per-account webhook, or while APP_URL is empty. With $masked the token part is dots, so the
+     * result is safe to render.
      */
     public function webhookAddress(CourierAccount $account, bool $masked = false): ?string
     {
-        $base = app(Settings::class)->publicBaseUrl();
+        $base = trim((string) config('app.url'));
         $token = $account->webhook_token;
-        if ($base === null || ! in_array($account->courier, ['quadx', 'spx'], true) || ! is_string($token) || $token === '') {
+        if ($base === '' || ! in_array($account->courier, ['quadx', 'spx'], true) || ! is_string($token) || $token === '') {
             return null;
         }
         $token = $masked ? str_repeat('•', 16) : $token;

@@ -12,7 +12,7 @@ class SettingSet extends Command
 {
     protected $signature = 'ventaship:setting-set {key} {value} {--json : Store the value decoded as JSON instead of as a string}';
 
-    protected $description = 'Set one install setting (audited). safety.* keys take exactly true or false';
+    protected $description = 'Set one install setting (audited)';
 
     private const KEY_PATTERN = '/^[a-z0-9_]+(\.[a-z0-9_]+)*$/';
 
@@ -27,7 +27,7 @@ class SettingSet extends Command
         $raw = (string) $this->argument('value');
 
         if (strlen($key) > self::KEY_MAX || preg_match(self::KEY_PATTERN, $key) !== 1) {
-            $this->error('The key must be lowercase letters, digits and underscores, dot-separated (e.g. safety.allow_live_spx).');
+            $this->error('The key must be lowercase letters, digits and underscores, dot-separated (e.g. sender.name).');
 
             return self::FAILURE;
         }
@@ -37,15 +37,7 @@ class SettingSet extends Command
             return self::FAILURE;
         }
 
-        if (str_starts_with($key, 'safety.')) {
-            // A live-booking lock: nothing loose like 1, yes or on, so a typo can never switch one on.
-            if (! in_array($raw, ['true', 'false'], true)) {
-                $this->error("{$key} takes exactly true or false.");
-
-                return self::FAILURE;
-            }
-            $value = $raw === 'true';
-        } elseif ($this->option('json')) {
+        if ($this->option('json')) {
             try {
                 $value = json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
             } catch (JsonException) {

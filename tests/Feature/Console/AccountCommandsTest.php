@@ -72,15 +72,13 @@ class AccountCommandsTest extends TestCase
         $this->assertStringNotContainsString($m[1], (string) $account->getRawOriginal('webhook_token'));
     }
 
-    public function test_create_prints_the_webhook_url_on_the_public_address_when_set(): void
+    public function test_create_prints_the_webhook_url_on_app_url(): void
     {
-        config(['app.url' => 'https://ship.example.test']);
-        app(\App\Support\Settings::class)->set('webhooks.public_base_url', 'https://public.example.test/');
+        config(['app.url' => 'https://ship.example.test/']);
 
         $this->assertSame(0, Artisan::call('ventaship:account-create', ['courier' => 'quadx', 'label' => 'Main QuadX']));
 
-        $this->assertMatchesRegularExpression('#https://public\.example\.test/webhooks/quadx\?token=[A-Za-z0-9]{40}#', Artisan::output());
-        $this->assertStringNotContainsString('ship.example.test', Artisan::output());
+        $this->assertMatchesRegularExpression('#https://ship\.example\.test/webhooks/quadx\?token=[A-Za-z0-9]{40}#', Artisan::output());
     }
 
     public function test_create_prints_the_spx_path_token_url_and_none_for_lbc(): void

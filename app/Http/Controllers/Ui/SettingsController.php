@@ -19,13 +19,7 @@ use Illuminate\View\View;
 
 class SettingsController extends Controller
 {
-    private const TABS = ['general' => 'General', 'couriers' => 'Couriers & safety', 'jobs' => 'Scheduled jobs', 'account' => 'Account'];
-
-    /** Form field => settings key (dots are not valid in field names). */
-    private const SWITCHES = [
-        'safety_allow_live_lbc' => 'safety.allow_live_lbc',
-        'safety_allow_live_spx' => 'safety.allow_live_spx',
-    ];
+    private const TABS = ['general' => 'General', 'jobs' => 'Scheduled jobs', 'account' => 'Account'];
 
     private const DEFAULTS = ['shipments.reference_prefix' => 'VS'];
 
@@ -42,8 +36,6 @@ class SettingsController extends Controller
             'tab' => $tab,
             'tabs' => self::TABS,
             'prefix' => $settings->get('shipments.reference_prefix', 'VS'),
-            'switches' => collect(self::SWITCHES)->map(fn (string $key) => $settings->get($key) === true)->all(),
-            'publicAddress' => $settings->publicBaseUrl(),
             'admin' => $request->user(),
             'cron' => $tab === 'jobs' ? $this->cron($settings) : null,
         ]);
@@ -60,41 +52,18 @@ class SettingsController extends Controller
 
     public function update(Request $request, Settings $settings): RedirectResponse
     {
-        $tab = $request->input('tab') === 'couriers' ? 'couriers' : 'general';
-        $back = redirect()->route('settings.edit', ['tab' => $tab]);
-
-        if ($tab === 'general') {
-            $data = $request->validate([
-                'shipments_reference_prefix' => ['required', 'regex:/^[A-Z0-9]{1,8}\z/'],
-            ], [
-                'shipments_reference_prefix.*' => 'Use 1–8 capital letters or digits.',
-            ]);
-            $new = [
-                'shipments.reference_prefix' => $data['shipments_reference_prefix'],
-            ];
-        } else {
-            // A switch is on only for an explicit "1"; an unchecked or absent field is a strict false.
-            $data = $request->validate([
-                'webhooks_public_base_url' => ['nullable', 'string', 'max:255', function (string $attribute, mixed $value, \Closure $fail) {
-                    $parts = parse_url((string) $value);
-                    $valid = is_array($parts) && ($parts['scheme'] ?? null) === 'https' && ($parts['host'] ?? '') !== ''
-                        && array_intersect_key($parts, array_flip(['path', 'query', 'fragment', 'user', 'pass'])) === []
-                        && ! str_ends_with((string) $value, '/') && ! str_contains((string) $value, '?') && ! str_contains((string) $value, '#');
-                    if (! $valid) {
-                        $fail('Use https://your-domain');
-                    }
-                }],
-            ], ['webhooks_public_base_url.*' => 'Use https://your-domain']);
-            $address = trim((string) ($data['webhooks_public_base_url'] ?? ''));
-            $new = ['webhooks.public_base_url' => $address === '' ? null : $address];
-            foreach (self::SWITCHES as $field => $key) {
-                $new[$key] = $request->input($field) === '1';
-            }
-        }
+        $data = $request->validate([
+            'shipments_reference_prefix' => ['required', 'regex:/^[A-Z0-9]{1,8}\z/'],
+        ], [
+            'shipments_reference_prefix.*' => 'Use 1–8 capital letters or digits.',
+        ]);
+        $new = [
+            'shipments.reference_prefix' => $data['shipments_reference_prefix'],
+        ];
 
         DB::transaction(function () use ($settings, $new, $request) {
             foreach ($new as $key => $value) {
-                // Unset general keys read as their default; an unset switch counts as changed so false gets stored.
+                // Unset keys read as their default.
                 $from = $settings->get($key, self::DEFAULTS[$key] ?? null);
                 if ($from === $value) {
                     continue;
@@ -113,7 +82,7 @@ class SettingsController extends Controller
             }
         });
 
-        return $back->with('status', 'Saved');
+        return redirect()->route('settings.edit', ['tab' => 'general'])->with('status', 'Saved');
     }
 
     public function account(Request $request): RedirectResponse

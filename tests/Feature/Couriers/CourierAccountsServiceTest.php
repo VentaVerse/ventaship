@@ -10,7 +10,6 @@ use App\Couriers\FakeCourier;
 use App\Models\AuditEntry;
 use App\Models\CourierAccount;
 use App\Models\CourierAccountSetting;
-use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
@@ -40,7 +39,6 @@ class CourierAccountsServiceTest extends TestCase
         $second = $this->service()->create('quadx', 'Other', 'production', true);
 
         $this->assertSame('quadx', $first->courier);
-        $this->assertFalse((bool) $first->allow_live_booking);
         $this->assertSame(40, strlen($first->webhook_token));
         $this->assertSame(hash('sha256', $first->webhook_token), $first->webhook_token_hash);
         $this->assertNull($first->fresh()->default_slot);
@@ -213,22 +211,17 @@ class CourierAccountsServiceTest extends TestCase
         $this->assertNull($this->service()->masked($account, 'quadx_staging_secret_key'));
     }
 
-    public function test_public_address_validation(): void
+    public function test_webhook_address_is_built_on_app_url(): void
     {
-        $admin = \App\Models\Admin::query()->create(['name' => 'Ana', 'email' => 'ana@example.com', 'password' => 'correct-horse-battery']);
+        config(['app.url' => 'https://ship.example.com/']);
+        $quadx = $this->service()->create('quadx', 'QuadX', 'staging', true);
+        $lbc = $this->service()->create('lbc', 'LBC', 'staging', true);
 
-        foreach (['http://x.example', 'https://x.example/', 'https://x.example/path', 'https://x.example?a=1', 'x.example', 'https://'] as $bad) {
-            $this->actingAs($admin)->put(route('settings.update'), ['tab' => 'couriers', 'webhooks_public_base_url' => $bad])
-                ->assertSessionHasErrors(['webhooks_public_base_url' => 'Use https://your-domain']);
-        }
-        $this->assertNull((new Settings)->publicBaseUrl());
+        $this->assertSame('https://ship.example.com/webhooks/quadx?token='.$quadx->webhook_token, $this->service()->webhookAddress($quadx));
+        $this->assertStringNotContainsString($quadx->webhook_token, (string) $this->service()->webhookAddress($quadx, true));
+        $this->assertNull($this->service()->webhookAddress($lbc));
 
-        $this->actingAs($admin)->put(route('settings.update'), ['tab' => 'couriers', 'webhooks_public_base_url' => 'https://ship.example.com'])
-            ->assertSessionHasNoErrors();
-        $this->assertSame('https://ship.example.com', (new Settings)->publicBaseUrl());
-        $this->assertTrue(AuditEntry::query()->where('action', 'setting.changed')->where('subject_id', 'webhooks.public_base_url')->exists());
-
-        $this->actingAs($admin)->put(route('settings.update'), ['tab' => 'couriers', 'webhooks_public_base_url' => ''])->assertSessionHasNoErrors();
-        $this->assertNull((new Settings)->publicBaseUrl());
+        config(['app.url' => '']);
+        $this->assertNull($this->service()->webhookAddress($quadx));
     }
 }

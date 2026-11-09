@@ -1642,7 +1642,6 @@ When `state` is `failed`, `error` is `{code, message}`. `message` is for people 
 |---|---|
 | `courier_refused` | the courier refused the booking (bad address, unserviceable, invalid data, SPX centavos…) |
 | `account_misconfigured` | the account became unusable between create and booking (disabled, credentials removed) |
-| `live_booking_blocked` | the account is a production LBC/SPX account and live bookings are switched off on this install |
 | `not_started` | the booking job did not start within 30 minutes |
 | `not_booked` | the owner resolved an `unknown` booking as not booked |
 
@@ -1666,7 +1665,6 @@ What `POST /shipments/{id}/cancel` does, by the shipment's state when you ask:
 | … the courier cancels | state `cancelled`, phase `cancelled`, COD → `cod_void`, reference freed | | `shipment.cancelled` |
 | … the courier refuses | `cancel_state` `refused`, `needs_attention`, state stays `booked` | | `shipment.cancel_failed` |
 | … the call fails or times out | `cancel_state` `failed`, `needs_attention` ("Cancel outcome unknown — check the courier portal"). Never retried | | `shipment.cancel_failed` |
-| … a live-booking lock is off (production **SPX** account) | nothing is sent: `cancel_state` `refused`, `needs_attention` ("Live cancels are locked for this account — nothing was sent to the courier") | | `shipment.cancel_failed` |
 | `booked`, courier status no longer cancelable (e.g. picked up) | refused at once, the courier is not called; `needs_attention` | `200`, `cancel_state` `refused` | `shipment.cancel_failed` |
 | `booked`, its courier account deleted | refused at once: `cancel_state` `refused`, `needs_attention` ("This shipment's courier account no longer exists — cancel it at the courier portal") | `200` | `shipment.cancel_failed` |
 | `booked`, the cancel cannot be prepared (account settings unreadable) | `cancel_state` `failed`, `needs_attention` ("Cancel could not be prepared — check the account settings"); the courier is not called | `200` | `shipment.cancel_failed` |

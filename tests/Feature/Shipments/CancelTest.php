@@ -15,7 +15,6 @@ use App\Shipments\Jobs\CancelAtCourier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Context;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -327,24 +326,6 @@ class CancelTest extends TestCase
         $this->assertSame('cancelled', $s->cancel_state);
         $this->assertSame([], $fake->callsTo('cancelShipment'));
         $this->assertSame('shipment.cancelled', OutgoingEvent::query()->sole()->type);
-    }
-
-    public function test_a_locked_live_spx_cancel_is_refused_and_nothing_is_sent(): void
-    {
-        config(['couriers.spx_live' => false]);
-        $spx = $this->spxAccount(['mode' => 'production', 'status' => 'active', 'allow_live_booking' => true]);
-        $s = $this->booked(['courier' => 'spx', 'courier_account_id' => $spx->id, 'tracking_number' => 'SPXPH000001', 'courier_status' => null]);
-
-        $this->cancelAndRunJob($s)->assertStatus(202);
-
-        $s->refresh();
-        $this->assertSame('booked', $s->state);
-        $this->assertSame('refused', $s->cancel_state);
-        $this->assertTrue($s->needs_attention);
-        $this->assertSame('Live cancels are locked for this account — nothing was sent to the courier', $s->attention_reason);
-        $this->assertNotNull($s->active_reference);
-        $this->assertSame('shipment.cancel_failed', OutgoingEvent::query()->sole()->type);
-        Http::assertNothingSent();
     }
 
     public function test_failed_hook_marks_a_stuck_cancel_failed(): void

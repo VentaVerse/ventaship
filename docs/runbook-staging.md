@@ -11,7 +11,7 @@ Run every command from `/home/ubuntu/ventaship`.
 - `.env` has `APP_URL=http://localhost:8040`, the MySQL `ventaship` database, and `VENTASHIP_VAULT_KEY` (base64, 32 bytes). Courier credentials are encrypted with that key: **lose it and every stored courier key is unreadable**.
 - `php artisan migrate` has run.
 - The cache store must support atomic locks (booking, cancels, labels and webhook processing take locks). `CACHE_STORE=database` is fine; `file` and `array` are not suitable for workers.
-- Live-booking locks stay **off** (the default). They only concern LBC and production-mode SPX accounts: a real LBC or production SPX booking needs **all** of env `COURIERS_LBC_LIVE=true` / `COURIERS_SPX_LIVE=true`, the setting `safety.allow_live_lbc` / `safety.allow_live_spx`, the account's `allow_live_booking`, the account in `production` mode, and `APP_ENV=production`. QuadX has no such lock: a QuadX account in `production` mode books real parcels. Keep the QuadX account in `staging` mode for this run.
+- An account in `production` mode books real parcels; there is no separate lock. Keep the QuadX account in `staging` mode for this run.
 
 ## 2. Start the processes
 
@@ -215,8 +215,3 @@ _To be filled in by the owner after running §3–§7 with the real QuadX stagin
 - [ ] The two queue workers, the scheduler and the web server under **systemd**, restarting on failure, started on boot; `php artisan queue:restart` after every deploy.
 - [ ] **Backups**: the MySQL `ventaship` database (nightly, kept off the Pi), and `storage/app/labels` (stored waybills; they can be refetched from the courier only while the courier still serves them).
 - [ ] **`VENTASHIP_VAULT_KEY` stored separately** from the database backups (a password manager). A backup without it cannot decrypt courier credentials; the key with a backup is everything an attacker needs.
-- [ ] Live-booking locks still off unless an LBC or production SPX parcel is intended (§1). The settings take exactly `true` or `false`; every change is written to `audit_entries`:
-  ```bash
-  php artisan ventaship:setting-set safety.allow_live_spx true     # only for an intended production SPX parcel
-  php artisan ventaship:setting-set safety.allow_live_spx false    # straight after
-  ```

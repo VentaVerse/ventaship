@@ -32,7 +32,6 @@ class AccountShow extends Command
             ['mode', $account->mode],
             ['status', $account->status],
             ['default', $account->is_default ? 'yes' : 'no'],
-            ['allow_live_booking', $account->allow_live_booking ? 'yes' : 'no'],
             ['webhook_token', $account->webhook_token !== null ? self::mask($account->webhook_token) : '-'],
             ['last_check', $account->last_check_at ? $account->last_check_at->toIso8601String() . ($account->last_check_ok ? ' ok' : ' failed') : '-'],
         ]);

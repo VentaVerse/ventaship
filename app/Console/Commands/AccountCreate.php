@@ -23,14 +23,8 @@ class AccountCreate extends Command
 
             return self::FAILURE;
         }
-        $token = $account->webhook_token;
-
-        $base = rtrim((string) (app(\App\Support\Settings::class)->publicBaseUrl() ?? config('app.url')), '/');
-        $url = match ($courier) {
-            'quadx' => "{$base}/webhooks/quadx?token={$token}",
-            'spx' => "{$base}/webhooks/spx/{$token}",
-            default => null, // LBC sends no webhooks: it is polled
-        };
+        // LBC sends no webhooks: it is polled.
+        $url = $accounts->webhookAddress($account);
 
         $this->line("Account:     {$account->public_id}");
         if ($url !== null) {

@@ -39,7 +39,6 @@ class CourierAccount extends Model
     {
         return [
             'is_default' => 'boolean',
-            'allow_live_booking' => 'boolean',
             'last_check_ok' => 'boolean',
             'last_check_at' => 'datetime',
             'webhook_token' => VaultEncrypted::class,

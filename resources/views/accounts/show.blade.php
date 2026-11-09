@@ -109,16 +109,6 @@
                     <span class="st-switch__track" aria-hidden="true"></span>
                 </label>
             </div>
-            @if($hasLatch)
-                <div class="st-row st-row--switch">
-                    <label class="st-switch" for="f-allow-live">
-                        <span class="st-switch__label">Allow live booking</span>
-                        <input type="hidden" name="allow_live_booking" value="0">
-                        <input type="checkbox" class="st-switch__input" role="switch" id="f-allow-live" name="allow_live_booking" value="1" @checked($isOn('allow_live_booking', (bool) $account->allow_live_booking))>
-                        <span class="st-switch__track" aria-hidden="true"></span>
-                    </label>
-                </div>
-            @endif
         </div>
 
         @if($keyGroups !== [])
@@ -176,27 +166,7 @@
             <div class="st-sec">
                 <h2 class="st-h">Webhook</h2>
                 <div class="st-row">
-                    @if($webhook['masked'])
-                        <x-ui.webhook-url :label="'Address for ' . $name" :masked="$webhook['masked']" :revealUrl="route('accounts.reveal', [$courier, 'webhook_url'])" />
-                    @else
-                        <div class="fm-field">
-                            <span class="fm-label">Address for {{ $name }}</span>
-                            <div><x-ui.badge tone="attn">Not set</x-ui.badge></div>
-                        </div>
-                    @endif
-                </div>
-                <div class="st-row">
-                    <div class="fm-field">
-                        <span class="fm-label">Public address</span>
-                        <div class="ac-addr">
-                            @if($webhook['base'])
-                                <span class="ac-addr__url">{{ $webhook['base'] }}</span>
-                            @else
-                                <x-ui.badge tone="attn">Not set</x-ui.badge>
-                            @endif
-                            <x-ui.button size="sm" :href="route('settings.edit', ['tab' => 'couriers'])">{{ $webhook['base'] ? 'Change' : 'Set address' }}</x-ui.button>
-                        </div>
-                    </div>
+                    <x-ui.webhook-url :label="'Address for ' . $name" :masked="$webhook" :revealUrl="route('accounts.reveal', [$courier, 'webhook_url'])" />
                 </div>
             </div>
         @endif

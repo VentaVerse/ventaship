@@ -4,7 +4,6 @@ namespace App\Couriers\Lbc;
 
 use App\Couriers\AccountSettings;
 use App\Couriers\CourierOrder;
-use App\Couriers\LiveBookingBlocked;
 use App\Couriers\PickupPoint;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -127,9 +126,9 @@ class LbcPickupService
 
         try {
             $result = $this->client->insertPickupRequest($xml);
-        } catch (LiveBookingBlocked|LbcException $e) {
-            // Only thrown before the request leaves (a live lock off, the key
-            // missing): LBC has nothing, so the number goes back.
+        } catch (LbcException $e) {
+            // Only thrown before the request leaves (the key missing): LBC
+            // has nothing, so the number goes back.
             $this->series->release($issued, 'Not sent: ' . $e->getMessage());
 
             throw $e;

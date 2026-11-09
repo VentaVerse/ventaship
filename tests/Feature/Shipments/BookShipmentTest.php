@@ -4,7 +4,6 @@ namespace Tests\Feature\Shipments;
 
 use App\Couriers\CourierRegistry;
 use App\Couriers\FakeCourier;
-use App\Couriers\LiveBookingBlocked;
 use App\Models\ClientApp;
 use App\Models\CourierAccount;
 use App\Models\CourierCall;
@@ -138,22 +137,6 @@ class BookShipmentTest extends TestCase
         $this->assertSame(0, DB::table('failed_jobs')->count(), 'handled, not rethrown');
         $this->assertCount(1, $fake->callsTo('createShipment'));
         $this->assertSame('shipment.unknown', OutgoingEvent::query()->sole()->type);
-    }
-
-    public function test_live_block_is_refusal_not_unknown(): void
-    {
-        CourierRegistry::fake('quadx', FakeCourier::make()->throws(new LiveBookingBlocked('lbc', 'booking', ['COURIERS_LBC_LIVE'])));
-        $s = $this->queued();
-
-        Bus::dispatchSync(new BookShipment($s->id));
-
-        $s->refresh();
-        $this->assertSame('failed', $s->state);
-        $this->assertSame('live_booking_blocked', $s->error_code);
-        $this->assertStringContainsString('COURIERS_LBC_LIVE', $s->error_message);
-        $this->assertNull($s->active_reference);
-        $this->assertFalse($s->needs_attention);
-        $this->assertSame('shipment.booking_failed', OutgoingEvent::query()->sole()->type);
     }
 
     public function test_job_skips_when_state_changed(): void

@@ -43,9 +43,7 @@ class AccountMode extends Command
         $this->info("{$account->public_id} ({$account->courier}) mode: {$from} → {$mode}");
 
         if ($mode === 'production') {
-            $this->warn($account->courier === 'quadx'
-                ? 'QuadX has no live-booking lock: this account now books real parcels.'
-                : 'Real bookings still need the live-booking locks (env, safety setting, the account\'s allow_live_booking).');
+            $this->warn('This account now books real parcels.');
         }
 
         return self::SUCCESS;

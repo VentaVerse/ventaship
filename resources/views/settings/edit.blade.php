@@ -27,35 +27,6 @@
             </div>
             @include('settings._bar', ['tab' => 'general'])
         </form>
-    @elseif($tab === 'couriers')
-        <form method="POST" action="{{ route('settings.update') }}">
-            @csrf
-            @method('PUT')
-            <input type="hidden" name="tab" value="couriers">
-            <div class="st-sec">
-                <h2 class="st-h">Live booking</h2>
-                @foreach(['safety_allow_live_lbc' => 'Allow live LBC bookings', 'safety_allow_live_spx' => 'Allow live SPX bookings'] as $field => $label)
-                    <div class="st-row st-row--switch">
-                        <label class="st-switch" for="f-{{ str_replace('_', '-', $field) }}">
-                            <span class="st-switch__label">{{ $label }}</span>
-                            <input type="hidden" name="{{ $field }}" value="0">
-                            <input type="checkbox" class="st-switch__input" role="switch" id="f-{{ str_replace('_', '-', $field) }}" name="{{ $field }}" value="1" @checked(old($field, $switches[$field] ? '1' : '0') === '1')>
-                            <span class="st-switch__track" aria-hidden="true"></span>
-                        </label>
-                    </div>
-                @endforeach
-            </div>
-            <div class="st-sec">
-                <h2 class="st-h">Webhooks</h2>
-                <div class="st-row">
-                    <x-ui.field label="Public address" name="webhooks_public_base_url">
-                        <x-ui.input type="url" id="f-webhooks-public-base-url" name="webhooks_public_base_url" class="st-ctl x-mono"
-                                    value="{{ old('webhooks_public_base_url', $publicAddress ?? '') }}" maxlength="255" placeholder="https://your-domain" autocomplete="off" />
-                    </x-ui.field>
-                </div>
-            </div>
-            @include('settings._bar', ['tab' => 'couriers'])
-        </form>
     @elseif($tab === 'jobs')
         <div class="st-jobs" x-data="{ status: '' }" x-on:credential-status="status = ''; $nextTick(() => status = $event.detail)">
             <div class="st-sec">

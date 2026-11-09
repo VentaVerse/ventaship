@@ -19,7 +19,6 @@ class CourierAccountFactory extends Factory
             'status' => 'active',
             'is_default' => false,
             'default_slot' => null,
-            'allow_live_booking' => false,
         ];
     }
 }

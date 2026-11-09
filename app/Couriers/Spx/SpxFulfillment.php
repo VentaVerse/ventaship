@@ -5,7 +5,6 @@ namespace App\Couriers\Spx;
 use App\Couriers\AccountSettings;
 use App\Couriers\CourierOrder;
 use App\Couriers\Contracts\Courier;
-use App\Couriers\LiveBookingBlocked;
 use App\Couriers\PickupOrigin;
 use App\Couriers\PickupPoint;
 use App\Couriers\ServiceabilityService;
@@ -324,9 +323,6 @@ class SpxFulfillment implements Courier
 
         try {
             $createData = $this->client->createOrders([$orderPayload]);
-        } catch (LiveBookingBlocked $e) {
-            // A lock is off: nothing was sent, and the caller must see why rather than a booking failure.
-            throw $e;
         } catch (SpxApiException $e) {
             // A clear refusal, unless it came with a server error: then SPX may have taken the order anyway.
             return array_filter([
@@ -401,8 +397,6 @@ class SpxFulfillment implements Courier
 
         try {
             $data = $this->client->cancelOrders([$trackingNumber]);
-        } catch (LiveBookingBlocked $e) {
-            throw $e;
         } catch (SpxApiException $e) {
             if ($e->retCode === 13002) {
                 return ['success' => false, 'error' => self::CANCEL_TOO_LATE_MESSAGE];

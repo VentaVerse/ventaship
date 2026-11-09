@@ -6,7 +6,6 @@ use App\Couriers\TrackingNumbers\TrackingNumberSeries;
 use App\Models\Admin;
 use App\Models\AuditEntry;
 use App\Models\CourierAccount;
-use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -32,10 +31,10 @@ class CourierAccountWebhookSeriesTest extends TestCase
 
     private function setBase(?string $url = self::BASE): void
     {
-        app(Settings::class)->set('webhooks.public_base_url', $url);
+        config(['app.url' => $url ?? '']);
     }
 
-    public function test_webhook_address_built_from_public_base(): void
+    public function test_webhook_address_built_from_app_url(): void
     {
         $this->setBase();
         $q = $this->account('quadx');
@@ -44,23 +43,19 @@ class CourierAccountWebhookSeriesTest extends TestCase
         $this->actingAs($this->admin())->get(route('accounts.show', $q->courier))->assertOk()
             ->assertSee('Address for QuadX')
             ->assertSee(self::BASE.'/webhooks/quadx?token=••••••••••••••••', false)
-            ->assertSee(self::BASE);
+            ->assertDontSee('Public address');
         $this->get(route('accounts.show', $s->courier))->assertOk()
             ->assertSee('Address for SPX')
             ->assertSee(self::BASE.'/webhooks/spx/••••••••••••••••', false);
     }
 
-    public function test_webhook_not_set_shows_badge_and_set_address_link(): void
+    public function test_no_webhook_section_without_app_url(): void
     {
         $this->setBase(null);
-        config(['app.url' => 'http://localhost:8040']);
         $a = $this->account();
 
-        $this->actingAs($this->admin())->get('http://localhost:8040'.route('accounts.show', $a->courier, false))->assertOk()
-            ->assertSee('Not set')->assertSee('Set address')
-            ->assertSee(route('settings.edit', ['tab' => 'couriers']), false)
-            ->assertDontSee('/webhooks/quadx')
-            ->assertDontSee('/webhooks/')->assertDontSee('localhost:8040/webhooks')->assertDontSee('token=');
+        $this->actingAs($this->admin())->get(route('accounts.show', $a->courier))->assertOk()
+            ->assertDontSee('Address for QuadX')->assertDontSee('Set address')->assertDontSee('token=');
         $this->postJson(route('accounts.reveal', [$a->courier, 'webhook_url']))->assertNotFound();
     }
 

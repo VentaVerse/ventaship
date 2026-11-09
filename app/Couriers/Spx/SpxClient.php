@@ -3,8 +3,6 @@
 namespace App\Couriers\Spx;
 
 use App\Couriers\AccountSettings;
-use App\Couriers\LiveBookingBlocked;
-use App\Couriers\LiveGuard;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -32,8 +30,7 @@ use Illuminate\Support\Facades\Log;
  * Both secrets are the account's own, stored encrypted (AccountSettings::writeSecret()), mirroring QuadXClient's
  * pattern — see SpxFulfillment::settingsSchema().
  *
- * The environment is the account's mode: a production account talks to spx.ph, anything else to UAT. A production
- * account's create and cancel go through LiveGuard first (createOrders(), cancelOrders()).
+ * The environment is the account's: production talks to spx.ph, sandbox to SPX's UAT system.
  */
 class SpxClient
 {
@@ -142,12 +139,9 @@ class SpxClient
      * must poll getOrderCreateResult() for the real tracking number(s).
      *
      * @param array<int,array> $orders each shaped per api.md §1.4's orders[] table
-     * @throws LiveBookingBlocked for a production account with a live lock off; nothing is sent
      */
     public function createOrders(array $orders): array
     {
-        LiveGuard::assertAllowed($this->settings->account(), 'create');
-
         return $this->post('/open/api/v2/order/batch_create_order', [
             'user_id'     => (int) $this->userId(),
             'user_secret' => (string) $this->userSecret(),
@@ -167,13 +161,9 @@ class SpxClient
 
     /**
      * 1.3 Cancel Order (batch_cancel_order) — tracking_no_list MUST be a real JSON array, never a comma-joined string.
-     *
-     * @throws LiveBookingBlocked for a production account with a live lock off; nothing is sent
      */
     public function cancelOrders(array $trackingNumbers): array
     {
-        LiveGuard::assertAllowed($this->settings->account(), 'cancel');
-
         return $this->post('/open/api/v1/order/batch_cancel_order', [
             'user_id'          => (int) $this->userId(),
             'user_secret'      => (string) $this->userSecret(),

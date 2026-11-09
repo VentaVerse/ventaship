@@ -20,12 +20,6 @@ class BaselineTest extends TestCase
         $this->assertSame('Asia/Manila', config('app.timezone'));
     }
 
-    public function test_live_flags_default_off(): void
-    {
-        $this->assertFalse(config('couriers.lbc_live'));
-        $this->assertFalse(config('couriers.spx_live'));
-    }
-
     public function test_vault_and_signature_config(): void
     {
         $this->assertNotEmpty(config('ventaship.vault_key'));

@@ -2,11 +2,8 @@
 
 namespace Tests\Feature\Ui;
 
-use App\Couriers\LiveBookingBlocked;
-use App\Couriers\LiveGuard;
 use App\Models\Admin;
 use App\Models\AuditEntry;
-use App\Models\CourierAccount;
 use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -25,7 +22,6 @@ class SettingsScreenTest extends TestCase
     {
         $admin = $this->admin();
         app(Settings::class)->set('shipments.reference_prefix', 'ZZ');
-        app(Settings::class)->set('safety.allow_live_spx', true);
 
         $this->actingAs($admin)->get('/settings')
             ->assertOk()->assertSee('value="ZZ"', false)
@@ -33,46 +29,12 @@ class SettingsScreenTest extends TestCase
 
         $this->actingAs($admin)->get('/settings?tab=bogus')->assertOk()->assertSee('value="ZZ"', false);
 
-        $html = $this->actingAs($admin)->get('/settings?tab=couriers')->assertOk()
-            ->assertSee('Allow live LBC bookings')->getContent();
-        $this->assertMatchesRegularExpression('/name="safety_allow_live_spx"[^>]*checked/', $html);
-        $this->assertDoesNotMatchRegularExpression('/type="checkbox"[^>]*name="safety_allow_live_lbc"[^>]*checked/', $html);
+        $this->actingAs($admin)->get('/settings?tab=couriers')->assertOk()
+            ->assertSee('value="ZZ"', false)
+            ->assertDontSee('Couriers &amp; safety', false)->assertDontSee('Allow live')->assertDontSee('Public address');
 
         $this->actingAs($admin)->get('/settings?tab=account')->assertOk()
             ->assertSee('value="ana@example.com"', false);
-    }
-
-    public function test_unchecked_safety_switch_stores_strict_false(): void
-    {
-        $admin = $this->admin();
-        config(['couriers.lbc_live' => true]);
-        app(Settings::class)->set('safety.allow_live_lbc', true);
-        $account = CourierAccount::factory()->create(['courier' => 'lbc', 'mode' => 'production', 'allow_live_booking' => true]);
-        LiveGuard::assertAllowed($account, 'pickup');
-
-        $this->actingAs($admin)->put('/settings', ['tab' => 'couriers', 'safety_allow_live_lbc' => '0', 'safety_allow_live_spx' => '0'])
-            ->assertRedirect('/settings?tab=couriers');
-
-        $this->assertFalse(app(Settings::class)->get('safety.allow_live_lbc'));
-        $this->assertFalse(app(Settings::class)->get('safety.allow_live_spx'));
-        $this->expectException(LiveBookingBlocked::class);
-        LiveGuard::assertAllowed($account, 'pickup');
-    }
-
-    public function test_missing_switch_field_also_stores_false(): void
-    {
-        $this->actingAs($this->admin())->put('/settings', ['tab' => 'couriers']);
-
-        $this->assertFalse(app(Settings::class)->get('safety.allow_live_lbc'));
-    }
-
-    public function test_checked_switch_stores_true(): void
-    {
-        $this->actingAs($this->admin())->put('/settings', ['tab' => 'couriers', 'safety_allow_live_lbc' => '1', 'safety_allow_live_spx' => '0'])
-            ->assertSessionHas('status', 'Saved');
-
-        $this->assertTrue(app(Settings::class)->get('safety.allow_live_lbc'));
-        $this->assertFalse(app(Settings::class)->get('safety.allow_live_spx'));
     }
 
     public function test_invalid_prefix_rejected_with_message(): void

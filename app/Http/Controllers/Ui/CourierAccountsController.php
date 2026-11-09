@@ -9,7 +9,6 @@ use App\Couriers\CourierRegistry;
 use App\Couriers\TrackingNumbers\TrackingNumberSeriesService;
 use App\Http\Controllers\Controller;
 use App\Models\CourierAccount;
-use App\Support\Settings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -56,12 +55,8 @@ class CourierAccountsController extends Controller
             'account' => $account,
             'modes' => CourierAccounts::MODES[$account->courier] ?? [],
             'fields' => $fields,
-            'hasLatch' => in_array($account->courier, ['lbc', 'spx'], true),
             'keyGroups' => $this->keyGroups($account, $accounts),
-            'webhook' => in_array($account->courier, ['quadx', 'spx'], true) ? [
-                'base' => app(Settings::class)->publicBaseUrl(),
-                'masked' => $accounts->webhookAddress($account, true),
-            ] : null,
+            'webhook' => $accounts->webhookAddress($account, true),
             'blocks' => $account->courier === 'lbc' ? app(TrackingNumberSeriesService::class)->blockRows($account) : null,
         ]);
     }
@@ -78,7 +73,6 @@ class CourierAccountsController extends Controller
             'mode' => ['required', 'string', Rule::in(CourierAccounts::MODES[$account->courier] ?? [])],
             'default' => ['nullable', 'boolean'],
             'active' => ['nullable', 'boolean'],
-            'allow_live_booking' => ['nullable', 'boolean'],
             'settings' => ['nullable', 'array'],
             'settings.*' => ['nullable', 'string'],
             'secrets' => ['nullable', 'array'],
@@ -103,9 +97,6 @@ class CourierAccountsController extends Controller
             }
             if (array_key_exists('active', $data) && $data['active'] !== null) {
                 $attempt('active', fn () => $accounts->setActive($account, (bool) $data['active'], $actor));
-            }
-            if (in_array($account->courier, ['lbc', 'spx'], true) && ($data['allow_live_booking'] ?? null) !== null) {
-                $attempt('allow_live_booking', fn () => $accounts->setAllowLiveBooking($account, (bool) $data['allow_live_booking'], $actor));
             }
 
             // Only plain booking-default fields are writable here; secrets and mode-scoped keys have their own controls.

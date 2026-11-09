@@ -11,15 +11,13 @@ use App\Couriers\PickupPoint;
 use App\Couriers\TrackingNumbers\TrackingNumberSeriesService;
 use App\Models\CourierAccount;
 use App\Models\Shipment;
-use App\Support\Settings;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
 /**
  * Shared setup for the LBC tests: an LBC account with neutral settings and a tracking number block, a pickup point,
- * a shipment, and faked LBC answers. LBC has no test system, so every answer is faked and the live locks are only
- * switched on by setUpLbc() (or unlockLiveLbc()) for tests that book against those fakes.
+ * a shipment, and faked LBC answers. LBC has no test system, so every answer is faked.
  */
 trait LbcFixtures
 {
@@ -36,27 +34,19 @@ trait LbcFixtures
 
     protected CourierAccount $account;
 
-    /** The clock on a Wednesday morning in Manila, every live lock on, and a complete account with a block. */
+    /** The clock on a Wednesday morning in Manila and a complete account with a block. */
     protected function setUpLbc(): void
     {
         $this->travelTo(CarbonImmutable::parse(self::NOW, 'Asia/Manila'));
-        $this->unlockLiveLbc();
         $this->account = $this->lbcAccount();
     }
 
-    protected function unlockLiveLbc(): void
-    {
-        config(['couriers.lbc_live' => true]);
-        app(Settings::class)->set('safety.allow_live_lbc', true);
-    }
-
-    /** A production LBC account with the live latch on, every setting stored, and (by default) a block of numbers. */
+    /** A production LBC account with every setting stored and (by default) a block of numbers. */
     protected function lbcAccount(array $attributes = [], bool $withSeries = true): CourierAccount
     {
         $account = CourierAccount::factory()->create($attributes + [
             'courier' => 'lbc',
             'mode' => 'production',
-            'allow_live_booking' => true,
         ]);
 
         $settings = AccountSettings::for($account);

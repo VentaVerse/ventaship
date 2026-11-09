@@ -3,8 +3,6 @@
 namespace App\Couriers\Lbc;
 
 use App\Couriers\AccountSettings;
-use App\Couriers\LiveBookingBlocked;
-use App\Couriers\LiveGuard;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -20,10 +18,8 @@ use Illuminate\Support\Facades\Log;
  * are never logged, and neither is a request body, because it carries the
  * shipper account number and phone numbers.
  *
- * Every request leaves through send(), and send() asks LiveGuard first: a
- * pickup request or a waybill is refused, with nothing sent, unless every
- * live lock is on for this account. The keys, the key set and the gateway are
- * the account's own settings.
+ * Every request leaves through send(). The keys, the key set and the gateway
+ * are the account's own settings.
  */
 class LbcClient
 {
@@ -116,7 +112,6 @@ class LbcClient
      * Send one pickup request. Called once per reserved tracking number;
      * never retried here or by the caller.
      *
-     * @throws LiveBookingBlocked when a live lock is off; nothing is sent
      * @throws LbcException when the Pickup Request key is not set; nothing is sent
      */
     public function insertPickupRequest(string $xml): LbcPickupResult
@@ -150,7 +145,6 @@ class LbcClient
      * facts as the pickup request.
      *
      * @return string|null the PDF bytes, or null when no PDF came back
-     * @throws LiveBookingBlocked when a live lock is off; nothing is sent
      */
     public function generateWaybill(array $label): ?string
     {
@@ -221,17 +215,13 @@ class LbcClient
     }
 
     /**
-     * The one way out to LBC: the live-booking locks first, then one request
-     * with the API's own auth header. Null when it never got an answer, with
+     * The one way out to LBC: one request with the API's own auth header. Null when it never got an answer, with
      * the reason in $error.
      *
-     * @throws LiveBookingBlocked when the operation is guarded and a lock is off
      * @throws LbcException when the API's key is not set
      */
     private function send(string $api, callable $call, ?string &$error = null): ?Response
     {
-        LiveGuard::assertAllowed($this->settings->account(), $api);
-
         $key = $this->subscriptionKey($api);
         if ($key === null) {
             throw new LbcException("The LBC {$api} key is not set.");

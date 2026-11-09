@@ -7,7 +7,6 @@ use App\Models\CourierAccount;
 use App\Models\Setting;
 use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /** ventaship:account-mode and ventaship:setting-set: the runbook's operator switches, each audited. */
@@ -63,40 +62,20 @@ class OperatorCommandsTest extends TestCase
         $this->assertSame(0, AuditEntry::query()->count());
     }
 
-    public function test_setting_set_stores_a_safety_boolean_and_audits(): void
+    public function test_setting_set_audits_each_change(): void
     {
-        $this->artisan('ventaship:setting-set', ['key' => 'safety.allow_live_spx', 'value' => 'true'])
-            ->expectsOutputToContain('safety.allow_live_spx: null → true')
+        $this->artisan('ventaship:setting-set', ['key' => 'ops.paused', 'value' => 'true', '--json' => true])
+            ->expectsOutputToContain('ops.paused: null → true')
             ->assertSuccessful();
-
-        $this->assertTrue(app(Settings::class)->get('safety.allow_live_spx'));
-        $this->assertTrue((new Settings)->get('safety.allow_live_spx'));
-
-        $this->artisan('ventaship:setting-set', ['key' => 'safety.allow_live_spx', 'value' => 'false'])->assertSuccessful();
-        $this->assertFalse((new Settings)->get('safety.allow_live_spx'));
+        $this->artisan('ventaship:setting-set', ['key' => 'ops.paused', 'value' => 'false', '--json' => true])->assertSuccessful();
+        $this->assertFalse((new Settings)->get('ops.paused'));
 
         $audits = AuditEntry::query()->orderBy('id')->get();
         $this->assertSame(['setting.changed', 'setting.changed'], $audits->pluck('action')->all());
         $this->assertSame('setting', $audits[0]->subject_type);
-        $this->assertSame('safety.allow_live_spx', $audits[0]->subject_id);
+        $this->assertSame('ops.paused', $audits[0]->subject_id);
         $this->assertSame(['value' => ['from' => null, 'to' => true]], $audits[0]->changes);
         $this->assertSame(['value' => ['from' => true, 'to' => false]], $audits[1]->changes);
-    }
-
-    /** @return array<string, array{string}> */
-    public static function looseBooleans(): array
-    {
-        return ['1' => ['1'], 'yes' => ['yes'], 'on' => ['on'], 'TRUE' => ['TRUE'], 'empty' => [''], 'quoted' => ['"true"']];
-    }
-
-    #[DataProvider('looseBooleans')]
-    public function test_setting_set_refuses_anything_but_true_or_false_for_safety_keys(string $value): void
-    {
-        $this->artisan('ventaship:setting-set', ['key' => 'safety.allow_live_lbc', 'value' => $value])->assertFailed();
-        $this->artisan('ventaship:setting-set', ['key' => 'safety.allow_live_lbc', 'value' => $value, '--json' => true])->assertFailed();
-
-        $this->assertSame(0, Setting::query()->count());
-        $this->assertSame(0, AuditEntry::query()->count());
     }
 
     public function test_setting_set_stores_strings_and_json(): void
