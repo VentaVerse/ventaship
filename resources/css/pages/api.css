@@ -14,16 +14,37 @@
         border-bottom: 1px solid var(--bl-rule);
     }
 
-    .api-bar__title {
-        margin: 0;
-        font-size: 15px;
-        font-weight: 700;
-    }
-
     .api-seg {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
+    }
+
+    .api-seg__count {
+        margin-left: 2px;
+        font-weight: 500;
+    }
+
+    .api-pager {
+        border-top: 1px solid var(--bl-rule);
+    }
+
+    /* Why a failed row failed: the stored error, two lines at most. */
+    .api-why {
+        display: -webkit-box;
+        max-width: 64ch;
+        margin: 6px 0 0;
+        padding: 6px 9px;
+        overflow: hidden;
+        border-radius: 8px;
+        background: var(--bl-bad-w);
+        color: var(--bl-bad);
+        font-size: 12.5px;
+        line-height: 1.4;
+        overflow-wrap: anywhere;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
     }
 
     .api-cards {
@@ -128,15 +149,6 @@
         max-width: 100%;
     }
 
-    .api-inline__grow {
-        flex: 1 1 280px;
-        max-width: 520px;
-    }
-
-    .api-inline__grow .x-input {
-        width: 100%;
-    }
-
     .api-inline__acts {
         display: flex;
         gap: 8px;
@@ -166,15 +178,6 @@
         font-size: 12px;
         font-weight: 600;
         color: var(--bl-ink-3);
-    }
-
-    .api-table tr.is-new td {
-        background: var(--bl-brand-w);
-    }
-
-    .api-name {
-        font-weight: 600;
-        overflow-wrap: anywhere;
     }
 
     .api-sub {
@@ -221,23 +224,49 @@
     }
 
     .api-card .ac-cred {
-        flex-wrap: nowrap;
+        flex: 0 1 auto;
+        max-width: 100%;
     }
 
     .api-card .ac-cred__input {
         flex: 0 1 auto;
         width: 22ch;
+        max-width: 100%;
         height: var(--bl-control-h-sm);
         font-size: 12.5px;
     }
 
+    /* A shown value (and the base URL) is as wide as it is, never clipped; the buttons wrap below when it needs the row. */
     .api-card .ac-cred__input.is-shown {
-        width: 36ch;
+        width: min(100%, 64ch);
+    }
+
+    @supports (field-sizing: content) {
+        .api-card .ac-cred__input.is-shown {
+            width: auto;
+            min-width: 22ch;
+            field-sizing: content;
+        }
     }
 
     .api-card .ac-cred__acts {
         flex-wrap: nowrap;
         gap: 6px;
+    }
+
+    /* View, Hide, Copy, Save and Send test at one width. Copy keeps the width of "Copied"; the rare "Couldn't copy"
+       wraps onto two short lines instead of widening every Copy button. */
+    .api-card .x-btn--sm:not(.x-rowmenu__trigger) {
+        justify-content: center;
+        min-width: 80px;
+    }
+
+    .api-card .x-copy__label--fail {
+        width: min-content;
+        white-space: normal;
+        font-size: 11px;
+        line-height: 1.05;
+        text-align: center;
     }
 
     @media (max-width: 900px) {
@@ -277,18 +306,8 @@
         }
 
         .api-table td[data-label="Key"],
-        .api-table td[data-label="Signing secret"] {
+        .api-table td[data-label="Detail"] {
             display: block;
-        }
-
-        .api-table td[data-label="Key"]::before,
-        .api-table td[data-label="Signing secret"]::before {
-            display: block;
-            margin-bottom: 4px;
-        }
-
-        .api-table--logs td[data-label="Key"]::before {
-            display: inline;
         }
 
         .api-table .api-act {
@@ -344,6 +363,8 @@
         .api-tabs .x-tab {
             display: inline-flex;
             align-items: center;
+            justify-content: center;
+            min-width: 44px;
             min-height: 44px;
         }
 
@@ -353,8 +374,14 @@
             width: 100%;
         }
 
-        .api-inline__grow {
-            flex-basis: 100%;
+        .api-pager .x-pager__nav {
+            flex-wrap: wrap;
+        }
+
+        .api-pager .x-pager__page,
+        .api-pager .x-pager__gap {
+            min-width: 44px;
+            height: 44px;
         }
     }
 }

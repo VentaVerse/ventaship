@@ -11,10 +11,13 @@ use App\Platforms\PlatformAppException;
 use App\Platforms\PlatformApps;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Throwable;
 
@@ -26,9 +29,12 @@ class ApiController extends Controller
 {
     private const TABS = ['keys', 'logs'];
 
-    private const LOG_TYPES = ['all', 'api', 'webhooks'];
+    private const LOG_TYPES = ['all', 'failed', 'api', 'webhooks'];
 
-    private const LOG_LIMIT = 100;
+    private const LOG_PER_PAGE = 25;
+
+    /** The longest error text a log row carries (the stored excerpt can be 2 KB). */
+    private const ERROR_CHARS = 300;
 
     public function index(Request $request, PlatformApps $platforms): View|RedirectResponse
     {
@@ -46,11 +52,19 @@ class ApiController extends Controller
             $data += [
                 'keys' => $keys,
                 'keyCount' => $keys->count(),
+                'baseUrl' => url('api/v1'),
                 'creating' => $request->boolean('create') || $request->session()->hasOldInput('name'),
             ];
         } else {
             $type = in_array($request->query('type'), self::LOG_TYPES, true) ? $request->query('type') : 'all';
-            $data += ['type' => $type, 'logs' => $this->logRows($type)];
+            $failed = $this->failedCount();
+            $data += [
+                'type' => $type,
+                'failedCount' => $failed,
+                'logs' => $this->logRows($type, $request, $failed),
+                // The Key column names the app; with one app (or none) it would say the same thing on every row.
+                'showKey' => ClientApp::query()->count() > 1,
+            ];
         }
 
         return view('developers.index', $data);
@@ -263,39 +277,117 @@ class ApiController extends Controller
         ]]);
     }
 
-    /** The newest API calls and webhook deliveries together, newest first. No bodies or headers. */
-    private function logRows(string $type): Collection
+    /**
+     * API calls and webhook deliveries together, newest first, 25 a page over all stored rows (the prune command
+     * bounds them). Only ids and times are merged in SQL; each table gives at most the rows up to the page asked for,
+     * so a page costs two short index reads, then the page's rows are loaded. No bodies, headers or payloads.
+     */
+    private function logRows(string $type, Request $request, int $failed): LengthAwarePaginator
     {
-        $rows = collect();
+        $calls = $type === 'webhooks' ? null : $this->callsQuery($type === 'failed');
+        $events = $type === 'api' ? null : $this->eventsQuery($type === 'failed');
+        $total = $type === 'failed' ? $failed : ($calls?->count() ?? 0) + ($events?->count() ?? 0);
+
+        $last = max(1, (int) ceil($total / self::LOG_PER_PAGE));
+        $page = min(max(1, $request->integer('page', 1)), $last);
+        $upTo = $page * self::LOG_PER_PAGE;
+
+        $parts = [];
+        foreach (['api' => $calls, 'webhook' => $events] as $kind => $query) {
+            if ($query !== null) {
+                $parts[] = $query->toBase()->reorder()->selectRaw('? as kind, id, created_at', [$kind])
+                    ->orderByDesc('created_at')->orderByDesc('id')->limit($upTo);
+            }
+        }
+        $refs = collect();
+        if ($total > 0) {
+            $union = array_shift($parts);
+            foreach ($parts as $part) {
+                $union->unionAll($part);
+            }
+            $refs = DB::query()->fromSub($union, 'log_rows')
+                ->orderByDesc('created_at')->orderByDesc('id')->orderBy('kind')
+                ->offset(($page - 1) * self::LOG_PER_PAGE)->limit(self::LOG_PER_PAGE)->get();
+        }
+
         $names = ClientApp::query()->pluck('name', 'id');
+        $callIds = $refs->where('kind', 'api')->pluck('id');
+        $eventIds = $refs->where('kind', 'webhook')->pluck('id');
+        $callRows = $callIds->isEmpty() ? collect() : ApiRequest::query()->whereKey($callIds)
+            ->get(['id', 'client_app_id', 'method', 'path', 'status', 'error', 'created_at'])->keyBy('id');
+        $eventRows = $eventIds->isEmpty() ? collect() : OutgoingEvent::query()->with('shipment:id,public_id,client_reference,courier_ref')
+            ->whereKey($eventIds)
+            ->get(['id', 'public_id', 'client_app_id', 'type', 'shipment_id', 'status', 'attempts', 'last_error', 'created_at'])->keyBy('id');
 
-        if ($type !== 'webhooks') {
-            ApiRequest::query()->orderByDesc('created_at')->orderByDesc('id')->limit(self::LOG_LIMIT)
-                ->get(['id', 'client_app_id', 'method', 'path', 'status', 'created_at'])
-                ->each(function (ApiRequest $r) use ($rows, $names) {
-                    $rows->push([
-                        'kind' => 'api', 'at' => Carbon::parse($r->created_at), 'seq' => $r->id, 'call' => $r,
-                        'app' => $names[$r->client_app_id] ?? null,
-                        'badge' => [(string) $r->status, $r->status >= 500 ? 'bad' : ($r->status >= 400 ? 'attn' : 'good')],
-                    ]);
-                });
-        }
-        if ($type !== 'api') {
-            OutgoingEvent::query()->with('shipment:id,public_id,client_reference')
-                ->orderByDesc('created_at')->orderByDesc('id')->limit(self::LOG_LIMIT)
-                ->get(['id', 'public_id', 'client_app_id', 'type', 'shipment_id', 'status', 'attempts', 'last_error', 'created_at'])
-                ->each(function (OutgoingEvent $e) use ($rows, $names) {
-                    $rows->push([
-                        'kind' => 'webhook', 'at' => $e->created_at, 'seq' => $e->id, 'event' => $e,
-                        'app' => $names[$e->client_app_id] ?? null,
-                        'badge' => $this->deliveryBadge($e),
-                        'resendable' => in_array($e->status, ['failed', 'delivered'], true),
-                    ]);
-                });
-        }
+        $rows = $refs->map(function (object $ref) use ($callRows, $eventRows, $names) {
+            if ($ref->kind === 'api') {
+                $r = $callRows[$ref->id] ?? null;
 
-        return $rows->sort(fn (array $a, array $b) => [$b['at'], $b['seq']] <=> [$a['at'], $a['seq']])
-            ->take(self::LOG_LIMIT)->values();
+                return $r === null ? null : [
+                    'kind' => 'api', 'at' => Carbon::parse($r->created_at), 'call' => $r,
+                    'app' => $names[$r->client_app_id] ?? null,
+                    'badge' => [(string) $r->status, $r->status >= 500 ? 'bad' : ($r->status >= 400 ? 'attn' : 'good')],
+                    'error' => $r->status >= 400 ? $this->callError($r->error) : null,
+                ];
+            }
+            $e = $eventRows[$ref->id] ?? null;
+
+            return $e === null ? null : [
+                'kind' => 'webhook', 'at' => $e->created_at, 'event' => $e,
+                'app' => $names[$e->client_app_id] ?? null,
+                'badge' => $this->deliveryBadge($e),
+                'resendable' => in_array($e->status, ['failed', 'delivered'], true),
+                'error' => $e->status === 'failed' ? $this->deliveryError($e->last_error) : null,
+                'shipment_ref' => $e->shipment === null ? null
+                    : ($e->shipment->courier_ref ?: $e->shipment->client_reference ?: $e->shipment->public_id),
+            ];
+        })->filter()->values();
+
+        return new LengthAwarePaginator($rows, $total, self::LOG_PER_PAGE, $page, [
+            'path' => route('developers.index'),
+            'query' => array_filter(['tab' => 'logs', 'type' => $type === 'all' ? null : $type]),
+        ]);
+    }
+
+    /** API calls answered 4xx/5xx plus webhook deliveries given up on (status failed). */
+    private function failedCount(): int
+    {
+        return $this->callsQuery(true)->count() + $this->eventsQuery(true)->count();
+    }
+
+    /** @return Builder<ApiRequest> */
+    private function callsQuery(bool $failedOnly): Builder
+    {
+        return ApiRequest::query()->when($failedOnly, fn (Builder $q) => $q->where('status', '>=', 400));
+    }
+
+    /** @return Builder<OutgoingEvent> */
+    private function eventsQuery(bool $failedOnly): Builder
+    {
+        return OutgoingEvent::query()->when($failedOnly, fn (Builder $q) => $q->where('status', 'failed'));
+    }
+
+    /** The stored error code of a refused call ("rate_limited" reads "Rate limited"); null when none was stored. */
+    private function callError(?string $code): ?string
+    {
+        $code = trim((string) $code);
+
+        return $code === '' ? null : Str::limit(Str::ucfirst(str_replace('_', ' ', $code)), self::ERROR_CHARS);
+    }
+
+    /**
+     * Why a delivery failed, from its stored error. A receiver's answer ("HTTP 503: <body>") gives nothing: its status
+     * is already on the badge and its body is never shown. An exception reads without its class name.
+     */
+    private function deliveryError(?string $error): ?string
+    {
+        $text = trim((string) $error);
+        if ($text === '' || preg_match('/^HTTP \d{3}\b/', $text) === 1) {
+            return null;
+        }
+        $text = trim((string) preg_replace('/^(?:(?:[A-Za-z_]\w*\\\\)+[A-Za-z_]\w*|[A-Za-z_]\w*(?:Exception|Error)):\s*/', '', $text));
+
+        return $text === '' ? null : Str::limit($text, self::ERROR_CHARS);
     }
 
     private function toKeys(?string $status = null): RedirectResponse

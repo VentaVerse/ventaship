@@ -85,7 +85,7 @@ class ApiWebhooksTest extends TestCase
             ->getContent();
         $this->assertStringContainsString('value="https://a.test/h"', $html);
         $this->assertStringNotContainsString('https://off.test/h', $html);
-        $this->assertSame(3, substr_count($html, 'Webhook secret</span>'));
+        $this->assertSame(3, preg_match_all('#>Webhook secret</(span|label)>#', $html));
         $this->assertStringNotContainsString($secret, $html);
         $this->assertStringNotContainsString('whsec_', $html);
         $this->assertStringContainsString('action="'.route('developers.endpoints.update', $ok).'"', $html);

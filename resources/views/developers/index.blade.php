@@ -4,7 +4,7 @@
 
 @if($tab === 'keys')
     @section('actions')
-        <x-ui.button variant="primary" :href="route('developers.index', ['tab' => 'keys', 'create' => 1])" x-on:click.prevent="$dispatch('create-key')">Create key</x-ui.button>
+        <x-ui.button variant="primary" id="create-key" :href="route('developers.index', ['tab' => 'keys', 'create' => 1])" x-on:click.prevent="$dispatch('create-key')">Create key</x-ui.button>
     @endsection
 @endif
 

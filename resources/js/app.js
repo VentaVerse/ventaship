@@ -151,10 +151,13 @@ Alpine.data('credentialField', (config) => ({
         }
     },
 
+    // From the View button (keyboard or click), focus goes to Hide, which takes View's place. The on-load view of a
+    // key just issued leaves focus where it is.
     async view() {
         if (this.busy || this.state !== 'masked' || !config.url) {
             return;
         }
+        const fromButton = this.$refs.viewButton !== undefined && document.activeElement === this.$refs.viewButton;
         this.busy = true;
         this.error = '';
         try {
@@ -168,6 +171,9 @@ Alpine.data('credentialField', (config) => ({
             this.timer = setTimeout(() => this.hide(), CREDENTIAL_SHOW_MS);
             this.ticker = setInterval(() => { this.left = Math.max(0, this.left - 1); }, 1000);
             this.announce('Shown for 30 seconds');
+            if (fromButton) {
+                this.$nextTick(() => this.$refs.hideButton?.focus());
+            }
         } finally {
             this.busy = false;
         }

@@ -1,8 +1,9 @@
 @props(['label', 'masked' => null, 'revealUrl', 'id', 'autoView' => false])
 
 {{--
-    x-ui.secret for a table cell: the masked value with View and Copy, no field label ($label names it for screen
-    readers). Only the length and last 4 characters reach the page; View and Copy fetch the value from $revealUrl.
+    x-ui.secret for a table cell or a card row: the masked value with View and Copy, no field label of its own ($label
+    names it; a row may point a <label for> at $id). While shown, the seconds left count down beside the buttons.
+    Only the length and last 4 characters reach the page; View and Copy fetch the value from $revealUrl.
 --}}
 @php
     $length = (int) ($masked['length'] ?? 0);
@@ -20,9 +21,10 @@
                autocomplete="off" spellcheck="false" autocapitalize="off" data-lpignore="true" data-1p-ignore
                x-ref="input" x-bind:class="{ 'is-shown': state === 'viewing' }">
         <span class="ac-cred__acts">
-            <x-ui.button size="sm" x-show="state === 'masked'" x-on:click="view()" x-bind:disabled="busy" :aria-label="'View ' . $label">View</x-ui.button>
-            <x-ui.button size="sm" x-show="state === 'viewing'" x-cloak x-on:click="hide()" :aria-label="'Hide ' . $label">Hide</x-ui.button>
+            <x-ui.button size="sm" x-ref="viewButton" x-show="state === 'masked'" x-on:click="view()" x-bind:disabled="busy" :aria-label="'View ' . $label">View</x-ui.button>
+            <x-ui.button size="sm" x-ref="hideButton" x-show="state === 'viewing'" x-cloak x-on:click="hide(true)" :aria-label="'Hide ' . $label">Hide</x-ui.button>
             <x-ui.copy-button :label="'Copy ' . $label" :variant="$autoView ? 'primary' : 'default'" />
+            <span class="ac-cred__tick x-num" aria-hidden="true" x-show="state === 'viewing'" x-cloak x-text="tick"></span>
         </span>
         <p class="fm-error ac-cred__error" x-show="error" x-cloak x-text="error"></p>
     </div>

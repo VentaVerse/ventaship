@@ -1,16 +1,38 @@
 @php
     $createUrl = route('developers.index', ['tab' => 'keys', 'create' => 1]);
     $openCreate = "creating = true; \$nextTick(() => document.getElementById('f-key-name').focus())";
+    // Cancel and Esc: the form closes and focus goes back to the header's Create key.
+    $closeCreate = "creating = false; \$nextTick(() => document.getElementById('create-key')?.focus())";
+    $baseCopy = ['url' => null, 'value' => $baseUrl, 'mask' => $baseUrl, 'isSet' => true, 'name' => null];
 @endphp
+<div class="api-keys" x-data="{ status: '' }" x-on:credential-status="status = ''; $nextTick(() => status = $event.detail)">
+<p class="x-sr" role="status" aria-live="polite" x-text="status"></p>
 <div class="api-cards" x-data="{ creating: {{ $creating ? 'true' : 'false' }} }" x-on:create-key.window="{{ $openCreate }}">
-    <form class="x-panel api-inline" method="POST" action="{{ route('developers.keys.store') }}" novalidate x-show="creating" @unless($creating) x-cloak @endunless>
+    <section class="x-panel api-card api-base" aria-label="Base URL">
+        <div class="api-row">
+            <label class="api-row__label" for="f-base-url">Base URL</label>
+            <div class="api-row__val">
+                <div class="ac-cred" x-data="credentialField(@js($baseCopy))">
+                    <input type="text" id="f-base-url" class="x-input ac-cred__input is-shown" value="{{ $baseUrl }}" readonly
+                           autocomplete="off" spellcheck="false" autocapitalize="off" x-ref="input">
+                    <span class="ac-cred__acts">
+                        <x-ui.copy-button label="Copy base URL" />
+                    </span>
+                    <p class="fm-error ac-cred__error" x-show="error" x-cloak x-text="error"></p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <form class="x-panel api-inline" method="POST" action="{{ route('developers.keys.store') }}" novalidate x-show="creating" @unless($creating) x-cloak @endunless
+          x-on:keydown.escape.prevent.stop="{{ $closeCreate }}">
         @csrf
         <x-ui.field label="Name" name="name" for="f-key-name" required>
             <x-ui.input id="f-key-name" name="name" value="{{ old('name') }}" maxlength="255" autocomplete="off" required />
         </x-ui.field>
         <div class="api-inline__acts">
             <x-ui.button variant="primary" type="submit">Create</x-ui.button>
-            <x-ui.button :href="route('developers.index', ['tab' => 'keys'])" x-on:click.prevent="creating = false">Cancel</x-ui.button>
+            <x-ui.button :href="route('developers.index', ['tab' => 'keys'])" x-on:click.prevent="{{ $closeCreate }}">Cancel</x-ui.button>
         </div>
     </form>
 
@@ -57,7 +79,11 @@
             </header>
 
             <div class="api-row">
-                <span class="api-row__label">API key</span>
+                @if($k && $row['viewable'])
+                    <label class="api-row__label" for="f-token-{{ $k->id }}">API key</label>
+                @else
+                    <span class="api-row__label">API key</span>
+                @endif
                 <div class="api-row__val">
                     @if($k && $row['viewable'])
                         <x-ui.secret-inline :label="'API key ' . $row['name']" :masked="$row['masked']"
@@ -80,7 +106,7 @@
                             @method('PUT')
                             <input type="hidden" name="app" value="{{ $pid }}">
                             <x-ui.input type="url" :id="'f-url-' . $pid" name="webhook_url" :value="$urlValue" maxlength="2048" autocomplete="off" placeholder="https://" x-ref="url" />
-                            <x-ui.button size="sm" type="submit">Save</x-ui.button>
+                            <x-ui.button size="sm" type="submit" :aria-label="'Save webhook URL ' . $row['name']">Save</x-ui.button>
                         </form>
                         @if($hook)
                             <x-ui.badge :tone="$hook['health'][1]">{{ $hook['health'][0] }}</x-ui.badge>
@@ -93,16 +119,21 @@
 
             @if($hook)
                 <div class="api-row">
-                    <span class="api-row__label">Webhook secret</span>
+                    @if($hook['secret'] !== null)
+                        <label class="api-row__label" for="f-secret-{{ $pid }}">Webhook secret</label>
+                    @else
+                        <span class="api-row__label">Webhook secret</span>
+                    @endif
                     <div class="api-row__val">
                         <x-ui.secret-inline :label="'Webhook secret ' . $row['name']" :masked="$hook['secret']"
                             :revealUrl="route('developers.reveal', [$app, 'webhook'])" :id="'f-secret-' . $pid" />
-                        <x-ui.button size="sm" type="submit" :form="'test-' . $pid">Send test</x-ui.button>
+                        <x-ui.button size="sm" type="submit" :form="'test-' . $pid" :aria-label="'Send test webhook ' . $row['name']">Send test</x-ui.button>
                     </div>
                 </div>
             @endif
         </section>
     @endforeach
+</div>
 </div>
 
 @push('forms')

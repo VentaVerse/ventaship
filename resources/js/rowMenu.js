@@ -1,6 +1,7 @@
 // A row's actions menu. It is position: fixed, placed from its trigger, so no panel or table edge (overflow: hidden)
 // can clip it. Below the trigger with right edges aligned; above when there is no room below; always inside the
-// viewport. It closes on Esc (focus back on the trigger), a click outside, Tab, scroll and resize.
+// viewport. ArrowDown (or ArrowUp) on the closed trigger opens it on its first (or last) item. It closes on Esc (focus
+// back on the trigger), a click outside, Tab or any other move of focus out of it, scroll and resize.
 
 const GAP = 4;
 const MARGIN = 8;
@@ -16,6 +17,23 @@ export function menuPosition(trigger, menu, viewport) {
     }
 
     return { top, left };
+}
+
+// The item a key on the closed trigger opens the menu on ('first' or 'last'), or null when the key does not open it.
+export function openingItem(key) {
+    switch (key) {
+        case 'ArrowDown':
+            return 'first';
+        case 'ArrowUp':
+            return 'last';
+        default:
+            return null;
+    }
+}
+
+// True when focus moved from inside the menu (trigger included) to somewhere outside it.
+export function focusLeft(root, next) {
+    return next === null || next === undefined || !root.contains(next);
 }
 
 // The item to focus after a key press, or null when the key does not move focus.
@@ -50,11 +68,12 @@ export function rowMenu() {
             }
         },
 
-        show() {
+        show(at = 'first') {
             this.open = true;
             this.$nextTick(() => {
                 this.place();
-                this.items()[0]?.focus({ preventScroll: true });
+                const items = this.items();
+                items[at === 'last' ? items.length - 1 : 0]?.focus({ preventScroll: true });
             });
             this.onMove = () => this.close(false);
             window.addEventListener('scroll', this.onMove, { capture: true, passive: true });
@@ -91,6 +110,20 @@ export function rowMenu() {
 
         items() {
             return [...this.$refs.menu.querySelectorAll('[role="menuitem"]')];
+        },
+
+        onTriggerKey(event) {
+            const at = this.open ? null : openingItem(event.key);
+            if (at !== null) {
+                event.preventDefault();
+                this.show(at);
+            }
+        },
+
+        onFocusOut(event) {
+            if (this.open && focusLeft(this.$root, event.relatedTarget)) {
+                this.close(false);
+            }
         },
 
         onKey(event) {

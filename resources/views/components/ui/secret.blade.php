@@ -27,7 +27,7 @@
                    x-ref="input" x-bind:class="{ 'is-shown': state === 'viewing' }">
             <span class="ac-cred__acts">
                 <x-ui.button size="sm" x-ref="viewButton" x-show="state === 'masked'" x-on:click="view()" x-bind:disabled="busy" :aria-label="$aria('View')">View</x-ui.button>
-                <x-ui.button size="sm" x-show="state === 'viewing'" x-cloak x-on:click="hide(true)" :aria-label="$aria('Hide')">Hide</x-ui.button>
+                <x-ui.button size="sm" x-ref="hideButton" x-show="state === 'viewing'" x-cloak x-on:click="hide(true)" :aria-label="$aria('Hide')">Hide</x-ui.button>
                 <x-ui.copy-button :label="$aria('Copy')" />
                 {{ $slot }}
                 <span class="ac-cred__tick x-num" aria-hidden="true" x-show="state === 'viewing'" x-cloak x-text="tick"></span>

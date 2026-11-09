@@ -67,7 +67,7 @@ class ApiPageTest extends TestCase
 
         $this->get(route('developers.index', ['tab' => 'webhooks']))->assertRedirect(route('developers.index', ['tab' => 'keys']));
         $this->get(route('developers.index', ['tab' => 'logs']))->assertOk()
-            ->assertSee('All')->assertSee('API calls')->assertSee('Webhook deliveries')->assertSee('No activity');
+            ->assertSeeInOrder(['All', 'Failed', '0', 'API calls', 'Webhooks'])->assertSee('No activity');
         // An unknown tab falls back to keys.
         $this->get(route('developers.index', ['tab' => 'nope']))->assertOk()->assertSee('Create key');
     }
@@ -108,5 +108,63 @@ class ApiPageTest extends TestCase
             $this->assertStringNotContainsString('style="', $html);
             $this->assertDoesNotMatchRegularExpression('/class="[^"]*\b(ad-|ads|banner|sponsor|promo)/', $html);
         }
+    }
+
+    public function test_the_keys_tab_shows_the_base_url_with_copy_even_without_keys(): void
+    {
+        $this->actingAs($this->admin());
+
+        $html = $this->get(route('developers.index'))->assertOk()->assertSeeInOrder(['Base URL', 'No API keys'])->getContent();
+        $this->assertStringContainsString('<label class="api-row__label" for="f-base-url">Base URL</label>', $html);
+        $this->assertMatchesRegularExpression('#<input type="text" id="f-base-url"[^>]*value="'.preg_quote(url('api/v1'), '#').'" readonly#', $html);
+        $this->assertStringContainsString('aria-label="Copy base URL"', $html);
+        $this->assertStringContainsString('class="x-copy__label x-copy__label--ok"', $html);
+        $this->assertStringNotContainsString('Base URL', $this->get(route('developers.index', ['tab' => 'logs']))->getContent());
+    }
+
+    public function test_card_controls_are_named_per_key_and_labelled(): void
+    {
+        $app = ClientApp::factory()->create(['name' => 'Pedallion', 'webhook_url' => 'https://a.test/h']);
+        $key = app(PlatformApps::class)->issueKey($app, 'K')['key'];
+        $this->actingAs($this->admin());
+
+        $html = $this->get(route('developers.index'))->assertOk()->getContent();
+        $this->assertStringContainsString('aria-label="Send test webhook Pedallion"', $html);
+        $this->assertStringContainsString('aria-label="Save webhook URL Pedallion"', $html);
+        $this->assertStringContainsString('<label class="api-row__label" for="f-token-'.$key->id.'">API key</label>', $html);
+        $this->assertStringContainsString('id="f-token-'.$key->id.'"', $html);
+        $this->assertStringContainsString('<label class="api-row__label" for="f-secret-'.$app->public_id.'">Webhook secret</label>', $html);
+        $this->assertStringContainsString('id="f-secret-'.$app->public_id.'"', $html);
+        foreach (['View API key Pedallion', 'Hide API key Pedallion', 'Copy API key Pedallion', 'View Webhook secret Pedallion', 'Hide Webhook secret Pedallion'] as $name) {
+            $this->assertSame(1, substr_count($html, 'aria-label="'.$name.'"'), $name);
+        }
+        // View hands focus to Hide and back; the 30-second countdown shows beside them while shown.
+        $this->assertSame(2, substr_count($html, 'x-ref="viewButton"'));
+        $this->assertSame(2, substr_count($html, 'x-ref="hideButton"'));
+        $this->assertSame(2, substr_count($html, 'x-on:click="hide(true)"'));
+        $this->assertSame(2, substr_count($html, '<span class="ac-cred__tick x-num" aria-hidden="true"'));
+        $this->assertMatchesRegularExpression('/<p class="x-sr" role="status" aria-live="polite" x-text="status"><\/p>/', $html);
+        $this->assertStringContainsString('x-on:credential-status=', $html);
+    }
+
+    public function test_create_form_closes_on_cancel_and_esc_back_to_the_header_button(): void
+    {
+        $this->actingAs($this->admin());
+
+        $html = $this->get(route('developers.index', ['create' => 1]))->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/<a href="[^"]*" class="x-btn x-btn--primary[^"]*" id="create-key"/', $html);
+        $close = e("creating = false; \$nextTick(() => document.getElementById('create-key')?.focus())");
+        $this->assertStringContainsString('x-on:keydown.escape.prevent.stop="'.$close.'"', $html);
+        $this->assertStringContainsString('x-on:click.prevent="'.$close.'">Cancel', $html);
+    }
+
+    public function test_row_menu_opens_from_the_keyboard_and_closes_when_focus_leaves(): void
+    {
+        $app = ClientApp::factory()->create(['name' => 'Shop']);
+        app(PlatformApps::class)->issueKey($app, 'K');
+
+        $html = $this->actingAs($this->admin())->get(route('developers.index'))->assertOk()->getContent();
+        $this->assertStringContainsString('x-on:keydown="onTriggerKey($event)"', $html);
+        $this->assertStringContainsString('x-on:focusout="onFocusOut($event)"', $html);
     }
 }

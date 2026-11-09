@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { menuPosition, nextIndex } from '../../resources/js/rowMenu.js';
+import { focusLeft, menuPosition, nextIndex, openingItem } from '../../resources/js/rowMenu.js';
 
 const viewport = { width: 1366, height: 768 };
 const menu = { width: 160, height: 120 };
@@ -36,4 +36,20 @@ test('arrow keys wrap, Home and End jump', () => {
     assert.equal(nextIndex('End', 0, 3), 2);
     assert.equal(nextIndex('a', 1, 3), null);
     assert.equal(nextIndex('ArrowDown', 0, 0), null);
+});
+
+test('ArrowDown on the closed trigger opens on the first item, ArrowUp on the last', () => {
+    assert.equal(openingItem('ArrowDown'), 'first');
+    assert.equal(openingItem('ArrowUp'), 'last');
+    assert.equal(openingItem('Enter'), null);
+    assert.equal(openingItem('Tab'), null);
+});
+
+test('focus leaving the menu (Tab, a click elsewhere) is told apart from a move inside it', () => {
+    const inside = {};
+    const root = { contains: (el) => el === inside };
+    assert.equal(focusLeft(root, inside), false);
+    assert.equal(focusLeft(root, {}), true);
+    assert.equal(focusLeft(root, null), true);
+    assert.equal(focusLeft(root, undefined), true);
 });
