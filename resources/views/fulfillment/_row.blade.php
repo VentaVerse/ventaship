@@ -36,15 +36,17 @@
         </div>
     </div>
     <div class="fl-cell fl-cell--courier" role="cell">
-        @if($shipment->tracking_number)
+        @if($courierName)
             <span class="fl-row__courier fl-row__courier--{{ $shipment->courier }}"><span class="fl-row__dot" aria-hidden="true"></span>{{ $courierName }}</span>
+        @endif
+        @if($shipment->tracking_number)
             @if($tracking && preg_match('#^https?://#i', $tracking))
                 <a class="fl-row__track" href="{{ $tracking }}" target="_blank" rel="noopener">{{ $shipment->tracking_number }}</a>
             @else
                 <span class="fl-row__track is-plain">{{ $shipment->tracking_number }}</span>
             @endif
-        @else
-            <span class="fl-row__none">Not booked</span>
+        @elseif(! $courierName)
+            <span class="fl-row__none">No courier</span>
         @endif
     </div>
     <div class="fl-cell fl-cell--amt" role="cell">

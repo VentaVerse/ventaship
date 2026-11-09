@@ -521,6 +521,20 @@
             display: flex;
         }
 
+        /* The whole stacked row opens the shipment; the checkbox, tracking link and action stay on top. */
+        .fl-row__name::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+        }
+
+        .fl-cell--check,
+        .fl-cell--act,
+        a.fl-row__track {
+            position: relative;
+            z-index: 1;
+        }
+
         .fl-grid {
             display: none;
         }
