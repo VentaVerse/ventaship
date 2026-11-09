@@ -17,7 +17,7 @@ final class CourierCapabilities
 {
     private const DECLARED = [
         'quadx' => ['methods' => ['pickup'], 'pickup_slots' => false, 'quotes' => true, 'coverage' => true, 'webhooks' => true, 'label_formats' => ['zebra', 'fuji']],
-        'spx' => ['methods' => ['pickup'], 'pickup_slots' => true, 'quotes' => true, 'coverage' => true, 'webhooks' => true, 'label_formats' => ['pdf']],
+        'spx' => ['methods' => ['pickup', 'dropoff'], 'pickup_slots' => true, 'quotes' => true, 'coverage' => true, 'webhooks' => true, 'label_formats' => ['pdf']],
         'lbc' => ['methods' => ['pickup'], 'pickup_slots' => true, 'quotes' => true, 'coverage' => true, 'webhooks' => false, 'label_formats' => ['pdf']],
     ];
 

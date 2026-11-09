@@ -72,7 +72,7 @@ Anything else (a landline, a short or long number, a number not starting with 9)
 
 ### Timestamps
 
-Every timestamp in a response or webhook is ISO-8601 in Manila time with its offset: `2026-11-08T13:05:00+08:00`. Dates without a time (`pickup_date`) are `YYYY-MM-DD`, Manila calendar.
+Every timestamp in a response or webhook is ISO-8601 in Manila time with its offset: `2026-11-08T13:05:00+08:00`. Dates without a time (`pickup_date`) are `YYYY-MM-DD`, Manila calendar. Parse the offset: convert to UTC (or your own timezone) before storing, never store the wall-clock part alone.
 
 ### Addresses
 
@@ -556,7 +556,8 @@ Every installed courier, what it can do, and the option lists you choose `servic
             "key": "spx",
             "name": "SPX",
             "methods": [
-                "pickup"
+                "pickup",
+                "dropoff"
             ],
             "cancel": true,
             "pickup_slots": true,
@@ -617,7 +618,7 @@ The courier accounts of this install. Every client app sees all of them. Ordered
 | `id` | `acc_…` |
 | `courier` | courier key |
 | `label` | the owner's name for it |
-| `mode` | `sandbox` (the courier's test system) or `production` |
+| `mode` | `sandbox` or `production`. `sandbox` means the courier's test system: QuadX staging, SPX UAT. LBC has no test system: in either mode an LBC booking is a real parcel |
 | `status` | `active` or `disabled` |
 | `is_default` | the account used when you send only `courier` |
 | `issues` | what is missing before it can book (empty when ready) |
@@ -859,7 +860,7 @@ Request fields:
 | `client_reference` | **required**, string ≤ 64, no control characters. Your id for this shipment; see [9.2](#92-client_reference) |
 | `order_label` | optional, string ≤ 64, a display label (e.g. `#4211`) |
 | `submit` | optional boolean, default `true`. `false` saves a **draft** (`201`), booked later with `POST /shipments/{id}/submit` |
-| `method` | optional, `pickup` (default) or `dropoff` |
+| `method` | optional, `pickup` (default) or `dropoff`. **SPX** decides by `pickup_slot`: with a slot SPX collects the parcel; without one it is booked as a **drop-off**, whatever `method` says. QuadX and LBC always collect |
 | `pickup_date` | optional, `YYYY-MM-DD`, today or later (Manila). Anything else (`11/12/2026`, an impossible date, a past date) is refused with `422`; it is never replaced by another date. **LBC** books its pickup on this date when no `pickup_slot` is sent. For an LBC account the date must also be a Monday to Saturday, no earlier than the next business day and no later than the 10th business day from it; a Sunday, today, or a date outside that range is refused with `422` on `pickup_date`. When omitted, LBC books the next business day. Other couriers ignore it |
 | `pickup_slot` | optional string ≤ 255: a `value` from `POST /pickup-slots` |
 | `service` | optional string ≤ 64: a `service_types` value from `GET /couriers`; the account's default when omitted |
@@ -1930,7 +1931,7 @@ app.post('/ventaship/webhooks', express.raw({ type: 'application/json' }), (req,
 
 ### 11.6 Ordering, duplicates and gaps
 
-- **Ordering.** Events of one shipment are delivered strictly in `sequence` order: a later event is not sent while an earlier one of the same shipment is still pending. Delivery runs once a minute and sends the next event of each shipment per run, so a burst of changes to one shipment (for example `status_changed` + `booked`) arrives about a minute apart. A failing endpoint therefore holds back the later events of that shipment until the earlier one is delivered or given up. Events of different shipments are independent.
+- **Ordering.** Events of one shipment are delivered strictly in `sequence` order: a later event is not sent while an earlier one of the same shipment is still pending. Events are sent right after the change that produced them, in order, so a burst of changes to one shipment (for example `status_changed` + `booked`) arrives within seconds. Retries (11.5) run on Ventaship's scheduler. A failing endpoint therefore holds back the later events of that shipment until the earlier one is delivered or given up. Events of different shipments are independent.
 - **Duplicates.** The same event may be delivered more than once (a lost acknowledgement, a worker restart, an owner resend). **Dedupe on `id`.**
 - **Stale events.** Each event carries the full shipment snapshot of its moment. Keep the highest `sequence` you have applied per shipment and ignore an event with a lower or equal `sequence` for state purposes: the snapshot you already have is newer.
 - **Gaps.** `sequence` can skip numbers (for example when the owner filters out an event type for your app). A gap is not an error. If you suspect you missed something, `GET /shipments/{id}` is always current.
