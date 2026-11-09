@@ -171,9 +171,18 @@ class ShipmentActionsTest extends TestCase
         $res = $this->post('/shipments/labels', $this->ids($s))->assertOk();
 
         $this->assertStringStartsWith('application/pdf', $res->headers->get('Content-Type'));
-        $this->assertStringContainsString('labels.pdf', $res->headers->get('Content-Disposition'));
+        $this->assertStringStartsWith('inline;', $res->headers->get('Content-Disposition'));
+        $this->assertStringContainsString('waybills.pdf', $res->headers->get('Content-Disposition'));
         $this->assertStringStartsWith('%PDF-', $res->getContent());
         $res->assertSessionMissing('status');
+    }
+
+    public function test_print_waybill_opens_in_a_new_tab(): void
+    {
+        $s = $this->ship('booked', 'to_handover');
+
+        $this->get('/shipments/'.$s->public_id)->assertSee('id="sd-labels" method="POST" action="'.route('shipments.labels').'" target="_blank"', false);
+        $this->get('/')->assertSee('formtarget="_blank"', false);
     }
 
     public function test_labels_merged_with_skipped_flash(): void

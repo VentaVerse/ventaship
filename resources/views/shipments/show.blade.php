@@ -162,7 +162,7 @@
         <form id="sd-book" method="POST" action="{{ route('shipments.book') }}">@csrf<input type="hidden" name="ids[]" value="{{ $shipment->public_id }}"></form>
     @endif
     @if($canPrint)
-        <form id="sd-labels" method="POST" action="{{ route('shipments.labels') }}">@csrf<input type="hidden" name="ids[]" value="{{ $shipment->public_id }}"></form>
+        <form id="sd-labels" method="POST" action="{{ route('shipments.labels') }}" target="_blank">@csrf<input type="hidden" name="ids[]" value="{{ $shipment->public_id }}"></form>
     @endif
     @if($canCancel)
         <form id="sd-cancel" method="POST" action="{{ route('shipments.cancel') }}">@csrf<input type="hidden" name="ids[]" value="{{ $shipment->public_id }}"></form>

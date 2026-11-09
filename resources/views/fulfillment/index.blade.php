@@ -65,7 +65,7 @@
             <div class="fl-bulk" x-show="count > 0" x-cloak>
                 <span><span class="x-num" x-text="count"></span> selected</span>
                 <span class="fl-bulk__sp"></span>
-                <x-ui.button size="sm" type="submit" formaction="{{ route('shipments.labels') }}">Print waybills</x-ui.button>
+                <x-ui.button size="sm" type="submit" formaction="{{ route('shipments.labels') }}" formtarget="_blank">Print waybills</x-ui.button>
                 <x-ui.button size="sm" type="submit" formaction="{{ route('shipments.book') }}">Book</x-ui.button>
                 <x-ui.button size="sm" @click="$dispatch('confirm', { title: 'Cancel ' + count + ' ' + (count === 1 ? 'shipment' : 'shipments') + '?', confirm: 'Cancel shipments', dismiss: 'Keep shipments', form: 'bulk', submitter: 'bulk-cancel' })">Cancel</x-ui.button>
                 <button type="submit" id="bulk-cancel" formaction="{{ route('shipments.cancel') }}" hidden></button>

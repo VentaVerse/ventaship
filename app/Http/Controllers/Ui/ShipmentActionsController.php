@@ -116,7 +116,8 @@ class ShipmentActionsController extends Controller
 
         return response($bundle['bytes'], 200, [
             'Content-Type' => $bundle['type'] === 'pdf' ? 'application/pdf' : 'application/zip',
-            'Content-Disposition' => 'attachment; filename="labels.'.$bundle['type'].'"',
+            // a PDF opens in the browser's viewer (the form targets a new tab); a ZIP can only be saved
+            'Content-Disposition' => ($bundle['type'] === 'pdf' ? 'inline' : 'attachment').'; filename="waybills.'.$bundle['type'].'"',
             'X-Content-Type-Options' => 'nosniff',
             'Cache-Control' => 'private, no-store',
         ]);
