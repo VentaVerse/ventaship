@@ -48,7 +48,7 @@ class ShipmentFormRedesignTest extends TestCase
             'form_token' => $this->token(),
             'account_id' => $this->account->public_id,
             'recipient' => ['first_name' => 'Juan', 'last_name' => 'Dela Cruz', 'phone' => '0917 123 4567',
-                'address_1' => '1 Rizal St', 'city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1210'],
+                'address_1' => '1 Rizal St', 'barangay' => 'Poblacion', 'city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1210'],
             'item' => 'Blue Tee and Cap',
             'value' => '1300.17',
             'parcel' => ['type' => 'box'],
@@ -262,7 +262,7 @@ class ShipmentFormRedesignTest extends TestCase
         $this->post('/shipments', $posted + [
             'account_id' => $tile->getAttribute('value'),
             'recipient' => ['first_name' => 'Juan', 'last_name' => 'Dela Cruz', 'phone' => '0917 123 4567',
-                'address_1' => '1 Rizal St', 'city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1210'],
+                'address_1' => '1 Rizal St', 'barangay' => 'Poblacion', 'city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1210'],
             'item' => 'Blue Tee and Cap',
             'value' => '1300.17',
             'parcel' => ['type' => 'box'],

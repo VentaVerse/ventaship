@@ -68,7 +68,7 @@ class ShipmentCourierFieldsTest extends TestCase
             'form_token' => $this->token(),
             'account_id' => $this->accounts[$courier]->public_id,
             'recipient' => ['first_name' => 'Juan', 'phone' => '0917 123 4567', 'address_1' => '1 Rizal St',
-                'city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1210'],
+                'barangay' => 'Poblacion', 'city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1210'],
             'item' => 'Blue Tee',
             'value' => '1000',
             'payment' => ['method' => 'prepaid'],

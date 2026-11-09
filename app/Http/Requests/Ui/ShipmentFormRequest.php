@@ -286,6 +286,8 @@ class ShipmentFormRequest extends FormRequest
             }],
         ] + $this->parcelRules() + $payment + ($this->chosenPickup !== null ? $this->pickupRules() : []) + $this->recipientRules();
         $rules['recipient.phone'] = ['required', 'string', new PhMobile];
+        // Every courier delivers to a barangay; SPX matches on it. The API leaves it optional for its clients.
+        $rules['recipient.barangay'] = ['required', 'string', 'max:255'];
 
         return $this->spxRules($rules);
     }

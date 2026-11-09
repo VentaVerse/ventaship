@@ -54,7 +54,7 @@ class ShipmentFormErrorsTest extends TestCase
             'form_token' => $this->token(),
             'account_id' => $this->account->public_id,
             'recipient' => ['first_name' => 'Juan', 'last_name' => 'Dela Cruz', 'phone' => '0917 123 4567',
-                'address_1' => '1 Rizal St', 'city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1210'],
+                'address_1' => '1 Rizal St', 'barangay' => 'Poblacion', 'city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1210'],
             'item' => 'Blue Tee',
             'value' => '1250',
             'parcel' => ['type' => 'box'],
@@ -275,18 +275,16 @@ class ShipmentFormErrorsTest extends TestCase
         $this->assertSame(0, preg_match('/<section class="x-panel sh-sec">/', $html));
     }
 
-    public function test_province_and_city_are_marked_required_and_the_phone_names_its_label(): void
+    public function test_province_city_and_barangay_are_marked_required_and_the_phone_names_its_label(): void
     {
         $x = $this->xpath($this->get('/shipments/new')->getContent());
 
-        foreach (['ph-recipient-state' => 'Province', 'ph-recipient-city' => 'City or municipality'] as $for => $text) {
+        foreach (['ph-recipient-state' => 'Province', 'ph-recipient-city' => 'City or municipality', 'ph-recipient-barangay' => 'Barangay'] as $for => $text) {
             $label = $x->query("//label[@for='{$for}']")->item(0);
             $this->assertStringContainsString($text, $label->textContent);
             $this->assertSame(1, $x->query("//label[@for='{$for}']/span[@class='fm-req']")->length, $for);
             $this->assertStringContainsString('(required)', $label->textContent);
         }
-        // The barangay is optional on the server, so it is not starred.
-        $this->assertSame(0, $x->query("//label[@for='ph-recipient-barangay']/span[@class='fm-req']")->length);
         // WCAG 2.5.3: the accessible name starts with the visible label.
         $this->assertSame('Phone, +63', $x->query("//*[@id='f-recipient-phone']")->item(0)->getAttribute('aria-label'));
     }

@@ -1,5 +1,5 @@
-{{-- `required`: the levels the server requires (every address form here requires the province and the city). --}}
-@props(['prefix', 'values' => [], 'required' => ['state', 'city']])
+{{-- `required`: the levels the server requires (every address form here requires the province, the city and the barangay). --}}
+@props(['prefix', 'values' => [], 'required' => ['state', 'city', 'barangay']])
 
 @php
     use Illuminate\Support\Str;

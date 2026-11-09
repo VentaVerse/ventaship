@@ -34,7 +34,7 @@ class AddressesPageTest extends TestCase
         return $over + [
             'label' => 'Warehouse', 'contact_name' => 'Ana Reyes', 'contact_phone' => '0917 123 4567',
             'address_1' => '1 Main St', 'address_2' => '',
-            'address' => ['state' => 'Metro Manila', 'city' => 'Makati', 'barangay' => '', 'district' => '', 'postcode' => '1200', 'codes' => []],
+            'address' => ['state' => 'Metro Manila', 'city' => 'Makati', 'barangay' => 'Poblacion', 'district' => '', 'postcode' => '1200', 'codes' => []],
         ];
     }
 
@@ -51,7 +51,7 @@ class AddressesPageTest extends TestCase
     {
         return Customer::query()->create([
             'phone' => $phone, 'name' => $first.' Cruz', 'shipments_count' => 3, 'last_shipped_at' => now(),
-            'address' => ['first_name' => $first, 'last_name' => 'Cruz', 'phone' => $phone, 'address_1' => '9 Luna St', 'city' => 'Pasig', 'state' => 'Metro Manila', 'postcode' => '1600', 'codes' => []],
+            'address' => ['first_name' => $first, 'last_name' => 'Cruz', 'phone' => $phone, 'address_1' => '9 Luna St', 'barangay' => 'San Antonio', 'city' => 'Pasig', 'state' => 'Metro Manila', 'postcode' => '1600', 'codes' => []],
         ]);
     }
 
@@ -61,7 +61,7 @@ class AddressesPageTest extends TestCase
         return $over + [
             'first_name' => 'Juan', 'last_name' => 'Dela Cruz', 'phone' => '0917 123 4567', 'email' => '',
             'address_1' => '7 Luna St', 'address_2' => '',
-            'address' => ['state' => 'Metro Manila', 'city' => 'Pasig', 'barangay' => '', 'district' => '', 'postcode' => '1600', 'codes' => []],
+            'address' => ['state' => 'Metro Manila', 'city' => 'Pasig', 'barangay' => 'San Antonio', 'district' => '', 'postcode' => '1600', 'codes' => []],
         ];
     }
 

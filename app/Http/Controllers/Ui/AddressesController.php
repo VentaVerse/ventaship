@@ -153,7 +153,7 @@ class AddressesController extends Controller
             'address.state' => ['required', ...$max],
             'address.city' => ['required', ...$max],
             'address.district' => ['nullable', ...$max],
-            'address.barangay' => ['nullable', ...$max],
+            'address.barangay' => ['required', ...$max],
             'address.postcode' => ['nullable', 'string', 'max:16'],
             'address.codes' => ['nullable', 'array'],
             'address.codes.*' => ['nullable', 'string', 'max:32'],
