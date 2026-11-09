@@ -1,0 +1,272 @@
+@layer components {
+    .api-tabs {
+        padding: 0;
+        margin-bottom: 18px;
+    }
+
+    .api-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--bl-rule);
+    }
+
+    .api-bar__title {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 700;
+    }
+
+    .api-seg {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .api-inline {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 10px 12px;
+        padding: 14px 18px;
+        background: var(--bl-brand-w);
+        border-bottom: 1px solid var(--bl-rule);
+    }
+
+    .api-inline .fm-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .api-inline .x-input {
+        width: 280px;
+        max-width: 100%;
+    }
+
+    .api-inline__grow {
+        flex: 1 1 280px;
+        max-width: 520px;
+    }
+
+    .api-inline__grow .x-input {
+        width: 100%;
+    }
+
+    .api-inline__acts {
+        display: flex;
+        gap: 8px;
+    }
+
+    .api-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13.5px;
+    }
+
+    .api-table th,
+    .api-table td {
+        padding: 12px 18px;
+        text-align: left;
+        vertical-align: middle;
+        border-bottom: 1px solid var(--bl-rule);
+    }
+
+    .api-table tbody tr:last-child td {
+        border-bottom: 0;
+    }
+
+    .api-table th {
+        padding-block: 10px;
+        background: var(--bl-chrome);
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--bl-ink-3);
+    }
+
+    .api-table tr.is-new td {
+        background: var(--bl-brand-w);
+    }
+
+    .api-name {
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+
+    .api-sub {
+        color: var(--bl-ink-2);
+    }
+
+    .api-mono,
+    .api-code {
+        font: 500 12.5px var(--font-mono);
+        overflow-wrap: anywhere;
+    }
+
+    .api-code {
+        display: inline-block;
+        padding: 5px 9px;
+        border: 1px solid var(--bl-rule);
+        border-radius: 7px;
+        background: var(--bl-chrome);
+        white-space: nowrap;
+    }
+
+    .api-url {
+        max-width: 360px;
+    }
+
+    .api-detail .api-sub {
+        margin-left: 2px;
+    }
+
+    .api-act {
+        width: 1%;
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    .api-rename {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        font-weight: 400;
+    }
+
+    .api-rename .x-input {
+        flex: 1 1 180px;
+        min-width: 0;
+        height: var(--bl-control-h-sm);
+    }
+
+    .api-table .ac-cred {
+        flex-wrap: nowrap;
+    }
+
+    .api-table .ac-cred__input {
+        flex: 0 1 auto;
+        width: 22ch;
+        height: var(--bl-control-h-sm);
+        font-size: 12.5px;
+    }
+
+    .api-table .ac-cred__input.is-shown {
+        width: 36ch;
+    }
+
+    .api-table .ac-cred__acts {
+        flex-wrap: nowrap;
+        gap: 6px;
+    }
+
+    @media (max-width: 900px) {
+        .api-table thead {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip-path: inset(50%);
+        }
+
+        .api-table tbody tr {
+            position: relative;
+            display: block;
+            padding: 12px 64px 12px 16px;
+            border-bottom: 1px solid var(--bl-rule);
+        }
+
+        .api-table tbody tr:last-child {
+            border-bottom: 0;
+        }
+
+        .api-table td {
+            display: block;
+            padding: 3px 0;
+            border: 0;
+        }
+
+        .api-table td[data-label] {
+            display: inline-block;
+            margin-right: 14px;
+        }
+
+        .api-table td[data-label]::before {
+            content: attr(data-label) " ";
+            color: var(--bl-ink-3);
+        }
+
+        .api-table td[data-label="Key"],
+        .api-table td[data-label="Signing secret"] {
+            display: block;
+        }
+
+        .api-table td[data-label="Key"]::before,
+        .api-table td[data-label="Signing secret"]::before {
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .api-table--logs td[data-label="Key"]::before {
+            display: inline;
+        }
+
+        .api-table .api-act {
+            position: absolute;
+            top: 8px;
+            right: 12px;
+            width: auto;
+            padding: 0;
+        }
+
+        .api-table--logs .api-act {
+            position: static;
+            padding-top: 6px;
+            text-align: left;
+        }
+
+        .api-url {
+            max-width: none;
+        }
+
+        .api-table .ac-cred {
+            flex-wrap: wrap;
+        }
+
+        .api-table .ac-cred__input,
+        .api-table .ac-cred__input.is-shown {
+            flex: 1 1 100%;
+            width: auto;
+        }
+    }
+
+    @media (max-width: 640px) {
+        .api-panel .x-btn,
+        .api-panel .x-input,
+        .api-table .ac-cred__input,
+        .api-rename .x-input,
+        .x-rowmenu__item {
+            min-height: 44px;
+            min-width: 44px;
+        }
+
+        .api-tabs .x-tab {
+            display: inline-flex;
+            align-items: center;
+            min-height: 44px;
+        }
+
+        .api-inline .fm-field,
+        .api-inline .x-input,
+        .api-inline .x-select-wrap {
+            width: 100%;
+        }
+
+        .api-inline__grow {
+            flex-basis: 100%;
+        }
+    }
+}

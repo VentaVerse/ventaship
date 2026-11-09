@@ -681,3 +681,103 @@
         gap: 8px;
     }
 }
+
+@layer components {
+    /* Row actions menu: fixed, placed from its trigger by rowMenu, so no panel edge clips it. */
+    .x-rowmenu {
+        display: inline-block;
+    }
+
+    .x-rowmenu__trigger {
+        justify-content: center;
+        width: var(--bl-control-h-sm);
+        padding: 0;
+        border-color: transparent;
+        background: transparent;
+        color: var(--bl-ink-2);
+    }
+
+    .x-rowmenu__trigger:hover,
+    .x-rowmenu__trigger[aria-expanded='true'] {
+        border-color: var(--bl-rule-2);
+        background: var(--bl-chrome);
+        color: var(--bl-ink);
+    }
+
+    .x-rowmenu__pop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 60;
+        min-width: 168px;
+        padding: 5px;
+        border: 1px solid var(--bl-rule-2);
+        border-radius: 10px;
+        background: var(--bl-sheet);
+        box-shadow: var(--bl-lift-2);
+        text-align: left;
+    }
+
+    .x-rowmenu__item {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        min-height: 34px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 7px;
+        background: none;
+        color: var(--bl-ink);
+        font: 500 13px var(--font-sans);
+        text-align: left;
+        text-decoration: none;
+        cursor: pointer;
+    }
+
+    .x-rowmenu__item:hover,
+    .x-rowmenu__item:focus-visible {
+        background: var(--bl-chrome);
+        outline: none;
+    }
+
+    .x-rowmenu__item:focus-visible {
+        box-shadow: inset 0 0 0 2px var(--bl-brand-btn);
+    }
+
+    .x-rowmenu__item--bad {
+        color: var(--bl-bad);
+    }
+}
+
+@layer components {
+    /* Copy button: Copy / Copied / Couldn't copy stacked in one cell, so the width never changes. */
+    .x-btn.x-copy {
+        display: inline-grid;
+        place-items: center;
+    }
+
+    .x-copy__label {
+        display: inline-flex;
+        grid-area: 1 / 1;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .x-copy[data-copy='idle'] .x-copy__label:not(.x-copy__label--idle),
+    .x-copy[data-copy='ok'] .x-copy__label:not(.x-copy__label--ok),
+    .x-copy[data-copy='fail'] .x-copy__label:not(.x-copy__label--fail) {
+        visibility: hidden;
+    }
+
+    .x-copy[data-copy='ok'] {
+        color: var(--bl-good);
+    }
+
+    .x-copy.x-btn--primary[data-copy='ok'] {
+        color: #fff;
+    }
+
+    .x-copy[data-copy='fail'] {
+        color: var(--bl-bad);
+    }
+}

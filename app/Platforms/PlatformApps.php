@@ -144,6 +144,31 @@ class PlatformApps
     }
 
     /**
+     * Renames a token. Returns false when the name is unchanged. The audit row names the key by prefix only.
+     *
+     * @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor
+     */
+    public function renameKey(ApiToken $key, string $name, ?array $actor = null): bool
+    {
+        $name = $this->validName($name);
+        if ($key->name === $name) {
+            return false;
+        }
+
+        return DB::transaction(function () use ($key, $name, $actor) {
+            $from = $key->name;
+            $key->update(['name' => $name]);
+            $app = $key->tokenable;
+
+            $this->audit($actor, 'api_key.renamed', 'client_app', $app instanceof ClientApp ? $app->public_id : '', [
+                'key_prefix' => $key->prefix, 'name' => ['from' => $from, 'to' => $name],
+            ]);
+
+            return true;
+        });
+    }
+
+    /**
      * Deletes the token: it can no longer authenticate or be shown. Returns false when it was already gone.
      *
      * @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor

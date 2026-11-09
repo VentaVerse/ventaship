@@ -39,7 +39,7 @@ class NavigationTest extends TestCase
 
         $routes = $this->routes();
 
-        $this->assertSame(['fulfillment', 'shipments.create', 'accounts.index', 'addresses.index', 'apps.index', 'settings.edit'], $routes);
+        $this->assertSame(['fulfillment', 'shipments.create', 'accounts.index', 'addresses.index', 'developers.index', 'settings.edit'], $routes);
         $this->assertNotContains('webhooks.index', $routes);
     }
 
@@ -55,7 +55,7 @@ class NavigationTest extends TestCase
 
     public function test_group_order_and_labels_follow_the_plan(): void
     {
-        foreach (['fulfillment', 'accounts.index', 'apps.index', 'system.health', 'settings.edit'] as $name) {
+        foreach (['fulfillment', 'accounts.index', 'developers.index', 'system.health', 'settings.edit'] as $name) {
             $this->registerRoute($name);
         }
 

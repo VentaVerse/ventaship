@@ -369,6 +369,23 @@ class PlatformAppsServiceTest extends TestCase
         $this->assertSame(['ok' => false, 'message' => 'Failed · HTTP 500'], $this->apps->resend($e->fresh(), null));
     }
 
+    public function test_rename_key_audits_names_only_and_refuses_blank(): void
+    {
+        $app = $this->apps->create('Shop', null);
+        $issued = $this->apps->issueKey($app, 'Old name');
+
+        $this->assertTrue($this->apps->renameKey($issued['key'], 'New name', self::ADMIN));
+        $this->assertFalse($this->apps->renameKey($issued['key']->fresh(), 'New name', self::ADMIN));
+        $this->assertSame('New name', $issued['key']->fresh()->name);
+
+        $row = AuditEntry::query()->where('action', 'api_key.renamed')->sole();
+        $this->assertSame(['key_prefix' => $issued['key']->prefix, 'name' => ['from' => 'Old name', 'to' => 'New name']], $row->changes);
+        $this->assertStringNotContainsString(explode('|', $issued['plaintext_key'])[1], $this->auditDump());
+
+        $this->expectException(PlatformAppException::class);
+        $this->apps->renameKey($issued['key'], '   ');
+    }
+
     public function test_masked(): void
     {
         $this->assertSame(['length' => 12, 'last4' => '9abc'], $this->apps->masked('012345679abc'));

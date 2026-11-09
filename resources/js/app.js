@@ -1,9 +1,11 @@
 import './bootstrap';
 import Alpine from 'alpinejs';
+import { copyFeedback } from './copyFeedback';
 import { copyText } from './copyText';
 import { customerSearch } from './customerSearch';
 import { phCascade } from './phCascade';
 import { phoneInput } from './phoneInput';
+import { rowMenu } from './rowMenu';
 import { shipmentForm } from './shipmentForm';
 
 Alpine.data('confirmDialog', () => ({
@@ -45,6 +47,8 @@ Alpine.data('shipmentForm', (config) => shipmentForm(config));
 Alpine.data('phAddress', (config) => phCascade(config));
 
 Alpine.data('phoneInput', () => phoneInput());
+
+Alpine.data('rowMenu', () => rowMenu());
 
 Alpine.data('customerSearch', (config) => customerSearch(config));
 
@@ -108,6 +112,9 @@ Alpine.data('credentialField', (config) => ({
     name: config.name,
     busy: false,
     error: '',
+    copied: 'idle',
+    copyNote: '',
+    copyTimer: null,
     left: 0,
     timer: null,
     ticker: null,
@@ -129,6 +136,7 @@ Alpine.data('credentialField', (config) => ({
     destroy() {
         window.removeEventListener('pagehide', this.onPageHide);
         this.stopTimers();
+        clearTimeout(this.copyTimer);
     },
 
     stopTimers() {
@@ -211,13 +219,9 @@ Alpine.data('credentialField', (config) => ({
             if (value === null) {
                 return;
             }
-            if (await copyText(value)) {
-                this.announce('Copied');
-            } else {
-                this.error = "Couldn't copy";
-            }
+            copyFeedback(this, (await copyText(value)) ? 'ok' : 'fail');
         } catch (e) {
-            this.error = "Couldn't copy";
+            copyFeedback(this, 'fail');
         } finally {
             this.busy = false;
         }

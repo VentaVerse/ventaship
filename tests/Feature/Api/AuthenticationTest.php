@@ -64,7 +64,7 @@ class AuthenticationTest extends TestCase
         $key = app(PlatformApps::class)->issueKey($app, 'K')['key'];
         $admin = Admin::query()->create(['name' => 'Ana', 'email' => 'ana@example.com', 'password' => 'correct-horse-battery']);
 
-        $token = $this->actingAs($admin)->postJson(route('apps.reveal', [$app, 'token:'.$key->id]))->assertOk()->json('value');
+        $token = $this->actingAs($admin)->postJson(route('developers.reveal', [$app, 'token:'.$key->id]))->assertOk()->json('value');
 
         $this->bearerOnly($token)->assertOk()->assertJsonPath('app.id', $app->public_id);
     }

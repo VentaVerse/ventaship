@@ -23,7 +23,7 @@ class Navigation
                 ['Status mapping', 'mapping.index', 'refresh-cw'],
             ]],
             ['Developers', [
-                ['Connected platforms', 'apps.index', 'plug'],
+                ['API', 'developers.index', 'plug', ['developers*']],
                 ['Webhook logs', 'webhooks.index', 'receipt'],
             ]],
             ['System', [

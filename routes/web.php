@@ -2,11 +2,11 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Ui\AddressesController;
+use App\Http\Controllers\Ui\ApiController;
 use App\Http\Controllers\Ui\CourierAccountsController;
 use App\Http\Controllers\Ui\CustomerSearchController;
 use App\Http\Controllers\Ui\FulfillmentController;
 use App\Http\Controllers\Ui\PhAddressController;
-use App\Http\Controllers\Ui\PlatformsController;
 use App\Http\Controllers\Ui\SettingsController;
 use App\Http\Controllers\Ui\ShipmentActionsController;
 use App\Http\Controllers\Ui\ShipmentOptionsController;
@@ -60,20 +60,29 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
         Route::post('secrets/{key}/reveal', [CourierAccountsController::class, 'reveal'])
             ->where('key', '[a-z0-9_]+')->middleware('throttle:secret-reveals')->name('accounts.reveal');
     });
-    Route::get('platforms', [PlatformsController::class, 'index'])->name('apps.index');
-    Route::get('platforms/new', [PlatformsController::class, 'create'])->name('apps.create');
-    Route::post('platforms', [PlatformsController::class, 'store'])->name('apps.store');
-    Route::get('platforms/{app:public_id}', [PlatformsController::class, 'show'])->name('apps.show');
-    Route::put('platforms/{app:public_id}', [PlatformsController::class, 'update'])->name('apps.update');
-    Route::prefix('platforms/{app:public_id}')->group(function () {
-        Route::post('keys', [PlatformsController::class, 'issueKey'])->name('apps.keys.store');
-        Route::post('keys/{key}/revoke', [PlatformsController::class, 'revokeKey'])->whereNumber('key')->name('apps.keys.revoke');
-        Route::post('reveal/{what}', [PlatformsController::class, 'reveal'])
-            ->where('what', 'token:\d{1,19}|webhook')->middleware('throttle:secret-reveals')->name('apps.reveal');
-        Route::post('webhook-secret', [PlatformsController::class, 'regenerateWebhookSecret'])->name('apps.webhook.regenerate');
-        Route::post('ping', [PlatformsController::class, 'ping'])->name('apps.ping');
-        Route::post('events/{event:public_id}/resend', [PlatformsController::class, 'resendEvent'])->name('apps.events.resend');
+    Route::get('developers', [ApiController::class, 'index'])->name('developers.index');
+    Route::prefix('developers')->name('developers.')->group(function () {
+        Route::post('keys', [ApiController::class, 'storeKey'])->name('keys.store');
+        Route::prefix('apps/{app:public_id}')->group(function () {
+            Route::post('roll', [ApiController::class, 'rollKey'])->name('keys.roll');
+            Route::put('name', [ApiController::class, 'renameKey'])->name('keys.rename');
+            Route::post('revoke', [ApiController::class, 'revokeKey'])->name('keys.revoke');
+            Route::post('reveal/{what}', [ApiController::class, 'reveal'])
+                ->where('what', 'token:\d{1,19}|webhook')->middleware('throttle:secret-reveals')->name('reveal');
+        });
+        Route::post('endpoints', [ApiController::class, 'storeEndpoint'])->name('endpoints.store');
+        Route::prefix('endpoints/{app:public_id}')->group(function () {
+            Route::put('/', [ApiController::class, 'updateEndpoint'])->name('endpoints.update');
+            Route::delete('/', [ApiController::class, 'destroyEndpoint'])->name('endpoints.destroy');
+            Route::post('test', [ApiController::class, 'testEndpoint'])->name('endpoints.test');
+            Route::post('secret', [ApiController::class, 'rollSecret'])->name('endpoints.secret');
+        });
+        Route::post('events/{event:public_id}/resend', [ApiController::class, 'resendEvent'])->name('events.resend');
     });
+    // The old Connected platforms pages.
+    Route::redirect('platforms', '/developers');
+    Route::redirect('platforms/new', '/developers?tab=keys&create=1');
+    Route::redirect('platforms/{any}', '/developers')->where('any', '[A-Za-z0-9_]+');
     Route::get('ph/{level}', PhAddressController::class)->where('level', 'provinces|cities|districts|barangays')->name('ph.options');
     Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');
     Route::put('settings', [SettingsController::class, 'update'])->name('settings.update');

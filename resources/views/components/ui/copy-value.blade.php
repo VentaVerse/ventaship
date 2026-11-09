@@ -11,7 +11,7 @@
         <input type="text" id="{{ $id }}" class="{{ $inputClass }}" value="{{ $value }}" readonly
                autocomplete="off" spellcheck="false" autocapitalize="off" x-ref="input">
         <span class="ac-cred__acts">
-            <x-ui.button size="sm" x-on:click="copy()" x-bind:disabled="busy" :aria-label="'Copy ' . $label">Copy</x-ui.button>
+            <x-ui.copy-button :label="'Copy ' . $label" />
         </span>
         <p class="fm-error ac-cred__error" x-show="error" x-cloak x-text="error"></p>
     </div>

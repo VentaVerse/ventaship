@@ -14,7 +14,7 @@
         <span class="ac-cred__acts">
             <x-ui.button size="sm" x-show="state === 'masked'" x-on:click="view()" x-bind:disabled="busy" :aria-label="$aria('View')">View</x-ui.button>
             <x-ui.button size="sm" x-show="state === 'viewing'" x-cloak x-on:click="hide()" :aria-label="$aria('Hide')">Hide</x-ui.button>
-            <x-ui.button size="sm" x-on:click="copy()" x-bind:disabled="busy" :aria-label="$aria('Copy')">Copy</x-ui.button>
+            <x-ui.copy-button :label="$aria('Copy')" />
             <span class="ac-cred__tick x-num" aria-hidden="true" x-show="state === 'viewing'" x-cloak x-text="tick"></span>
         </span>
         <p class="fm-error ac-cred__error" x-show="error" x-cloak x-text="error"></p>
