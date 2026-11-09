@@ -244,14 +244,14 @@
     }
 
     .ac-page .ac-json {
-        max-width: 520px;
+        max-width: none;
         min-height: 0;
         height: auto;
         padding-top: 9px;
         padding-bottom: 9px;
         font: 500 12px/1.5 var(--font-mono);
-        white-space: pre;
-        overflow-x: auto;
+        white-space: pre-wrap;
+        field-sizing: content;
         resize: vertical;
     }
 

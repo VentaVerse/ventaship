@@ -128,7 +128,7 @@
                                 </x-ui.select>
                             @elseif($type === 'json')
                                 @php $json = JsonSetting::pretty($in['value']); @endphp
-                                <x-ui.textarea :id="$in['id']" :name="$in['name']" class="st-ctl x-mono ac-json" :value="$json" :rows="JsonSetting::rows($json)" :maxlength="App\Http\Requests\Ui\SaveCourierAccountRequest::MAX_SETTING_INPUT" autocomplete="off" spellcheck="false" autocapitalize="off" wrap="off" />
+                                <x-ui.textarea :id="$in['id']" :name="$in['name']" class="st-ctl x-mono ac-json" :value="$json" :rows="JsonSetting::rows($json)" :maxlength="App\Http\Requests\Ui\SaveCourierAccountRequest::MAX_SETTING_INPUT" autocomplete="off" spellcheck="false" autocapitalize="off" />
                             @else
                                 <x-ui.input :id="$in['id']" :name="$in['name']" class="st-ctl" :value="$in['value']" :placeholder="$f['placeholder'] ?? ''" maxlength="2048" autocomplete="off" />
                             @endif
