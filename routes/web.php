@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Ui\AddressesController;
 use App\Http\Controllers\Ui\CourierAccountsController;
 use App\Http\Controllers\Ui\FulfillmentController;
 use App\Http\Controllers\Ui\PhAddressController;
@@ -31,6 +32,20 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::delete('shipments/{shipment:public_id}', [ShipmentsController::class, 'destroy'])->name('shipments.destroy');
     Route::post('shipments/book', [ShipmentActionsController::class, 'book'])->name('shipments.book');
     Route::post('shipments/cancel', [ShipmentActionsController::class, 'cancel'])->name('shipments.cancel');
+    Route::get('addresses', [AddressesController::class, 'index'])->name('addresses.index');
+    Route::get('addresses/pickup/new', [AddressesController::class, 'createPickup'])->name('addresses.pickup.create');
+    Route::post('addresses/pickup', [AddressesController::class, 'storePickup'])->name('addresses.pickup.store');
+    Route::prefix('addresses/pickup/{pickup:public_id}')->group(function () {
+        Route::get('edit', [AddressesController::class, 'editPickup'])->name('addresses.pickup.edit');
+        Route::put('/', [AddressesController::class, 'updatePickup'])->name('addresses.pickup.update');
+        Route::delete('/', [AddressesController::class, 'destroyPickup'])->name('addresses.pickup.destroy');
+        Route::post('default', [AddressesController::class, 'makeDefault'])->name('addresses.pickup.default');
+    });
+    Route::prefix('addresses/customers/{customer:public_id}')->group(function () {
+        Route::get('edit', [AddressesController::class, 'editCustomer'])->name('addresses.customers.edit');
+        Route::put('/', [AddressesController::class, 'updateCustomer'])->name('addresses.customers.update');
+        Route::delete('/', [AddressesController::class, 'destroyCustomer'])->name('addresses.customers.destroy');
+    });
     Route::get('accounts', [CourierAccountsController::class, 'index'])->name('accounts.index');
     Route::prefix('accounts/{courier}')->where(['courier' => 'quadx|spx|lbc'])->group(function () {
         Route::get('/', [CourierAccountsController::class, 'show'])->name('accounts.show');

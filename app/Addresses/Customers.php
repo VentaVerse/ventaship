@@ -5,10 +5,15 @@ namespace App\Addresses;
 use App\Models\Customer;
 use App\Models\Shipment;
 use App\Shipments\ShipmentCreator;
+use Illuminate\Contracts\Database\ConcurrencyErrorDetector;
+use Illuminate\Database\DeadlockException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
-use InvalidArgumentException;
+use Illuminate\Validation\ValidationException;
+use Throwable;
 
 /**
  * Recipients saved as customers, one per phone (normalised as the couriers get it, so "0917 123 4567",
@@ -33,7 +38,11 @@ class Customers
 
         try {
             return $this->upsert($address, $count);
-        } catch (UniqueConstraintViolationException) {
+        } catch (Throwable $e) {
+            if (! $this->lostRace($e)) {
+                throw $e;
+            }
+
             return $this->upsert($address, $count); // a concurrent first save of the same phone: it exists now
         }
     }
@@ -46,37 +55,56 @@ class Customers
             return new Collection;
         }
 
+        return $this->matching(Customer::query(), $q)
+            ->limit(max(1, min($limit, 8)))
+            ->get();
+    }
+
+    /**
+     * Narrows a customer query to the name or phone matches for `$q` (the phone in any written form), newest first.
+     *
+     * @param  Builder<Customer>  $query
+     * @return Builder<Customer>
+     */
+    public function matching(Builder $query, string $q): Builder
+    {
+        $q = trim($q);
         $like = '%'.addcslashes($q, '!%_').'%';
         $digits = preg_replace('/\D+/', '', $q);
         if (strlen($digits) > 2 && str_starts_with($digits, '63')) {
             $digits = '0'.substr($digits, 2);
         }
 
-        return Customer::query()
+        return $query
             ->where(function ($w) use ($like, $digits) {
                 $w->whereRaw("name like ? escape '!'", [$like]);
                 if (strlen($digits) >= self::SEARCH_MIN) {
                     $w->orWhere('phone', 'like', '%'.$digits.'%');
                 }
             })
-            ->orderByDesc('last_shipped_at')->orderByDesc('id')
-            ->limit(max(1, min($limit, 8)))
-            ->get();
+            ->orderByDesc('last_shipped_at')->orderByDesc('id');
     }
 
     /**
      * @param  array<string, mixed>  $data  the shipment `recipient` shape
      *
-     * @throws InvalidArgumentException a phone that is not a PH mobile number
+     * @throws ValidationException `phone`: not a PH mobile number, or already another customer's
      */
     public function update(Customer $customer, array $data): Customer
     {
         $address = self::address($data);
         if ($address['phone'] === null) {
-            throw new InvalidArgumentException('Not a valid PH mobile number.');
+            throw ValidationException::withMessages(['phone' => 'Enter a valid phone.']);
+        }
+        if (Customer::query()->where('phone', $address['phone'])->whereKeyNot($customer->getKey())->exists()) {
+            throw ValidationException::withMessages(['phone' => 'Another customer has this phone.']);
         }
 
-        $customer->forceFill(['phone' => $address['phone'], 'name' => self::name($address), 'address' => $address])->save();
+        try {
+            $customer->forceFill(['phone' => $address['phone'], 'name' => self::name($address), 'address' => $address])->save();
+        } catch (UniqueConstraintViolationException) {
+            throw ValidationException::withMessages(['phone' => 'Another customer has this phone.']);
+        }
 
         return $customer;
     }
@@ -86,8 +114,16 @@ class Customers
         $customer->delete();
     }
 
+    /** A concurrent first save of the same phone (unique violation), or a MySQL deadlock on the gap lock. */
+    private function lostRace(Throwable $e): bool
+    {
+        return $e instanceof UniqueConstraintViolationException
+            || $e instanceof DeadlockException
+            || ($e instanceof QueryException && app(ConcurrencyErrorDetector::class)->causedByConcurrencyError($e));
+    }
+
     /** @param  array<string, mixed>  $address */
-    private function upsert(array $address, bool $count): Customer
+    protected function upsert(array $address, bool $count): Customer
     {
         return DB::transaction(function () use ($address, $count) {
             $customer = Customer::query()->where('phone', $address['phone'])->lockForUpdate()->first() ?? new Customer(['shipments_count' => 0]);

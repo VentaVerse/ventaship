@@ -9,10 +9,12 @@ use App\Models\ClientApp;
 use App\Models\Customer;
 use App\Models\Shipment;
 use App\Shipments\ShipmentCreator;
+use Illuminate\Database\DeadlockException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Mockery;
 use RuntimeException;
 use Tests\Concerns\BuildsShipments;
@@ -172,5 +174,57 @@ class CustomersTest extends TestCase
         $customers->delete($c);
         $this->assertSame(0, Customer::query()->count());
         $this->assertSame(1, Shipment::query()->count());
+    }
+
+    public function test_update_reports_a_bad_phone_as_a_field_error(): void
+    {
+        $this->book('V1');
+        $c = Customer::query()->sole();
+
+        try {
+            app(Customers::class)->update($c, ['first_name' => 'A', 'phone' => '12345']);
+            $this->fail('expected a validation error');
+        } catch (ValidationException $e) {
+            $this->assertSame(['phone' => ['Enter a valid phone.']], $e->errors());
+        }
+    }
+
+    public function test_update_reports_a_phone_used_by_another_customer(): void
+    {
+        $this->book('W1', ['phone' => '09171110000']);
+        $this->book('W2', ['phone' => '09172220000']);
+        $c = Customer::query()->where('phone', '09172220000')->sole();
+
+        try {
+            app(Customers::class)->update($c, ['first_name' => 'A', 'phone' => '+63 917 111 0000']);
+            $this->fail('expected a validation error');
+        } catch (ValidationException $e) {
+            $this->assertSame(['phone' => ['Another customer has this phone.']], $e->errors());
+        }
+        $this->assertSame('09172220000', $c->fresh()->phone);
+    }
+
+    public function test_the_upsert_retries_once_after_a_deadlock_or_other_concurrency_error(): void
+    {
+        $s = Shipment::factory()->create(['recipient' => ['first_name' => 'R', 'last_name' => 'T', 'phone' => '09173334444']]);
+        $customers = new class extends Customers
+        {
+            public int $calls = 0;
+
+            protected function upsert(array $address, bool $count): Customer
+            {
+                if (++$this->calls === 1) {
+                    throw new DeadlockException('Deadlock found when trying to get lock');
+                }
+
+                return parent::upsert($address, $count);
+            }
+        };
+
+        $customer = $customers->upsertFromShipment($s);
+
+        $this->assertSame(2, $customers->calls);
+        $this->assertSame('09173334444', $customer->phone);
+        $this->assertSame(1, Customer::query()->count());
     }
 }

@@ -19,7 +19,7 @@ class Navigation
             ]],
             ['Setup', [
                 ['Courier accounts', 'accounts.index', 'building'],
-                ['Pickup addresses', 'pickup.index', 'map-pin'],
+                ['Addresses', 'addresses.index', 'map-pin', ['addresses*']],
                 ['Status mapping', 'mapping.index', 'refresh-cw'],
             ]],
             ['Developers', [

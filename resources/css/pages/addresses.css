@@ -1,0 +1,116 @@
+@layer components {
+    .ad-search {
+        display: flex;
+        gap: 8px;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--bl-rule);
+    }
+
+    .ad-search .x-input {
+        flex: 1 1 auto;
+        max-width: 360px;
+    }
+
+    .ad-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13.5px;
+    }
+
+    .ad-table th,
+    .ad-table td {
+        padding: 12px 14px;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid var(--bl-rule);
+    }
+
+    .ad-table th {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--bl-ink-3);
+    }
+
+    .ad-name {
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+
+    .ad-name .x-badge {
+        margin-left: 8px;
+        vertical-align: middle;
+    }
+
+    .ad-sub {
+        color: var(--bl-ink-2);
+    }
+
+    .ad-act {
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    .ad-act form {
+        display: inline-block;
+    }
+
+    .ad-act .x-btn + .x-btn,
+    .ad-act form + .x-btn {
+        margin-left: 6px;
+    }
+
+    .ad-delete {
+        margin-right: auto;
+    }
+
+    @media (max-width: 760px) {
+        .ad-table thead {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip-path: inset(50%);
+        }
+
+        .ad-table tr {
+            display: block;
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--bl-rule);
+        }
+
+        .ad-table td {
+            display: block;
+            padding: 2px 0;
+            border: 0;
+        }
+
+        .ad-table td[data-label] {
+            display: inline-block;
+            margin-right: 14px;
+        }
+
+        .ad-table td[data-label]::before {
+            content: attr(data-label) " ";
+            color: var(--bl-ink-2);
+        }
+
+        .ad-act {
+            padding-top: 8px;
+            text-align: left;
+        }
+    }
+
+    @media (max-width: 640px) {
+        .ad-page .x-btn,
+        .ad-page .x-input {
+            min-height: 44px;
+            min-width: 44px;
+        }
+
+        .ad-page .x-tab {
+            display: inline-flex;
+            align-items: center;
+            min-height: 44px;
+        }
+    }
+}
