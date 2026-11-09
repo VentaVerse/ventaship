@@ -1,7 +1,7 @@
 @foreach($fields as $key => $meta)
     @php
         $name = $prefix.'.'.$key;
-        $id = 'f-'.\Illuminate\Support\Str::slug($name, '-');
+        $id = \App\View\Components\Ui\Field::controlId($name);
     @endphp
     <x-ui.field :label="$meta['label']" :name="$name" :required="$meta['required'] ?? false" :class="$meta['class'] ?? ''">
         @if(($meta['type'] ?? '') === 'phone')

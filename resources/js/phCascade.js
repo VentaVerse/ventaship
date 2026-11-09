@@ -17,6 +17,7 @@ export function phCascade(config) {
         tickets: { state: 0, city: 0, district: 0, barangay: 0 },
         prefix: config.prefix ?? '',
         fills: 0,
+        placeKey: null,
 
         async fetchList(level, parent) {
             const res = await fetch(`${config.url}/${PH_LIST[level]}?parent=${encodeURIComponent(parent)}`, {
@@ -164,6 +165,17 @@ export function phCascade(config) {
             if (this.error) {
                 await this.reload(this.error.from);
             }
+        },
+
+        // The `ph-place` window event (`{ prefix, city, state }`): the chosen city and province names, sent whenever
+        // either changes (the template runs it in an x-effect), so the form's summary can show where it goes.
+        announce(city, state) {
+            const key = `${city}|${state}`;
+            if (key === this.placeKey || typeof window === 'undefined') {
+                return;
+            }
+            this.placeKey = key;
+            window.dispatchEvent(new CustomEvent('ph-place', { detail: { prefix: this.prefix, city, state } }));
         },
 
         // The `ph-fill` window event (`{ prefix, address }`) fills this cascade when the prefix is its own.

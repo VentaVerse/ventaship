@@ -107,3 +107,30 @@ test('the form holds one item field, without rows', () => {
     assert.equal(typeof form.add, 'undefined');
     assert.equal(typeof form.remove, 'undefined');
 });
+
+test('the summary names the recipient, where it goes and the packaging', async () => {
+    const { shipmentForm, recipientName, placeLine } = await import('../../resources/js/shipmentForm.js');
+    assert.equal(recipientName(' Juan ', 'Dela Cruz'), 'Juan Dela Cruz');
+    assert.equal(recipientName('Juan', ''), 'Juan');
+    assert.equal(placeLine('Makati', 'Metro Manila'), 'Makati, Metro Manila');
+    assert.equal(placeLine('', 'Cebu'), 'Cebu');
+
+    const f = shipmentForm({
+        account: 'a1', services: {}, names: { a1: 'QuadX' }, couriers: { a1: 'quadx' }, defaultParcels: {},
+        parcelLabels: { a1: { pouch_s: 'White Small Pouch' } }, courier: { parcel: 'pouch_s' }, to: { first: 'Juan', last: '', place: '' },
+    });
+    assert.equal(f.toName, 'Juan');
+    assert.equal(f.packagingText, 'White Small Pouch');
+    f.recipientTyped({ target: { name: 'recipient[last_name]', value: 'Dela Cruz' } });
+    f.recipientTyped({ target: { name: 'item', value: 'x' } });
+    assert.equal(f.toName, 'Juan Dela Cruz');
+    f.placed({ detail: { prefix: 'pickup', city: 'X', state: 'Y' } });
+    assert.equal(f.toPlace, '');
+    f.placed({ detail: { prefix: 'recipient', city: 'Makati', state: 'Metro Manila' } });
+    assert.equal(f.toPlace, 'Makati, Metro Manila');
+    f.parcel = 'unknown';
+    assert.equal(f.packagingText, '—');
+    f.firstName = '';
+    f.lastName = '';
+    assert.equal(f.toName, '—');
+});

@@ -87,6 +87,21 @@
         'slotsUrl' => route('shipments.options.spx-slots'), 'courier' => $courierState,
         'pickupId' => $pickupId, 'pickups' => collect($pickups)->mapWithKeys(fn ($o) => [$o['id'] => $o['pickup']])->all(),
     ];
+    $config['parcelLabels'] = collect($fields['parcels'])->map(fn ($options) => collect($options)->mapWithKeys(fn ($o) => [$o['value'] => $o['label']])->all())->all();
+    $place = collect([$text($recipient['city'] ?? ''), $text($recipient['state'] ?? '')])->filter()->implode(', ');
+    $config['to'] = ['first' => $text($recipient['first_name'] ?? ''), 'last' => $text($recipient['last_name'] ?? ''), 'place' => $place];
+    $toName = trim($config['to']['first'].' '.$config['to']['last']);
+    $packagingLabel = $config['parcelLabels'][$accountId][$parcel] ?? null;
+    $picked = $customerId !== '' && is_array($picked ?? null) ? $picked : null;
+    $pickedMeta = $picked === null ? '' : collect([$phone($picked['phone'] ?? ''), collect([$text($picked['address']['city'] ?? ''), $text($picked['address']['state'] ?? '')])->filter()->implode(', ')])->filter()->implode(' · ');
+    // A group (tiles, segments) shows its error under it and marks itself invalid, pointing at that error.
+    $groupError = fn (string $key, string $id) => $errors->has($key) ? 'aria-invalid="true" aria-describedby="'.$id.'"' : '';
+    foreach ($errors->keys() as $k) {
+        // The pickup snapshot's own errors are summed up by the one line under the pickup.
+        if ($pickupErrorKey !== null && str_starts_with($k, 'pickup.')) {
+            \App\View\InlineErrors::mark($k);
+        }
+    }
     $off = fn (bool $shown) => $shown ? '' : 'disabled x-cloak';
 @endphp
 
@@ -95,7 +110,8 @@
         <x-ui.empty title="No courier accounts" />
     </section>
 @else
-<form class="sh-form" method="POST" action="{{ $editing ? route('shipments.update', $shipment->public_id) : route('shipments.store') }}" novalidate x-data="shipmentForm(@js($config))">
+<form class="sh-form" method="POST" action="{{ $editing ? route('shipments.update', $shipment->public_id) : route('shipments.store') }}" novalidate x-data="shipmentForm(@js($config))"
+      x-on:input="recipientTyped($event)" x-on:ph-place.window="placed($event)">
     @csrf
     @if($editing) @method('PUT') @endif
     <input type="hidden" name="form_token" value="{{ $token }}">
@@ -103,8 +119,18 @@
     <div class="sh-main">
         <section class="x-panel sh-sec" aria-labelledby="sec-courier">
             <h2 class="st-h" id="sec-courier">Courier</h2>
-            <div class="sh-couriers" role="radiogroup" aria-labelledby="sec-courier">
+            <div class="sh-couriers{{ $errors->has('account_id') ? ' is-invalid' : '' }}" role="radiogroup" aria-labelledby="sec-courier" {!! $groupError('account_id', 'f-account-id-error') !!}>
                 @foreach($tiles as $t)
+                    @if($t['id'] === null && ! $t['inactive'])
+                        <div class="sh-courier is-off" data-courier="{{ $t['courier'] }}">
+                            <x-courier-tile :courier="$t['courier']" />
+                            <span class="sh-courier__text">
+                                <span class="sh-courier__name">{{ $t['name'] }}</span>
+                                <span class="sh-courier__note">Not set up · <a class="sh-courier__link" href="{{ route('accounts.show', $t['courier']) }}">Set up</a></span>
+                            </span>
+                        </div>
+                        @continue
+                    @endif
                     <label class="sh-courier{{ $t['id'] === null ? ' is-off' : '' }}" data-courier="{{ $t['courier'] }}">
                         @if($t['id'] !== null)
                             <input type="radio" name="account_id" value="{{ $t['id'] }}" class="sh-courier__input" x-model="account" @checked($accountId === $t['id'])>
@@ -116,15 +142,13 @@
                             <span class="sh-courier__name">{{ $t['name'] }}</span>
                             @if($t['inactive'])
                                 <span class="sh-courier__note">Inactive</span>
-                            @elseif($t['id'] === null)
-                                <span class="sh-courier__note">Not set up</span>
                             @endif
                         </span>
                         <span class="sh-courier__tick" aria-hidden="true"><x-ui.icon name="check" size="14" /></span>
                     </label>
                 @endforeach
             </div>
-            @error('account_id')<div class="fm-error">{{ $message }}</div>@enderror
+            <x-ui.field-error name="account_id" />
             <div class="sh-grid" x-show="serviceOptions.length > 0" @if(($services[$accountId] ?? []) === []) x-cloak @endif>
                 <x-ui.field label="Service" name="service">
                     <x-ui.select id="f-service" name="service" x-model="service">
@@ -151,7 +175,7 @@
                     <x-ui.button :href="route('addresses.pickup.create')"><x-ui.icon name="plus" size="14" /> Add pickup address</x-ui.button>
                 </div>
             @else
-                <fieldset class="sh-fs sh-pickups" id="sh-pickups" x-bind:class="pickupOpen && 'is-open'">
+                <fieldset class="sh-fs sh-pickups{{ $pickupErrorKey !== null ? ' is-invalid' : '' }}" id="sh-pickups" x-bind:class="pickupOpen && 'is-open'" {!! $pickupErrorKey !== null ? 'aria-invalid="true" aria-describedby="f-pickup-error"' : '' !!}>
                     <legend class="x-sr">Pickup address</legend>
                     @foreach($pickups as $o)
                         @php($on = $o['id'] === $pickupId)
@@ -166,19 +190,32 @@
                     @endforeach
                 </fieldset>
             @endif
-            @if($pickupErrorKey !== null)<div class="fm-error">{{ $errors->first($pickupErrorKey) }}</div>@endif
+            @if($pickupErrorKey !== null)
+                <x-ui.field-error :name="$pickupErrorKey" id="f-pickup-error" />
+            @endif
         </section>
 
         <section class="x-panel sh-sec" aria-labelledby="sec-customer">
             <h2 class="st-h" id="sec-customer">Customer</h2>
-            <div class="sh-customer" x-data="customerSearch(@js(['url' => route('customers.search'), 'customerId' => $customerId]))" x-on:input="edited($event)">
-            <div class="sh-find" x-on:click.outside="close()">
+            <div class="sh-customer" x-data="customerSearch(@js(['url' => route('customers.search'), 'customerId' => $customerId, 'picked' => $picked]))" x-on:input="edited($event)">
+            <div class="sh-picked" x-show="picked && !searching" @if($picked === null) x-cloak @endif>
+                <button type="button" class="sh-picked__main" id="f-customer-picked" x-on:click="change()" x-on:keydown="change($event)">
+                    <x-ui.icon name="user" size="16" class="sh-picked__icon" />
+                    <span class="sh-picked__text">
+                        <span class="sh-picked__name" x-text="picked ? picked.name : ''">{{ $picked['name'] ?? '' }}</span>
+                        <span class="sh-picked__meta" x-text="pickedMeta">{{ $pickedMeta }}</span>
+                    </span>
+                    <span class="x-sr">, change customer</span>
+                </button>
+                <button type="button" class="sh-picked__clear" aria-label="Clear customer" x-on:click="clearPick()"><x-ui.icon name="x" size="16" /></button>
+            </div>
+            <div class="sh-find" x-show="!picked || searching" @if($picked !== null) x-cloak @endif x-on:click.outside="close()">
                 <label class="x-sr" for="f-customer-search">Search customers</label>
                 <div class="sh-find__box">
                     <x-ui.icon name="search" size="16" class="sh-find__icon" />
                     <input class="x-input sh-find__input" id="f-customer-search" type="search" role="combobox" aria-autocomplete="list" aria-controls="f-customer-list"
                            aria-expanded="false" x-bind:aria-expanded="open ? 'true' : 'false'" x-bind:aria-activedescendant="activeId"
-                           x-model="q" x-on:input="input()" x-on:keydown="key($event)" placeholder="Search customers" maxlength="100" autocomplete="off">
+                           x-model="q" x-on:input="input()" x-on:keydown="key($event)" x-on:blur="blurred()" placeholder="Search customers" maxlength="100" autocomplete="off">
                 </div>
                 <ul class="sh-find__list" id="f-customer-list" role="listbox" aria-label="Customers" x-show="open" x-cloak>
                     <template x-for="(c, n) in results" :key="c.public_id">
@@ -193,8 +230,8 @@
                         <span class="sh-find__name">New customer</span>
                     </li>
                 </ul>
-                <span class="x-sr" role="status" aria-live="polite" x-text="status"></span>
             </div>
+            <span class="x-sr" role="status" aria-live="polite" x-text="status"></span>
             <div class="sh-grid">
                 @include('shipments._form-fields', ['prefix' => 'recipient', 'fields' => $personFields + $streetFields, 'values' => $recipient])
             </div>
@@ -209,76 +246,16 @@
                 </label>
             </div>
             </div>
-            <fieldset class="sh-fs" x-show="show.note" :disabled="!show.note" {{ $off($show['note']) }}>
-                <x-ui.field label="Delivery note" name="note">
-                    <textarea class="x-input sh-note" id="f-note" name="note" rows="2" maxlength="{{ CourierFormFields::NOTE_MAX }}" x-model="note" autocomplete="off">{{ $courierState['note'] }}</textarea>
-                </x-ui.field>
-            </fieldset>
-        </section>
-
-        <section class="x-panel sh-sec">
-            <x-ui.field label="Item" name="item" :required="true">
-                <x-ui.input type="text" id="f-item" name="item" value="{{ $item }}" x-model="item" maxlength="255" required autocomplete="off" />
-            </x-ui.field>
-        </section>
-
-        <section class="x-panel sh-sec" aria-labelledby="sec-payment">
-            <h2 class="st-h" id="sec-payment">Payment</h2>
-            <div class="sh-grid">
-                <x-ui.field label="Value (₱)" name="value" :required="true">
-                    <x-ui.input type="text" inputmode="decimal" id="f-value" name="value" value="{{ $valueRaw }}" x-model="value" required autocomplete="off" />
-                </x-ui.field>
-            </div>
-            <div class="sh-seg" role="radiogroup" aria-labelledby="sec-payment">
-                @foreach(['cod' => 'COD', 'prepaid' => 'Prepaid'] as $value => $label)
-                    <label class="sh-seg__opt">
-                        <input type="radio" class="sh-seg__input" name="payment[method]" value="{{ $value }}" x-model="method" @checked($method === $value)>
-                        <span class="sh-seg__tick" aria-hidden="true"><x-ui.icon name="check" size="14" /></span>
-                        <span>{{ $label }}</span>
-                    </label>
-                @endforeach
-            </div>
-            @error('payment.method')<div class="fm-error">{{ $message }}</div>@enderror
-            <dl class="sh-derived" x-show="method === 'cod'" @if($method !== 'cod') x-cloak @endif>
-                <div class="sh-derived__row">
-                    <dt>Collect on delivery</dt>
-                    <dd class="sh-num" x-text="total">{{ $total }}</dd>
-                </div>
-            </dl>
-            <label class="sh-check">
-                <input type="hidden" name="insure" value="0">
-                <input type="checkbox" name="insure" value="1" x-model="insure" @checked($insure)>
-                <span>Insure</span>
-            </label>
-            <dl class="sh-derived" x-show="insure" @if(! $insure) x-cloak @endif>
-                <div class="sh-derived__row">
-                    <dt>Declared value</dt>
-                    <dd class="sh-num" x-text="total">{{ $total }}</dd>
-                </div>
-            </dl>
-            @error('payment.declared_value')<div class="fm-error">{{ $message }}</div>@enderror
-            @foreach(CourierFormFields::SHIPPING_PAYMENT as $payer => $choices)
-                <fieldset class="sh-fs sh-fs--group" x-show="courier === '{{ $payer }}'" :disabled="courier !== '{{ $payer }}'" {{ $off($courier === $payer) }}>
-                    <legend class="fm-label">Who pays shipping</legend>
-                    <div class="sh-seg">
-                        @foreach($choices as $value => $label)
-                            <label class="sh-seg__opt">
-                                <input type="radio" class="sh-seg__input" name="payment[shipping_payment]" value="{{ $value }}" x-model="shippingPayment" @checked($courier === $payer && $courierState['shippingPayment'] === $value)>
-                                <span class="sh-seg__tick" aria-hidden="true"><x-ui.icon name="check" size="14" /></span>
-                                <span>{{ $label }}</span>
-                            </label>
-                        @endforeach
-                    </div>
-                </fieldset>
-            @endforeach
-            @error('payment.shipping_payment')<div class="fm-error">{{ $message }}</div>@enderror
         </section>
 
         <section class="x-panel sh-sec" aria-labelledby="sec-parcel">
             <h2 class="st-h" id="sec-parcel">Parcel</h2>
+            <x-ui.field label="Item" name="item" :required="true">
+                <x-ui.input type="text" id="f-item" name="item" value="{{ $item }}" x-model="item" maxlength="255" required autocomplete="off" />
+            </x-ui.field>
             @foreach($fields['parcels'] as $acct => $options)
                 @php($here = $acct === $accountId)
-                <fieldset class="sh-fs sh-fs--group" x-show="account === @js($acct)" :disabled="account !== @js($acct)" {{ $off($here) }}>
+                <fieldset class="sh-fs sh-fs--group{{ $errors->has('parcel.type') ? ' is-invalid' : '' }}" x-show="account === @js($acct)" :disabled="account !== @js($acct)" {{ $off($here) }} {!! $groupError('parcel.type', 'f-parcel-type-error') !!}>
                     <legend class="fm-label">Packaging<span class="fm-req" aria-hidden="true">*</span><span class="x-sr">(required)</span></legend>
                     @foreach([false, true] as $more)
                         @php($group = array_values(array_filter($options, fn ($o) => $o['more'] === $more)))
@@ -302,7 +279,7 @@
                     @endforeach
                 </fieldset>
             @endforeach
-            @error('parcel.type')<div class="fm-error">{{ $message }}</div>@enderror
+            <x-ui.field-error name="parcel.type" />
             <fieldset class="sh-fs sh-grid" x-show="show.weight || show.category" {{ $show['weight'] || $show['category'] ? '' : 'x-cloak' }}>
                 <fieldset class="sh-fs" x-show="show.weight" :disabled="!show.weight" {{ $off($show['weight']) }}>
                     <x-ui.field label="Weight (kg)" name="parcel.weight_kg" :required="true">
@@ -324,13 +301,72 @@
             </div>
             <fieldset class="sh-fs sh-grid sh-grid--3" x-show="show.size" :disabled="!show.size" {{ $off($show['size']) }}>
                 @foreach(['length' => 'Length (cm)', 'width' => 'Width (cm)', 'height' => 'Height (cm)'] as $key => $label)
-                    <div class="fm-field">
+                    @php($sizeKey = 'parcel.'.$key.'_cm')
+                    <div class="fm-field{{ $errors->has($sizeKey) ? ' fm-field--invalid' : '' }}">
                         <label class="fm-label" for="f-parcel-{{ $key }}-cm">{{ $label }}<span class="fm-req" aria-hidden="true" x-show="show.sizeRequired">*</span></label>
-                        <input class="x-input" type="text" inputmode="decimal" id="f-parcel-{{ $key }}-cm" name="parcel[{{ $key }}_cm]" value="{{ $dims[$key] }}" x-model="{{ $key }}" :required="show.sizeRequired" :aria-required="show.sizeRequired ? 'true' : 'false'" autocomplete="off">
-                        @error('parcel.'.$key.'_cm')<div class="fm-error">{{ $message }}</div>@enderror
+                        <input class="x-input{{ $errors->has($sizeKey) ? ' is-invalid' : '' }}" type="text" inputmode="decimal" id="f-parcel-{{ $key }}-cm" name="parcel[{{ $key }}_cm]" value="{{ $dims[$key] }}" x-model="{{ $key }}" :required="show.sizeRequired" :aria-required="show.sizeRequired ? 'true' : 'false'" autocomplete="off"
+                               @if($errors->has($sizeKey)) aria-invalid="true" aria-describedby="f-parcel-{{ $key }}-cm-error" @endif>
+                        <x-ui.field-error :name="$sizeKey" />
                     </div>
                 @endforeach
             </fieldset>
+            <fieldset class="sh-fs" x-show="show.note" :disabled="!show.note" {{ $off($show['note']) }}>
+                <x-ui.field label="Delivery note" name="note">
+                    <x-ui.textarea class="sh-note" id="f-note" name="note" rows="2" :maxlength="CourierFormFields::NOTE_MAX" x-model="note" autocomplete="off" :value="$courierState['note']" />
+                </x-ui.field>
+            </fieldset>
+        </section>
+
+        <section class="x-panel sh-sec" aria-labelledby="sec-payment">
+            <h2 class="st-h" id="sec-payment">Payment</h2>
+            <div class="sh-grid">
+                <x-ui.field label="Value (₱)" name="value" :required="true">
+                    <x-ui.input type="text" inputmode="decimal" id="f-value" name="value" value="{{ $valueRaw }}" x-model="value" required autocomplete="off" />
+                </x-ui.field>
+            </div>
+            <div class="sh-seg{{ $errors->has('payment.method') ? ' is-invalid' : '' }}" role="radiogroup" aria-labelledby="sec-payment" {!! $groupError('payment.method', 'f-payment-method-error') !!}>
+                @foreach(['cod' => 'COD', 'prepaid' => 'Prepaid'] as $value => $label)
+                    <label class="sh-seg__opt">
+                        <input type="radio" class="sh-seg__input" name="payment[method]" value="{{ $value }}" x-model="method" @checked($method === $value)>
+                        <span class="sh-seg__tick" aria-hidden="true"><x-ui.icon name="check" size="14" /></span>
+                        <span>{{ $label }}</span>
+                    </label>
+                @endforeach
+            </div>
+            <x-ui.field-error name="payment.method" />
+            <dl class="sh-derived" x-show="method === 'cod'" @if($method !== 'cod') x-cloak @endif>
+                <div class="sh-derived__row">
+                    <dt>Collect on delivery</dt>
+                    <dd class="sh-num" x-text="total">{{ $total }}</dd>
+                </div>
+            </dl>
+            <label class="sh-check">
+                <input type="hidden" name="insure" value="0">
+                <input type="checkbox" name="insure" value="1" x-model="insure" @checked($insure)>
+                <span>Insure</span>
+            </label>
+            <dl class="sh-derived" x-show="insure" @if(! $insure) x-cloak @endif>
+                <div class="sh-derived__row">
+                    <dt>Declared value</dt>
+                    <dd class="sh-num" x-text="total">{{ $total }}</dd>
+                </div>
+            </dl>
+            <x-ui.field-error name="payment.declared_value" />
+            @foreach(CourierFormFields::SHIPPING_PAYMENT as $payer => $choices)
+                <fieldset class="sh-fs sh-fs--group" x-show="courier === '{{ $payer }}'" :disabled="courier !== '{{ $payer }}'" {{ $off($courier === $payer) }}>
+                    <legend class="fm-label">Who pays shipping</legend>
+                    <div class="sh-seg{{ $errors->has('payment.shipping_payment') ? ' is-invalid' : '' }}" {!! $groupError('payment.shipping_payment', 'f-payment-shipping-payment-error') !!}>
+                        @foreach($choices as $value => $label)
+                            <label class="sh-seg__opt">
+                                <input type="radio" class="sh-seg__input" name="payment[shipping_payment]" value="{{ $value }}" x-model="shippingPayment" @checked($courier === $payer && $courierState['shippingPayment'] === $value)>
+                                <span class="sh-seg__tick" aria-hidden="true"><x-ui.icon name="check" size="14" /></span>
+                                <span>{{ $label }}</span>
+                            </label>
+                        @endforeach
+                    </div>
+                </fieldset>
+            @endforeach
+            <x-ui.field-error name="payment.shipping_payment" />
         </section>
 
         <section class="x-panel sh-sec" aria-labelledby="sec-handover" x-show="show.handover || show.pickupDate" {{ $show['handover'] || $show['pickupDate'] ? '' : 'x-cloak' }}>
@@ -363,7 +399,7 @@
                     </div>
                     <span class="x-sr" role="status" x-text="slotState === 'loading' ? 'Loading' : ''"></span>
                     @if(! $courierState['slots'])
-                        @error('pickup_slot')<div class="fm-error">{{ $message }}</div>@enderror
+                        <x-ui.field-error name="pickup_slot" />
                     @endif
                 </div>
             </fieldset>
@@ -395,9 +431,17 @@
             <h2 class="st-h" id="sec-summary">Summary</h2>
             <dl class="sh-sum">
                 <div><dt>Courier</dt><dd x-text="courierName">{{ $names[$accountId] ?? '—' }}</dd></div>
+                <div>
+                    <dt>To</dt>
+                    <dd class="sh-sum__item">
+                        <span x-text="toName">{{ $toName !== '' ? $toName : '—' }}</span>
+                        <small class="sh-sum__sub" x-show="toPlace !== ''" x-text="toPlace" @if($place === '') x-cloak @endif>{{ $place }}</small>
+                    </dd>
+                </div>
                 <div><dt>Item</dt><dd class="sh-sum__item" x-text="itemText">{{ trim($item) !== '' ? trim($item) : '—' }}</dd></div>
-                <div><dt>Total</dt><dd class="sh-num" x-text="total">{{ $total }}</dd></div>
-                <div><dt>Payment</dt><dd x-text="method === 'cod' ? 'COD · ' + total : 'Prepaid'">{{ $method === 'cod' ? 'COD · '.$total : 'Prepaid' }}</dd></div>
+                <div><dt>Packaging</dt><dd class="sh-sum__item" x-text="packagingText">{{ $packagingLabel ?? '—' }}</dd></div>
+                <div><dt>Value</dt><dd class="sh-num" x-text="total">{{ $total }}</dd></div>
+                <div><dt>Payment</dt><dd x-text="method === 'cod' ? 'COD' : 'Prepaid'">{{ $method === 'cod' ? 'COD' : 'Prepaid' }}</dd></div>
                 <div><dt>Insured</dt><dd x-text="insure ? 'Yes' : 'No'">{{ $insure ? 'Yes' : 'No' }}</dd></div>
             </dl>
             <div class="sh-summary__actions">
@@ -405,6 +449,7 @@
                     <x-ui.button type="submit">Save</x-ui.button>
                     <x-ui.button variant="primary" type="submit" name="book" value="1">Save and book</x-ui.button>
                 @else
+                    <x-ui.button type="submit" name="draft" value="1">Save draft</x-ui.button>
                     <x-ui.button variant="primary" type="submit">Book shipment</x-ui.button>
                 @endif
                 <x-ui.button :href="$editing ? route('shipments.show', $shipment->public_id) : route('fulfillment')">Cancel</x-ui.button>

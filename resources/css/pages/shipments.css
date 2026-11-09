@@ -122,6 +122,36 @@
         opacity: .6;
     }
 
+    .sh-courier__link {
+        color: var(--bl-brand-link);
+        font-weight: 600;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+    }
+
+    .sh-courier__link:focus-visible {
+        outline: 2px solid var(--bl-brand);
+        outline-offset: 2px;
+        border-radius: 3px;
+    }
+
+    @media (max-width: 639px) {
+        .sh-courier__link {
+            display: inline-flex;
+            align-items: center;
+            min-height: 44px;
+        }
+    }
+
+    /* A group whose choice is missing or refused: its options get the red edge a field's control gets. */
+    .sh-couriers.is-invalid .sh-courier:not(.is-off),
+    .sh-fs.is-invalid .sh-pack__opt,
+    .sh-pickups.is-invalid .sh-addr,
+    .sh-seg.is-invalid {
+        border-color: var(--bl-bad);
+        box-shadow: inset 0 0 0 1px var(--bl-bad);
+    }
+
     /* Payment */
     .sh-seg {
         display: inline-flex;
@@ -572,6 +602,77 @@
         color: var(--bl-ink-2);
     }
 
+    /* The picked customer, in place of the search: the box re-opens the search, × clears the pick. */
+    .sh-picked {
+        display: flex;
+        align-items: stretch;
+        border: 1px solid var(--bl-brand-btn);
+        border-radius: var(--bl-r-ctrl);
+        background: var(--bl-brand-w);
+    }
+
+    .sh-picked__main {
+        display: flex;
+        flex: 1;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+        min-height: 44px;
+        padding: 8px 12px;
+        border: 0;
+        border-radius: var(--bl-r-ctrl) 0 0 var(--bl-r-ctrl);
+        background: transparent;
+        color: var(--bl-ink);
+        font: inherit;
+        font-size: 13.5px;
+        text-align: left;
+        cursor: pointer;
+    }
+
+    .sh-picked__icon {
+        flex: none;
+        color: var(--bl-brand-link);
+    }
+
+    .sh-picked__text {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 2px 8px;
+        min-width: 0;
+    }
+
+    .sh-picked__name {
+        font-weight: 600;
+    }
+
+    .sh-picked__meta {
+        color: var(--bl-ink-2);
+        overflow-wrap: anywhere;
+    }
+
+    .sh-picked__clear {
+        display: grid;
+        flex: none;
+        place-items: center;
+        width: 44px;
+        border: 0;
+        border-radius: 0 var(--bl-r-ctrl) var(--bl-r-ctrl) 0;
+        background: transparent;
+        color: var(--bl-ink-2);
+        cursor: pointer;
+    }
+
+    .sh-picked__clear:hover {
+        color: var(--bl-ink);
+    }
+
+    .sh-picked__main:focus-visible,
+    .sh-picked__clear:focus-visible {
+        outline: 2px solid var(--bl-brand);
+        outline-offset: -2px;
+    }
+
     /* Summary */
     .sh-summary {
         position: sticky;
@@ -616,6 +717,13 @@
         overflow-wrap: anywhere;
     }
 
+    .sh-sum__sub {
+        display: block;
+        color: var(--bl-ink-2);
+        font-size: 12px;
+        font-weight: 400;
+    }
+
     .sh-summary__actions {
         display: grid;
         gap: 8px;
@@ -627,7 +735,7 @@
         justify-content: center;
     }
 
-    /* Save stays first in the DOM so Enter saves; the primary action still leads visually. */
+    /* Save (Save draft on Add) stays first in the DOM so Enter saves without booking; the primary action still leads visually. */
     .sh-summary__actions .x-btn--primary {
         order: -1;
     }

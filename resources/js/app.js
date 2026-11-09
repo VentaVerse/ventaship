@@ -4,6 +4,7 @@ import { copyFeedback } from './copyFeedback';
 import { copyText } from './copyText';
 import { bulkSelect } from './bulkSelect';
 import { customerSearch } from './customerSearch';
+import { focusFirstInvalid } from './firstInvalid';
 import { phCascade } from './phCascade';
 import { phoneInput } from './phoneInput';
 import { rowMenu } from './rowMenu';
@@ -248,4 +249,7 @@ Alpine.data('credentialField', (config) => ({
 }));
 
 window.Alpine = Alpine;
+// Once Alpine has shown and hidden what it controls, the first invalid field (if any) takes the focus.
+document.addEventListener('alpine:initialized', () => requestAnimationFrame(() => focusFirstInvalid(document, window)));
+
 Alpine.start();

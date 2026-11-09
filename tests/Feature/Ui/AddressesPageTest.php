@@ -85,7 +85,7 @@ class AddressesPageTest extends TestCase
     {
         $c = $this->customer('09171234567');
         $this->actingAs($this->admin())->get(route('addresses.customers.edit', $c))
-            ->assertSee('value="9171234567"', false)->assertSee('+63');
+            ->assertSee('value="917 123 4567"', false)->assertSee('+63');
     }
 
     public function test_guests_are_redirected(): void

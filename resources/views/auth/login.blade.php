@@ -21,18 +21,12 @@
     @endif
 
     <x-ui.field label="Username or email" name="login">
-        <x-ui.input type="text" id="f-login" name="login" value="{{ old('login') }}" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required
-                    :class="$errors->has('login') ? 'is-invalid' : ''"
-                    :aria-invalid="$errors->has('login') ? 'true' : null"
-                    :aria-describedby="$errors->has('login') ? 'f-login-error' : null" />
+        <x-ui.input type="text" id="f-login" name="login" value="{{ old('login') }}" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required />
     </x-ui.field>
     <x-ui.field label="Password" name="password">
         <div class="lg-pass">
             <x-ui.input type="password" id="f-password" name="password" autocomplete="current-password" required
-                        x-bind:type="show ? 'text' : 'password'"
-                        :class="$errors->has('password') ? 'is-invalid' : ''"
-                        :aria-invalid="$errors->has('password') ? 'true' : null"
-                        :aria-describedby="$errors->has('password') ? 'f-password-error' : null" />
+                        x-bind:type="show ? 'text' : 'password'" />
             <button type="button" class="lg-eye" x-cloak x-on:click="show = ! show"
                     x-bind:aria-label="show ? 'Hide password' : 'Show password'" x-bind:aria-pressed="show ? 'true' : 'false'">
                 <span x-show="! show"><x-ui.icon name="eye" size="16" /></span>

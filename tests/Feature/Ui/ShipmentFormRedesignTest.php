@@ -317,7 +317,9 @@ class ShipmentFormRedesignTest extends TestCase
         // In order QuadX, SPX, LBC.
         $this->assertMatchesRegularExpression('/data-courier="quadx".*data-courier="spx".*data-courier="lbc"/s', $html);
         $this->assertMatchesRegularExpression('/type="radio" name="account_id" value="'.$this->account->public_id.'"[^>]*checked/', $html);
-        $this->assertMatchesRegularExpression('/data-courier="spx".*?type="radio" name="account_id"[^>]*disabled.*?Not set up/s', $html);
+        // A courier with no account has no radio; its tile links to its account page to set it up.
+        $this->assertMatchesRegularExpression('#<div class="sh-courier is-off" data-courier="spx">.*?Not set up · <a class="sh-courier__link" href="'.preg_quote(route('accounts.show', 'spx'), '#').'">Set up</a>#s', $html);
+        $this->assertDoesNotMatchRegularExpression('/data-courier="spx">(?:(?!data-courier=).)*name="account_id"/s', $html);
         // An account that exists but is not active says so.
         $this->assertMatchesRegularExpression('/data-courier="lbc".*?type="radio" name="account_id"[^>]*disabled.*?Inactive/s', $html);
         $this->assertSame(1, substr_count($html, 'Not set up'));

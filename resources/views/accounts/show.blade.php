@@ -45,7 +45,7 @@
         <div class="st-sec">
             <h2 class="st-h" id="account-env-label">Environment</h2>
             <div class="st-row">
-                <div class="ac-seg" id="account-env" role="radiogroup" aria-labelledby="account-env-label">
+                <div class="ac-seg{{ $errors->has('mode') ? ' is-invalid' : '' }}" id="account-env" role="radiogroup" aria-labelledby="account-env-label" @error('mode') aria-invalid="true" aria-describedby="account-env-error" @enderror>
                     @foreach(CourierAccounts::ENVIRONMENTS as $e)
                         <label class="ac-seg__opt">
                             <input type="radio" class="ac-seg__input" name="mode" value="{{ $e }}" @checked(old('mode', 'sandbox') === $e)>
@@ -54,7 +54,7 @@
                         </label>
                     @endforeach
                 </div>
-                @error('mode')<div class="fm-error">{{ $message }}</div>@enderror
+                <x-ui.field-error name="mode" id="account-env-error" />
             </div>
         </div>
         <div class="st-bar">
@@ -82,7 +82,7 @@
         <div class="st-sec">
             <h2 class="st-h" id="account-env-label">Environment</h2>
             <div class="st-row">
-                <div class="ac-seg" id="account-env" role="radiogroup" aria-labelledby="account-env-label">
+                <div class="ac-seg{{ $errors->has('mode') ? ' is-invalid' : '' }}" id="account-env" role="radiogroup" aria-labelledby="account-env-label" @error('mode') aria-invalid="true" aria-describedby="account-env-error" @enderror>
                     @foreach(CourierAccounts::ENVIRONMENTS as $e)
                         <label class="ac-seg__opt">
                             <input type="radio" class="ac-seg__input" name="mode" value="{{ $e }}" x-model="env" @checked($env === $e)>
@@ -91,7 +91,7 @@
                         </label>
                     @endforeach
                 </div>
-                @error('mode')<div class="fm-error">{{ $message }}</div>@enderror
+                <x-ui.field-error name="mode" id="account-env-error" />
             </div>
         </div>
 
@@ -113,7 +113,7 @@
                                 :id="'f-key-' . $k['key']" />
                         @else
                             @php $in = $plainInput($k, 'f-key-' . $k['key']); @endphp
-                            <x-ui.field :label="$k['label']" :for="$in['id']" :errorKey="'settings.' . $k['key']">
+                            <x-ui.field :label="$k['label']" :for="$in['id']" :errorKey="'settings.' . $k['key']" :keep-flash="$e !== $env">
                                 <x-ui.input :id="$in['id']" :name="$in['name']" class="st-ctl x-mono" :value="$in['value']" maxlength="2048" autocomplete="off" spellcheck="false" />
                             </x-ui.field>
                         @endif

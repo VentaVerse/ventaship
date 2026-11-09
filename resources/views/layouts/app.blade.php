@@ -68,7 +68,11 @@
                 </div>
                 @hasSection('actions')<div class="x-page__actions">@yield('actions')</div>@endif
             </header>
-            @php $flashErrors = isset($errors) ? $errors->all() : []; $notice = session()->pull('notice'); @endphp
+            @php
+                // Errors shown under their own field are not repeated here; the rest (an expired form, a refused action) are.
+                $flashErrors = \App\View\InlineErrors::rest($errors ?? null);
+                $notice = session()->pull('notice');
+            @endphp
             @if(session('status') || $notice || $flashErrors)
                 <div class="x-flash" role="status">
                     @if(session('status'))

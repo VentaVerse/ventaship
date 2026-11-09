@@ -480,6 +480,26 @@
         outline-offset: 0;
     }
 
+    /* A control whose field shows an error (x-ui.field marks it): a 2px-equivalent red edge, kept while focused. */
+    .x-input.is-invalid,
+    .x-phone.is-invalid {
+        border-color: var(--bl-bad);
+        outline: 1px solid var(--bl-bad);
+        outline-offset: -1px;
+    }
+
+    .x-input.is-invalid:focus,
+    .x-phone.is-invalid:focus-within {
+        border-color: var(--bl-bad);
+        outline: 2px solid var(--bl-bad);
+        outline-offset: 0;
+    }
+
+    .x-phone .x-phone__input.is-invalid {
+        border: 0;
+        outline: none;
+    }
+
     .x-phone {
         display: flex;
         align-items: stretch;

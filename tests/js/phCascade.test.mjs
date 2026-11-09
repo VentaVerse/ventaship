@@ -195,3 +195,22 @@ test('the fill event only reaches its own prefix', async () => {
     c.onFill({ detail: { prefix: 'recipient', address: { state: 'Y' } } });
     assert.deepEqual(got, [{ state: 'Y' }]);
 });
+
+test('announce sends the city and province once per change', () => {
+    const sent = [];
+    globalThis.CustomEvent = class { constructor(type, init) { this.type = type; this.detail = init?.detail; } };
+    globalThis.window = { dispatchEvent: (e) => sent.push(e) };
+    try {
+        const c = phCascade({ prefix: 'recipient', sel: {}, free: {}, text: {}, lists: {}, postcode: '' });
+        c.announce('Makati', 'Metro Manila');
+        c.announce('Makati', 'Metro Manila');
+        c.announce('', 'Metro Manila');
+        assert.deepEqual(sent.map((e) => [e.type, e.detail]), [
+            ['ph-place', { prefix: 'recipient', city: 'Makati', state: 'Metro Manila' }],
+            ['ph-place', { prefix: 'recipient', city: '', state: 'Metro Manila' }],
+        ]);
+    } finally {
+        delete globalThis.window;
+        delete globalThis.CustomEvent;
+    }
+});

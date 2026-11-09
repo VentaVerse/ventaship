@@ -349,10 +349,19 @@ class ShipmentFormRequest extends FormRequest
         return is_string($id) && $id !== '' ? Customer::query()->where('public_id', $id)->first() : null;
     }
 
-    /** @return array<string, string> */
+    /**
+     * Plain messages, never an attribute name: the field's own label is right above its error. Specific keys come
+     * first (Laravel takes the first pattern that matches); the generic ones are repeated for nested keys, since a
+     * `*` matches one segment only.
+     *
+     * @return array<string, string>
+     */
     public function messages(): array
     {
-        return [
+        $specific = [
+            'recipient.state.required' => 'Choose a province.',
+            'recipient.city.required' => 'Choose a city or municipality.',
+            'recipient.barangay.required' => 'Choose a barangay.',
             'value.required' => 'Enter the parcel value.',
             'value.string' => 'Enter the parcel value.',
             'value.regex' => 'Enter the parcel value.',
@@ -368,6 +377,8 @@ class ShipmentFormRequest extends FormRequest
             'pickup_slot.required_if' => 'Choose a time.',
             'pickup_date.required' => 'Choose a date.',
             'pickup_date.in' => 'Choose a date.',
+        ];
+        $generic = [
             '*.required_with' => 'Required.',
             '*.required' => 'Required.',
             '*.required_if' => 'Required.',
@@ -382,6 +393,57 @@ class ShipmentFormRequest extends FormRequest
             '*.gt' => 'Must be more than 0.',
             '*.min' => 'Too small.',
             '*.prohibited_unless' => 'Not valid.',
+            '*.array' => 'Not valid.',
+            '*.boolean' => 'Not valid.',
+            '*.exists' => 'Not valid.',
+        ];
+
+        $nested = [];
+        foreach (['*.', '*.*.', '*.*.*.'] as $depth) {
+            foreach ($generic as $key => $message) {
+                $nested[$depth.substr($key, 2)] = $message;
+            }
+        }
+
+        return $specific + $nested;
+    }
+
+    /**
+     * The fields' labels, for any message that still names its field.
+     *
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'account_id' => 'courier',
+            'client_reference' => 'reference',
+            'pickup_address_id' => 'pickup address',
+            'customer_id' => 'customer',
+            'recipient.first_name' => 'first name',
+            'recipient.last_name' => 'last name',
+            'recipient.phone' => 'phone',
+            'recipient.email' => 'email',
+            'recipient.address_1' => 'street',
+            'recipient.address_2' => 'street',
+            'recipient.state' => 'province',
+            'recipient.city' => 'city or municipality',
+            'recipient.district' => 'district',
+            'recipient.barangay' => 'barangay',
+            'recipient.postcode' => 'postcode',
+            'parcel.type' => 'packaging',
+            'parcel.weight_kg' => 'weight',
+            'parcel.length_cm' => 'length',
+            'parcel.width_cm' => 'width',
+            'parcel.height_cm' => 'height',
+            'parcel.category' => 'item category',
+            'payment.method' => 'payment',
+            'payment.shipping_payment' => 'who pays shipping',
+            'payment.cod_amount' => 'value',
+            'payment.declared_value' => 'value',
+            'pickup_slot' => 'pickup time',
+            'pickup_date' => 'pickup date',
+            'note' => 'delivery note',
         ];
     }
 

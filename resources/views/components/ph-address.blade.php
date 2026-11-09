@@ -1,4 +1,5 @@
-@props(['prefix', 'values' => []])
+{{-- `required`: the levels the server requires (every address form here requires the province and the city). --}}
+@props(['prefix', 'values' => [], 'required' => ['state', 'city']])
 
 @php
     use Illuminate\Support\Str;
@@ -84,12 +85,12 @@
     ];
 @endphp
 
-<div class="ph-addr" x-data="phAddress(@js($config))" x-on:ph-fill.window="onFill($event)">
+<div class="ph-addr" x-data="phAddress(@js($config))" x-on:ph-fill.window="onFill($event)" x-effect="announce(name('city'), name('state'))">
     @foreach($fields as $level => [$label, $key])
         @php $id = 'ph-'.$slug.'-'.$level; @endphp
-        <x-ui.field :label="$label" :for="$id" :error-key="$dot.'.'.$level" class="ph-addr__{{ $level }}" x-show="show('{{ $level }}')" x-cloak>
+        <x-ui.field :label="$label" :for="$id" :error-key="$dot.'.'.$level" :required="in_array($level, $required, true)" class="ph-addr__{{ $level }}" x-show="show('{{ $level }}')" x-cloak>
             <div x-show="!isFree('{{ $level }}')">
-                <x-ui.select :id="$id" x-model="sel.{{ $level }}" x-on:change="changed('{{ $level }}')" x-bind:disabled="!enabled('{{ $level }}')">
+                <x-ui.select :id="$id" :aria-required="in_array($level, $required, true) ? 'true' : null" x-model="sel.{{ $level }}" x-on:change="changed('{{ $level }}')" x-bind:disabled="!enabled('{{ $level }}')">
                     <option value="">Select</option>
                     <template x-for="o in options('{{ $level }}')" :key="o.code">
                         <option :value="o.code" :selected="o.code === sel.{{ $level }}" x-text="o.name"></option>

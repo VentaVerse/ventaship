@@ -14,8 +14,60 @@ export function nationalDigits(value) {
     return d.slice(0, PH_DIGITS);
 }
 
+/** The national digits as they are shown: 917 555 5555 (partial numbers grouped as far as they go). */
+export function groupDigits(digits) {
+    const d = String(digits ?? '').replace(/\D+/g, '').slice(0, PH_DIGITS);
+
+    return [d.slice(0, 3), d.slice(3, 6), d.slice(6)].filter((p) => p !== '').join(' ');
+}
+
+/** Where the caret goes in `shown` so that the same number of digits sits before it. */
+export function caretAfterDigits(shown, count) {
+    if (count <= 0) {
+        return 0;
+    }
+    let seen = 0;
+    for (let i = 0; i < shown.length; i++) {
+        if (/\d/.test(shown[i]) && ++seen === count) {
+            return i + 1;
+        }
+    }
+
+    return shown.length;
+}
+
 export function phoneInput() {
     return {
+        // The grouping is display only: the form posts the 10 digits.
+        init() {
+            const input = this.$el?.querySelector?.('input');
+            const form = input?.form;
+            if (!input || !form) {
+                return;
+            }
+            form.addEventListener('formdata', (e) => {
+                if (input.name && !input.disabled) {
+                    e.formData.set(input.name, nationalDigits(input.value));
+                }
+            });
+        },
+
+        // Typing keeps only digits, grouped 917 555 5555, with the caret after the same digit it followed.
+        typed(e) {
+            const el = e.target;
+            const caret = el.selectionStart ?? el.value.length;
+            const before = el.value.slice(0, caret).replace(/\D+/g, '').length;
+            this.clean(e);
+            const shown = groupDigits(el.value);
+            if (el.value !== shown) {
+                el.value = shown;
+            }
+            if (typeof el.setSelectionRange === 'function' && el.ownerDocument?.activeElement === el) {
+                const at = caretAfterDigits(shown, Math.min(before, el.value.replace(/\D+/g, '').length));
+                el.setSelectionRange(at, at);
+            }
+        },
+
         clean(e) {
             const el = e.target;
             const next = nationalDigits(el.value);

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Ui;
 
+use App\Addresses\CustomerRow;
 use App\Addresses\Customers;
 use App\Addresses\PickupAddresses;
 use App\Api\ApiError;
@@ -12,6 +13,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Ui\ShipmentFormRequest;
 use App\Models\AuditEntry;
 use App\Models\CourierAccount;
+use App\Models\Customer;
 use App\Models\PickupAddress;
 use App\Models\Shipment;
 use App\Shipments\CourierFormFields;
@@ -141,15 +143,24 @@ class ShipmentsController extends Controller
         return view('shipments.show', ['shipment' => $shipment]);
     }
 
+    /**
+     * Book shipment books it now; Save draft (`draft=1`) stores the same validated shipment as a draft without calling
+     * the courier, as the Edit form's Save does, to be booked later from its page or Needs action.
+     */
     public function store(ShipmentFormRequest $form, ShipmentCreator $creator): RedirectResponse
     {
-        return $this->once($form, function () use ($form, $creator) {
-            $shipment = $creator->create(null, $form->shipmentData(), 'manual', now: true);
+        $draft = $form->boolean('draft');
+
+        return $this->once($form, function () use ($form, $creator, $draft) {
+            $data = $form->shipmentData();
+            $data['submit'] = ! $draft;
+            $shipment = $creator->create(null, $data, 'manual', now: true);
             $this->rememberCustomer($form, $shipment, true);
             $this->audit($form, 'shipment.created', $shipment, [
                 'courier' => $shipment->courier,
                 'source' => 'manual',
                 'payment_method' => $shipment->payment_method,
+                'state' => $shipment->state,
             ]);
 
             return $shipment;
@@ -338,6 +349,7 @@ class ShipmentsController extends Controller
             'booked' => 'Booked · '.$shipment->tracking_number,
             'failed' => 'Courier refused: '.$shipment->error_message,
             'unknown' => 'Booking result unknown',
+            'draft' => 'Saved',
             default => 'Booking pending',
         };
     }
@@ -420,7 +432,25 @@ class ShipmentsController extends Controller
             'editing' => $editing !== null,
             'shipment' => $editing,
             'prefill' => $editing === null ? [] : $this->prefill($editing),
+            'picked' => $this->pickedAgain($request),
         ]);
+    }
+
+    /**
+     * The customer a failed submit had picked, as the search listed it, so the form shows the pick again; null when
+     * none was picked or it is gone.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function pickedAgain(Request $request): ?array
+    {
+        $id = $request->old('customer_id');
+        if (! is_string($id) || $id === '' || strlen($id) > 64) {
+            return null;
+        }
+        $customer = Customer::query()->where('public_id', $id)->first();
+
+        return $customer === null ? null : CustomerRow::of($customer);
     }
 
     /**

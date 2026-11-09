@@ -94,6 +94,15 @@ export function pickupParams(pickup) {
     return out;
 }
 
+/** The summary's "To": the recipient's name, and "City, Province" under it. */
+export function recipientName(first, last) {
+    return [first, last].map((p) => String(p ?? '').trim()).filter((p) => p !== '').join(' ');
+}
+
+export function placeLine(city, state) {
+    return [city, state].map((p) => String(p ?? '').trim()).filter((p) => p !== '').join(', ');
+}
+
 export function shipmentForm(config) {
     return {
         account: config.account,
@@ -104,6 +113,9 @@ export function shipmentForm(config) {
         item: config.item ?? '',
         pickupId: config.pickupId ?? '',
         pickupOpen: false,
+        firstName: config.to?.first ?? '',
+        lastName: config.to?.last ?? '',
+        toPlace: config.to?.place ?? '',
         ...config.courier,
         slotSeq: 0,
 
@@ -180,6 +192,31 @@ export function shipmentForm(config) {
 
         get itemText() {
             return itemText(this.item);
+        },
+
+        get toName() {
+            return recipientName(this.firstName, this.lastName) || '—';
+        },
+
+        get packagingText() {
+            return ((config.parcelLabels ?? {})[this.account] ?? {})[this.parcel] ?? '—';
+        },
+
+        // Input events from the recipient fields (typed, or filled by the customer search) keep the summary current.
+        recipientTyped(e) {
+            const name = e?.target?.name;
+            if (name === 'recipient[first_name]') {
+                this.firstName = e.target.value;
+            } else if (name === 'recipient[last_name]') {
+                this.lastName = e.target.value;
+            }
+        },
+
+        // The recipient cascade's `ph-place` event.
+        placed(e) {
+            if (e?.detail?.prefix === 'recipient') {
+                this.toPlace = placeLine(e.detail.city, e.detail.state);
+            }
         },
     };
 }

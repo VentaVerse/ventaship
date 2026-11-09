@@ -161,7 +161,7 @@ class ShipmentCreateTest extends TestCase
     public function test_form_renders_the_fixed_prefix_phone_input(): void
     {
         $this->get('/shipments/new')->assertSee('x-phone__code', false)->assertSee('inputmode="numeric"', false)
-            ->assertDontSee('maxlength="10"', false)->assertSee('pattern="9[0-9]{9}"', false)->assertSee('autocomplete="tel-national"', false);
+            ->assertDontSee('maxlength="10"', false)->assertSee('pattern="9[0-9]{2} ?[0-9]{3} ?[0-9]{4}"', false)->assertSee('autocomplete="tel-national"', false);
     }
 
     public function test_validation_errors_keep_input(): void
