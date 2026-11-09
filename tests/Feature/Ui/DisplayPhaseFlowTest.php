@@ -39,7 +39,7 @@ class DisplayPhaseFlowTest extends TestCase
 
     private function row(string $html, Shipment $s): string
     {
-        $this->assertSame(1, preg_match('#<div class="fl-row" data-id="'.preg_quote($s->public_id, '#').'".*?(?=<div class="fl-row" data-id=|</form>)#s', $html, $m), 'row rendered');
+        $this->assertSame(1, preg_match('#<div class="fl-row[^"]*" role="row" data-id="'.preg_quote($s->public_id, '#').'".*?(?=<div class="fl-row[^"]*" role="row" data-id=|</form>)#s', $html, $m), 'row rendered');
 
         return $m[0];
     }
@@ -62,7 +62,7 @@ class DisplayPhaseFlowTest extends TestCase
         $this->assertNull($draft->refresh()->phase);
         $this->assertSame('draft', $draft->state);
 
-        $this->assertSame(['all' => 1, 'active' => 1, 'finished' => 0], ShipmentList::counts([]));
+        $this->assertSame(['all' => 1, 'needs' => 1, 'active' => 1, 'finished' => 0], ShipmentList::counts([]));
         $this->assertSame([$draft->id], ShipmentList::query(['view' => 'active'])->pluck('id')->all());
         $this->assertSame([], ShipmentList::query(['view' => 'finished'])->pluck('id')->all());
 
@@ -73,7 +73,8 @@ class DisplayPhaseFlowTest extends TestCase
         $html = $this->get('/?view=active')->assertOk()->getContent();
         $row = $this->row($html, $draft);
         $this->assertStringContainsString('data-status="ventaship:draft"', $row);
-        $this->assertStringNotContainsString('x-badge__label">Not booked', $row, 'Book replaces the status badge');
+        $this->assertStringContainsString('x-badge__label">Not booked', $row, 'the status stays beside the Book step');
+        $this->assertStringContainsString('is-need', $row);
         $this->assertStringContainsString('form="book-'.$draft->public_id.'"', $row);
         $this->assertStringContainsString('id="book-'.$draft->public_id.'"', $html);
 

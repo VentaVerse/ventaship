@@ -2,6 +2,7 @@ import './bootstrap';
 import Alpine from 'alpinejs';
 import { copyFeedback } from './copyFeedback';
 import { copyText } from './copyText';
+import { bulkSelect } from './bulkSelect';
 import { customerSearch } from './customerSearch';
 import { phCascade } from './phCascade';
 import { phoneInput } from './phoneInput';
@@ -52,13 +53,7 @@ Alpine.data('rowMenu', () => rowMenu());
 
 Alpine.data('customerSearch', (config) => customerSearch(config));
 
-Alpine.data('bulkSelect', () => ({
-    count: 0,
-
-    sync() {
-        this.count = this.$root.querySelectorAll('input[name="ids[]"]:checked').length;
-    },
-}));
+Alpine.data('bulkSelect', (config = {}) => bulkSelect(config));
 
 Alpine.data('fulfillmentPoll', (config) => ({
     counts: config.counts,

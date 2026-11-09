@@ -23,30 +23,57 @@ final class LabelBundle
      */
     public function build(Collection $shipments): array
     {
-        $paths = [];
-        $courierFailed = false;
-        $retryable = false;
-        foreach ($shipments as $s) {
-            try {
-                $paths[$s->public_id] = Storage::disk('local')->path($this->labels->get($s)->path);
-            } catch (ApiError $e) {
+        ['paths' => $paths, 'failed' => $failed] = $this->collect($shipments);
+
+        if ($paths === []) {
+            $courierFailed = false;
+            $retryable = false;
+            foreach ($failed as $e) {
                 if ($e->status === 502) {
                     $courierFailed = true;
                     $retryable = $retryable || $e->retryable;
                 }
             }
-        }
 
-        if ($paths === []) {
             throw $courierFailed
                 ? new ApiError(502, 'courier_unavailable', 'The labels could not be fetched from the courier.', $retryable)
                 : new ApiError(409, 'label_not_ready', 'None of these shipments has a waybill to print.');
         }
 
-        $skipped = array_values(array_diff($shipments->pluck('public_id')->all(), array_keys($paths)));
+        return $this->bundle($paths) + ['skipped' => array_keys($failed)];
+    }
 
+    /**
+     * Fetches (or reads the stored copy of) each waybill.
+     *
+     * @param  Collection<int, Shipment>  $shipments  in print order
+     * @return array{paths: array<string, string>, failed: array<string, ApiError>} both keyed by public id, in order
+     */
+    public function collect(Collection $shipments): array
+    {
+        $paths = [];
+        $failed = [];
+        foreach ($shipments as $s) {
+            try {
+                $paths[$s->public_id] = Storage::disk('local')->path($this->labels->get($s)->path);
+            } catch (ApiError $e) {
+                $failed[$s->public_id] = $e;
+            }
+        }
+
+        return ['paths' => $paths, 'failed' => $failed];
+    }
+
+    /**
+     * One PDF of the given waybill files (a ZIP when they cannot be merged).
+     *
+     * @param  non-empty-array<string, string>  $paths  absolute paths in print order
+     * @return array{bytes: string, type: 'pdf'|'zip'}
+     */
+    public function bundle(array $paths): array
+    {
         if (count($paths) === 1) {
-            return ['bytes' => (string) file_get_contents(reset($paths)), 'type' => 'pdf', 'skipped' => $skipped];
+            return ['bytes' => (string) file_get_contents(reset($paths)), 'type' => 'pdf'];
         }
 
         $merged = $this->merger->merge($paths);
@@ -56,6 +83,6 @@ final class LabelBundle
             @unlink($merged['path']);
         }
 
-        return ['bytes' => $bytes, 'type' => $merged['type'], 'skipped' => $skipped];
+        return ['bytes' => $bytes, 'type' => $merged['type']];
     }
 }

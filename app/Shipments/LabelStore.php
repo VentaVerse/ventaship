@@ -27,12 +27,18 @@ final class LabelStore
 
     private const SAFE_NAME = '/^[A-Za-z0-9_-]{1,64}$/';
 
+    /** Whether get() would try to print it (it may still fail at the courier). */
+    public static function printable(Shipment $s): bool
+    {
+        return $s->state === 'booked' && (string) $s->tracking_number !== '' && $s->courier_account_id !== null;
+    }
+
     /** @throws ApiError 409 label_not_ready, 502 courier_unavailable */
     public function get(Shipment $s): ShipmentLabel
     {
         $account = $s->courierAccount;
         $tracking = (string) $s->tracking_number;
-        if ($s->state !== 'booked' || $tracking === '' || $account === null) {
+        if (! self::printable($s) || $account === null) {
             throw new ApiError(409, 'label_not_ready', 'This shipment has no waybill yet.');
         }
 

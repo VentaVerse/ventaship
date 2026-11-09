@@ -58,6 +58,26 @@ class CourierCards
         return $cards;
     }
 
+    /**
+     * One chip per courier for the phone strip: its active count summed over its active accounts, or null with none.
+     *
+     * @param  array<int, array{courier:string, account:?CourierAccount, active:int}>  $cards  from all()
+     * @return list<array{courier:string, active:?int}>
+     */
+    public static function chips(array $cards): array
+    {
+        $chips = [];
+        foreach ($cards as $card) {
+            $c = $card['courier'];
+            $chips[$c] ??= ['courier' => $c, 'active' => null];
+            if ($card['account'] !== null) {
+                $chips[$c]['active'] = ($chips[$c]['active'] ?? 0) + $card['active'];
+            }
+        }
+
+        return array_values($chips);
+    }
+
     /** Whole centavos to "X.YY" with integer maths only. */
     private static function money(int $centavos): string
     {

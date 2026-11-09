@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Shipments\RecipientTokens;
 use App\Support\HasPublicId;
 use App\Support\Vault\VaultEncrypted;
 use App\Support\Vault\VaultEncryptedJson;
@@ -16,7 +17,20 @@ class Shipment extends Model
 
     public const PUBLIC_PREFIX = 'shp_';
 
-    protected $guarded = ['id', 'public_id'];
+    protected $guarded = ['id', 'public_id', 'recipient_tokens'];
+
+    protected $hidden = ['recipient_tokens'];
+
+    /** Keeps the recipient name's blind index (RecipientTokens) in step with the recipient on every save. */
+    protected static function booted(): void
+    {
+        static::saving(function (Shipment $s) {
+            if (! $s->exists || $s->isDirty('recipient')) {
+                $recipient = $s->recipient;
+                $s->attributes['recipient_tokens'] = RecipientTokens::forRecipient(is_array($recipient) ? $recipient : null);
+            }
+        });
+    }
 
     /** Only an unbooked manual shipment that still holds its data can be edited or deleted. */
     public function isEditable(): bool

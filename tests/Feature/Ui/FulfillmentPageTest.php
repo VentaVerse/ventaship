@@ -47,7 +47,8 @@ class FulfillmentPageTest extends TestCase
         $this->get('/')->assertOk()
             ->assertSeeText(['Shipments', 'All', 'Active', 'Finished', 'All statuses'])
             ->assertSeeText(['QuadX', 'Production', 'Connected', 'LBC', 'No account'])
-            ->assertSeeText(['VS-24-00182', 'Maria Santos', 'Pasig City', '2 items', '₱1,240.00', 'COD · Unpaid', 'Booked', 'VentaCart Pro', 'Connect LBC']);
+            ->assertSeeText(['Maria Santos', '2 items', '₱1,240.00', 'COD', 'Booked', 'VentaCart Pro', 'Connect LBC'])
+            ->assertDontSeeText(['COD · Unpaid', 'Prepaid']);
     }
 
     public function test_courier_with_only_inactive_accounts_shows_inactive_card_with_open_link(): void
@@ -159,7 +160,7 @@ class FulfillmentPageTest extends TestCase
             ->assertJsonPath('statuses.'.$a->public_id, 'ventaship:draft')
             ->assertJsonPath('statuses.'.$b->public_id, 'quadx:delivered')
             ->assertJsonMissingPath('statuses.shp_nope')
-            ->assertJsonPath('counts', ['all' => 2, 'active' => 1, 'finished' => 1]);
+            ->assertJsonPath('counts', ['all' => 2, 'needs' => 1, 'active' => 1, 'finished' => 1]);
     }
 
     public function test_poll_is_sent_as_xhr_and_never_becomes_the_previous_url(): void

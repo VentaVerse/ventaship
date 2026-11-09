@@ -87,6 +87,8 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::put('settings', [SettingsController::class, 'update'])->name('settings.update');
     Route::put('settings/account', [SettingsController::class, 'account'])->name('settings.account');
     Route::post('shipments/labels', [ShipmentActionsController::class, 'labels'])->name('shipments.labels');
+    Route::get('shipments/labels/bundle', [ShipmentActionsController::class, 'bundle'])
+        ->middleware('signed:relative')->name('shipments.labels.bundle');
 });
 
 // Courier webhooks: no session, cookies or CSRF (the whole `web` group is dropped), throttled per IP.

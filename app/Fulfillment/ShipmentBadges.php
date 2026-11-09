@@ -17,9 +17,12 @@ final class ShipmentBadges
         return self::PHASE_TONES[$phase] ?? 'mute';
     }
 
+    /** A refused booking reads bad; every other row by its display phase. */
     public static function statusTone(Shipment $s): string
     {
-        return self::tone(DisplayPhase::of($s));
+        $phase = DisplayPhase::of($s);
+
+        return $phase === 'attention' && $s->state === 'failed' ? 'bad' : self::tone($phase);
     }
 
     /** @return array{0: string, 1: string} label and tone */

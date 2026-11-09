@@ -1,54 +1,64 @@
 @php
+    use App\Fulfillment\Couriers;
+    use App\Fulfillment\RowActions;
     use App\Fulfillment\ShipmentBadges;
     use App\Fulfillment\ShipmentList;
     use App\Fulfillment\StatusFilter;
+    use App\Fulfillment\Views;
     use App\Shipments\TrackingLink;
     use App\Support\Money;
 
     $r = is_array($shipment->recipient) ? $shipment->recipient : null;
-    $name = $r ? trim(($r['first_name'] ?? '').' '.($r['last_name'] ?? '')) : '';
+    $name = $r ? trim(((string) ($r['first_name'] ?? '')).' '.((string) ($r['last_name'] ?? ''))) : '';
     $name = $name !== '' ? $name : null;
-    $city = $r['city'] ?? null;
     $isCod = str_starts_with((string) $shipment->payment_state, 'cod_');
     $amount = $isCod ? $shipment->cod_amount : $shipment->total;
-    $pay = ShipmentBadges::payment($shipment);
-    $statusTone = ShipmentBadges::statusTone($shipment);
-    $statusKey = StatusFilter::keyFor($shipment);
-    $statusLabel = StatusFilter::labelFor($shipment);
     $tracking = $shipment->tracking_number ? TrackingLink::for($shipment) : null;
-    $courierName = $shipment->courier ? \App\Fulfillment\Couriers::name($shipment->courier) : null;
-    $service = $shipment->service ? \Illuminate\Support\Str::title(str_replace('_', ' ', $shipment->service)) : null;
-    $refs = collect([$shipment->courier_ref, $shipment->client_reference])->filter()->implode(' · ');
+    $courierName = $shipment->courier ? Couriers::name($shipment->courier) : null;
+    $ref = $shipment->client_reference ?: $shipment->courier_ref;
+    $items = (int) $shipment->items_count;
+    $flags = RowActions::flags($shipment);
+    $next = RowActions::nextStep($shipment);
+    $need = Views::needsAction($shipment);
+    $show = route('shipments.show', $shipment->public_id);
 @endphp
-<div class="fl-row" data-id="{{ $shipment->public_id }}" data-status="{{ $statusKey }}">
-    <input type="checkbox" class="fl-row__check" name="ids[]" value="{{ $shipment->public_id }}" aria-label="Select {{ $name ?: 'shipment' }}">
-    <div>
-        <div class="fl-row__name {{ $name ? '' : 'is-removed' }}"><a class="fl-row__link" href="{{ route('shipments.show', $shipment->public_id) }}">{{ $name ?: 'Removed' }}</a></div>
-        <div class="fl-row__ref">{{ $refs }}</div>
-        <div class="fl-row__addr">{{ collect([$city, $shipment->items_count.' '.\Illuminate\Support\Str::plural('item', (int) $shipment->items_count)])->filter()->implode(' · ') }}</div>
+<div class="fl-row{{ $need ? ' is-need' : '' }}" role="row" data-id="{{ $shipment->public_id }}" data-status="{{ StatusFilter::keyFor($shipment) }}" data-printable="{{ (int) $flags['printable'] }}" data-bookable="{{ (int) $flags['bookable'] }}" data-cancellable="{{ (int) $flags['cancellable'] }}">
+    <div class="fl-cell fl-cell--check" role="cell">
+        <label class="fl-check">
+            <input type="checkbox" class="fl-check__box" name="ids[]" value="{{ $shipment->public_id }}">
+            <span class="x-sr">Select {{ $name ?: 'shipment' }}</span>
+        </label>
     </div>
-    <div>
+    <div class="fl-cell fl-cell--who" role="cell">
+        <a class="fl-row__name fl-row__link{{ $name ? '' : ' is-removed' }}" href="{{ $show }}">{{ $name ?: 'Removed' }}</a>
+        <div class="fl-row__meta">
+            @if($ref)<span class="fl-mono">{{ $ref }}</span> · @endif{{ ShipmentList::sourceLabel($shipment) }} · {{ $items }} {{ \Illuminate\Support\Str::plural('item', $items) }}
+        </div>
+    </div>
+    <div class="fl-cell fl-cell--courier" role="cell">
         @if($shipment->tracking_number)
-            <div class="fl-row__courier fl-row__courier--{{ $shipment->courier }}"><span class="fl-row__dot" aria-hidden="true"></span>{{ collect([$courierName, $service])->filter()->implode(' · ') }}</div>
+            <span class="fl-row__courier fl-row__courier--{{ $shipment->courier }}"><span class="fl-row__dot" aria-hidden="true"></span>{{ $courierName }}</span>
             @if($tracking && preg_match('#^https?://#i', $tracking))
                 <a class="fl-row__track" href="{{ $tracking }}" target="_blank" rel="noopener">{{ $shipment->tracking_number }}</a>
             @else
                 <span class="fl-row__track is-plain">{{ $shipment->tracking_number }}</span>
             @endif
         @else
-            <div class="fl-row__courier is-none">Not booked</div>
+            <span class="fl-row__none">Not booked</span>
         @endif
     </div>
-    <div class="fl-row__pay">
+    <div class="fl-cell fl-cell--amt" role="cell">
         <span class="fl-row__amt x-num">{{ $amount !== null ? Money::peso((string) $amount) : '—' }}</span>
-        <x-ui.badge :tone="$pay[1]">{{ $pay[0] }}</x-ui.badge>
+        @if($isCod)<span class="fl-row__cod">COD</span>@endif
     </div>
-    <div class="fl-row__end">
-        @if($shipment->state === 'draft' && Route::has('shipments.book'))
-            <x-ui.button size="sm" variant="primary" type="submit" form="book-{{ $shipment->public_id }}">Book</x-ui.button>
-        @else
-            <x-ui.badge :tone="$statusTone">{{ $statusLabel }}</x-ui.badge>
+    <div class="fl-cell fl-cell--status" role="cell">
+        <x-ui.badge :tone="ShipmentBadges::statusTone($shipment)">{{ StatusFilter::labelFor($shipment) }}</x-ui.badge>
+    </div>
+    <div class="fl-cell fl-cell--act" role="cell">
+        @if($next && $next['kind'] === 'book')
+            <x-ui.button size="sm" :variant="$next['variant']" type="submit" :form="'book-'.$shipment->public_id" class="fl-next">{{ $next['label'] }}</x-ui.button>
+        @elseif($next)
+            <x-ui.button size="sm" :variant="$next['variant']" :href="$next['href']" class="fl-next">{{ $next['label'] }}</x-ui.button>
         @endif
-        <span class="fl-row__src">{{ ShipmentList::sourceLabel($shipment) }}</span>
     </div>
 </div>

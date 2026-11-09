@@ -21,9 +21,10 @@ class FulfillmentController extends Controller
         $view = Views::normalize($filters['view'] ?? null);
 
         $shipments = ShipmentList::query($filters)->paginate(50)->withQueryString();
+        $cards = CourierCards::all();
 
         return view('fulfillment.index', [
-            'cards' => CourierCards::all(),
+            'cards' => $cards,
             'counts' => ShipmentList::counts($filters),
             'shipments' => $shipments,
             'view' => $view,
@@ -31,6 +32,8 @@ class FulfillmentController extends Controller
             'status' => $filters['status'] ?? '',
             'account' => $filters['account'] ?? '',
             'source' => $filters['source'] ?? '',
+            'q' => $filters['q'] ?? '',
+            'chips' => CourierCards::chips($cards),
             'accounts' => CourierAccount::query()->orderBy('courier')->orderBy('label')->get(['public_id', 'courier', 'label']),
             'apps' => ClientApp::query()->orderBy('name')->get(['public_id', 'name']),
         ]);
@@ -50,13 +53,20 @@ class FulfillmentController extends Controller
         ]);
     }
 
-    /** @return array<string, string> */
+    /**
+     * The list's GET filters. Each is a string or dropped; the search is trimmed and capped (ShipmentList::QUERY_MAX),
+     * never refused, so a long paste still filters. Unknown values are ignored downstream.
+     *
+     * @return array<string, string>
+     */
     private function filters(Request $request): array
     {
-        return array_filter(
-            array_map(fn ($v) => is_string($v) ? $v : '', $request->only(['view', 'account', 'source', 'status'])),
-            fn (string $v) => $v !== '',
-        );
+        $filters = array_map(fn ($v) => is_string($v) ? mb_substr($v, 0, 200) : '', $request->only(['view', 'account', 'source', 'status', 'q']));
+        if (isset($filters['q'])) {
+            $filters['q'] = ShipmentList::normalizeQuery($filters['q']);
+        }
+
+        return array_filter($filters, fn (string $v) => $v !== '');
     }
 
     /** @return list<array{key:string,label:string,courier:?string,count:int}> */

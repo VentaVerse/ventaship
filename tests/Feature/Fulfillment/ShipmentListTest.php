@@ -146,8 +146,8 @@ class ShipmentListTest extends TestCase
         $this->make('delivered', $this->quadx, ['courier_status' => 'delivered']);
         $this->make('delivered', $this->spx, ['courier_status' => 'delivered']);
 
-        $this->assertSame(['all' => 3, 'active' => 1, 'finished' => 2], ShipmentList::counts(['view' => 'active']));
-        $this->assertSame(['all' => 1, 'active' => 0, 'finished' => 1], ShipmentList::counts(['status' => 'quadx:delivered']));
+        $this->assertSame(['all' => 3, 'needs' => 0, 'active' => 1, 'finished' => 2], ShipmentList::counts(['view' => 'active']));
+        $this->assertSame(['all' => 1, 'needs' => 0, 'active' => 0, 'finished' => 1], ShipmentList::counts(['status' => 'quadx:delivered']));
         $this->assertSame(1, ShipmentList::counts(['account' => $this->spx->public_id])['all']);
     }
 

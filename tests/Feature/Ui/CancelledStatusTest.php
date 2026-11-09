@@ -65,8 +65,8 @@ class CancelledStatusTest extends TestCase
         $options = collect(StatusFilter::options([]))->pluck('count', 'key')->all();
         $this->assertSame(['quadx:pending' => 1, 'ventaship:cancelled' => 1], $options);
 
-        $this->get('/?status=quadx:pending')->assertOk()->assertSeeText($live->courier_ref)->assertDontSeeText($cancelled->courier_ref);
-        $this->get('/?status=ventaship:cancelled')->assertOk()->assertSeeText($cancelled->courier_ref)->assertDontSeeText($live->courier_ref);
+        $this->get('/?status=quadx:pending')->assertOk()->assertSeeText($live->client_reference)->assertDontSeeText($cancelled->client_reference);
+        $this->get('/?status=ventaship:cancelled')->assertOk()->assertSeeText($cancelled->client_reference)->assertDontSeeText($live->client_reference);
 
         $this->getJson('/fulfillment/poll?ids='.$cancelled->public_id)->assertJsonPath('statuses.'.$cancelled->public_id, 'ventaship:cancelled');
 
