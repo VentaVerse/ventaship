@@ -21,10 +21,6 @@
     $streetFields = [
         'address_1' => ['label' => 'Street', 'required' => true, 'class' => 'sh-span'],
     ];
-    $senderFields = [
-        'contact_name' => ['label' => 'Name', 'required' => true],
-        'contact_phone' => ['label' => 'Phone', 'type' => 'tel', 'required' => true, 'max' => 32],
-    ];
     $v = fn (string $key, mixed $default = '') => old($key, data_get($prefill, $key, $default));
     $oldItems = $v('items');
     $rows = is_array($oldItems) && $oldItems !== []
@@ -53,11 +49,23 @@
         return $street === '' ? $party : ['address_1' => $street] + $party;
     };
     $recipient = $oneStreet((array) old('recipient', $prefill['recipient'] ?? []));
-    $pickup = $oneStreet((array) old('pickup', $sender ?? []));
-    $pickupErrors = collect($errors->keys())->contains(fn ($k) => str_starts_with($k, 'pickup.'));
-    $senderOpen = $sender === null || $pickupErrors;
-    $senderLine = collect([$pickup['address_1'] ?? '', $pickup['address_2'] ?? '', $pickup['barangay'] ?? '', $pickup['district'] ?? '', $pickup['city'] ?? '', $pickup['state'] ?? '', $pickup['postcode'] ?? ''])
-        ->map(fn ($p) => trim((string) $p))->filter()->implode(', ');
+    $oldCustomer = old('customer_id');
+    $customerId = is_string($oldCustomer) ? $oldCustomer : '';
+    $saveCustomer = filter_var(old('save_customer', false), FILTER_VALIDATE_BOOLEAN);
+    $pickupIds = array_column($pickups, 'id');
+    $oldPickup = old('pickup_address_id');
+    $pickupId = is_string($oldPickup) && in_array($oldPickup, $pickupIds, true)
+        ? $oldPickup
+        : (collect($pickups)->firstWhere('selected', true)['id'] ?? '');
+    $pickupErrorKey = collect($errors->keys())->first(fn ($k) => $k === 'pickup_address_id' || str_starts_with($k, 'pickup.'));
+    $text = fn (mixed $x): string => is_scalar($x) ? trim((string) $x) : '';
+    $phone = fn (mixed $x): string => preg_match('/^(\d{4})(\d{3})(\d{4})$/', $text($x), $m) ? "{$m[1]} {$m[2]} {$m[3]}" : $text($x);
+    $addressLine = function (array $p) use ($text): string {
+        $tail = trim($text($p['state'] ?? '').' '.$text($p['postcode'] ?? ''));
+
+        return collect([$p['address_1'] ?? '', $p['address_2'] ?? '', $p['barangay'] ?? '', $p['district'] ?? '', $p['city'] ?? '', $tail])
+            ->map($text)->filter()->implode(', ');
+    };
     $str = fn (string $key, string $default = '') => is_scalar($x = $v($key, $default)) ? (string) $x : $default;
     $courier = $fields['couriers'][$accountId] ?? '';
     $dateValues = array_column($lbcDates, 'value');
@@ -87,6 +95,7 @@
         'rows' => $rows, 'errors' => $itemErrors, 'value' => $valueRaw, 'method' => $method, 'insure' => $insure,
         'couriers' => $fields['couriers'], 'defaultParcels' => $fields['defaultParcels'], 'firstDate' => $dateValues[0] ?? '',
         'slotsUrl' => route('shipments.options.spx-slots'), 'courier' => $courierState,
+        'pickupId' => $pickupId, 'pickups' => collect($pickups)->mapWithKeys(fn ($o) => [$o['id'] => $o['pickup']])->all(),
     ];
     $off = fn (bool $shown) => $shown ? '' : 'disabled x-cloak';
 @endphp
@@ -138,12 +147,78 @@
             </div>
         </section>
 
+        <section class="x-panel sh-sec" aria-labelledby="sec-pickup">
+            <div class="sh-sec__head">
+                <h2 class="st-h" id="sec-pickup">Pickup</h2>
+                @if(count($pickups) > 1)
+                    <x-ui.button size="sm" aria-controls="sh-pickups" ::aria-expanded="pickupOpen ? 'true' : 'false'" x-on:click="pickupOpen = !pickupOpen">
+                        <span x-text="pickupOpen ? 'Done' : 'Change'">Change</span>
+                    </x-ui.button>
+                @endif
+            </div>
+            @if($pickups === [])
+                <div>
+                    <x-ui.button :href="route('addresses.pickup.create')"><x-ui.icon name="plus" size="14" /> Add pickup address</x-ui.button>
+                </div>
+            @else
+                <fieldset class="sh-fs sh-pickups" id="sh-pickups" x-bind:class="pickupOpen && 'is-open'">
+                    <legend class="x-sr">Pickup address</legend>
+                    @foreach($pickups as $o)
+                        @php($on = $o['id'] === $pickupId)
+                        <label class="sh-addr" x-show="pickupOpen || pickupId === @js($o['id'])" @unless($on) x-cloak @endunless>
+                            <input type="radio" class="sh-addr__input" name="pickup_address_id" value="{{ $o['id'] }}" x-model="pickupId" @checked($on)>
+                            <span class="sh-addr__text">
+                                <span class="sh-addr__name">{{ $o['label'] }}@if($o['default']) <x-ui.badge tone="good">Default</x-ui.badge>@endif</span>
+                                <span class="sh-addr__line">{{ collect([$text($o['pickup']['contact_name'] ?? ''), $phone($o['pickup']['contact_phone'] ?? '')])->filter()->implode(' · ') }}</span>
+                                <span class="sh-addr__line">{{ $addressLine($o['pickup']) }}</span>
+                            </span>
+                        </label>
+                    @endforeach
+                </fieldset>
+            @endif
+            @if($pickupErrorKey !== null)<div class="fm-error">{{ $errors->first($pickupErrorKey) }}</div>@endif
+        </section>
+
         <section class="x-panel sh-sec" aria-labelledby="sec-customer">
             <h2 class="st-h" id="sec-customer">Customer</h2>
+            <div class="sh-customer" x-data="customerSearch(@js(['url' => route('customers.search'), 'customerId' => $customerId]))" x-on:input="edited($event)">
+            <div class="sh-find" x-on:click.outside="close()">
+                <label class="x-sr" for="f-customer-search">Search customers</label>
+                <div class="sh-find__box">
+                    <x-ui.icon name="search" size="16" class="sh-find__icon" />
+                    <input class="x-input sh-find__input" id="f-customer-search" type="search" role="combobox" aria-autocomplete="list" aria-controls="f-customer-list"
+                           aria-expanded="false" x-bind:aria-expanded="open ? 'true' : 'false'" x-bind:aria-activedescendant="activeId"
+                           x-model="q" x-on:input="input()" x-on:keydown="key($event)" placeholder="Search customers" maxlength="100" autocomplete="off">
+                </div>
+                <ul class="sh-find__list" id="f-customer-list" role="listbox" aria-label="Customers" x-show="open" x-cloak>
+                    <template x-for="(c, n) in results" :key="c.public_id">
+                        <li class="sh-find__opt" role="option" :id="optionId(n)" :aria-selected="active === n ? 'true' : 'false'" :class="active === n && 'is-active'"
+                            x-on:mousedown.prevent x-on:mousemove="active = n" x-on:click="pick(n)">
+                            <span class="sh-find__name" x-text="c.name"></span>
+                            <span class="sh-find__meta" x-text="meta(c)"></span>
+                        </li>
+                    </template>
+                    <li class="sh-find__opt" role="option" :id="optionId(results.length)" :aria-selected="active === results.length ? 'true' : 'false'"
+                        :class="active === results.length && 'is-active'" x-on:mousedown.prevent x-on:mousemove="active = results.length" x-on:click="pick(results.length)">
+                        <span class="sh-find__name">New customer</span>
+                    </li>
+                </ul>
+                <span class="x-sr" role="status" aria-live="polite" x-text="status"></span>
+            </div>
             <div class="sh-grid">
                 @include('shipments._form-fields', ['prefix' => 'recipient', 'fields' => $personFields + $streetFields, 'values' => $recipient])
             </div>
             <x-ph-address prefix="recipient" :values="$recipient" />
+            <input type="hidden" name="customer_id" value="{{ $customerId }}" x-bind:value="customerId">
+            <div x-show="customerId === ''" @if($customerId !== '') x-cloak @endif>
+                <label class="sh-switch" for="f-save-customer">
+                    <input type="hidden" name="save_customer" value="0">
+                    <input type="checkbox" class="sh-switch__input" role="switch" id="f-save-customer" name="save_customer" value="1" @checked($saveCustomer)>
+                    <span class="sh-switch__track" aria-hidden="true"></span>
+                    <span>Save customer</span>
+                </label>
+            </div>
+            </div>
             <fieldset class="sh-fs" x-show="show.note" :disabled="!show.note" {{ $off($show['note']) }}>
                 <x-ui.field label="Delivery note" name="note">
                     <textarea class="x-input sh-note" id="f-note" name="note" rows="2" maxlength="{{ CourierFormFields::NOTE_MAX }}" x-model="note" autocomplete="off">{{ $courierState['note'] }}</textarea>
@@ -337,26 +412,6 @@
                     @if($staleDate && ! $errors->has('pickup_date'))<div class="fm-error" id="f-pickup-date-error">Choose a date.</div>@endif
                 </x-ui.field>
             </fieldset>
-        </section>
-
-        <section class="x-panel sh-sec" aria-labelledby="sec-sender" x-data="{ open: {{ $senderOpen ? 'true' : 'false' }} }">
-            <h2 class="st-h" id="sec-sender">Sender</h2>
-            @if($sender !== null)
-                <div class="sh-sender__card" x-show="!open" @if($senderOpen) x-cloak @endif>
-                    <x-ui.icon name="map-pin" size="16" class="sh-sender__icon" />
-                    <div class="sh-sender__text">
-                        <div class="sh-sender__name">{{ $pickup['contact_name'] ?? '' }} <span class="sh-sender__phone">{{ $pickup['contact_phone'] ?? '' }}</span></div>
-                        <div class="sh-sender__addr">{{ $senderLine }}</div>
-                    </div>
-                    <x-ui.button size="sm" @click="open = true">Change</x-ui.button>
-                </div>
-            @endif
-            <div class="sh-sender__fields" x-show="open" @if(! $senderOpen) x-cloak @endif>
-                <div class="sh-grid">
-                    @include('shipments._form-fields', ['prefix' => 'pickup', 'fields' => $senderFields + $streetFields, 'values' => $pickup])
-                </div>
-                <x-ph-address prefix="pickup" :values="$pickup" />
-            </div>
         </section>
 
         <section class="x-panel sh-sec" aria-labelledby="sec-reference">

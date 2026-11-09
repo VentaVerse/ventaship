@@ -4,6 +4,8 @@ namespace App\Http\Requests\Ui;
 
 use App\Http\Requests\Api\V1\Concerns\ValidatesShipmentParts;
 use App\Models\CourierAccount;
+use App\Models\Customer;
+use App\Models\PickupAddress;
 use App\Models\Shipment;
 use App\Shipments\CourierFormFields;
 use App\Support\PhAddress;
@@ -14,7 +16,8 @@ use Illuminate\Validation\Validator;
 /**
  * The Add shipment form. It accepts the API's input shape (so ShipmentCreator takes it unchanged) with the form's
  * differences: the order reference is optional and generated when blank, the shipment is always submitted, and the
- * money fields are derived from the Value.
+ * money fields are derived from the Value. The pickup is never posted: `pickup_address_id` names a saved pickup address
+ * (or, on an edit, `current`: the shipment's own snapshot), and that address is copied into `pickup` here.
  */
 class ShipmentFormRequest extends FormRequest
 {
@@ -31,6 +34,9 @@ class ShipmentFormRequest extends FormRequest
 
     /** The chosen account, looked up once; its courier decides which courier fields are kept. */
     private ?CourierAccount $courierAccount = null;
+
+    /** The pickup `pickup_address_id` resolved to, in the shipment `pickup` shape; null when it named none. */
+    private ?array $chosenPickup = null;
 
     public function authorize(): bool
     {
@@ -59,8 +65,15 @@ class ShipmentFormRequest extends FormRequest
         $reference = trim((string) $this->input('client_reference'));
 
         $this->courierAccount = $account === '' ? null : CourierAccount::query()->where('public_id', $account)->first();
+        $this->chosenPickup = $this->resolvePickup($this->input('pickup_address_id'));
 
-        $this->replace($this->courierInput(array_merge($this->all(), [
+        $input = $this->all();
+        unset($input['pickup']);
+        if ($this->chosenPickup !== null) {
+            $input['pickup'] = $this->chosenPickup;
+        }
+
+        $this->replace($this->courierInput(array_merge($input, [
             'items' => $items,
             'value' => $value,
             'total' => $valid ? $value : null,
@@ -70,6 +83,26 @@ class ShipmentFormRequest extends FormRequest
             'insure' => $insure,
             'submit' => true,
         ])));
+    }
+
+    /**
+     * A saved pickup address by its public id, copied; or `current` on an edit: the shipment's own snapshot.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function resolvePickup(mixed $id): ?array
+    {
+        if (! is_string($id) || $id === '') {
+            return null;
+        }
+        if ($id === 'current') {
+            $shipment = $this->route('shipment');
+            $own = $shipment instanceof Shipment ? $shipment->pickup : null;
+
+            return is_array($own) && $own !== [] ? $own : null;
+        }
+
+        return PickupAddress::query()->where('public_id', $id)->first()?->toPickup();
     }
 
     private function courier(): string
@@ -264,7 +297,14 @@ class ShipmentFormRequest extends FormRequest
             'items.*' => ['required', 'array'],
             'items.*.name' => ['required', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:100000', 'regex:'.self::QTY_PATTERN],
-        ] + $this->parcelRules() + $payment + $this->pickupRules() + $this->recipientRules();
+            'customer_id' => ['nullable', 'string', 'max:64', Rule::exists('customers', 'public_id')],
+            'save_customer' => ['boolean'],
+            'pickup_address_id' => ['bail', 'required', 'string', 'max:64', function (string $attribute, mixed $value, \Closure $fail) {
+                if ($this->chosenPickup === null) {
+                    $fail('Choose a pickup address.');
+                }
+            }],
+        ] + $this->parcelRules() + $payment + ($this->chosenPickup !== null ? $this->pickupRules() : []) + $this->recipientRules();
 
         return $this->spxRules($rules);
     }
@@ -306,11 +346,20 @@ class ShipmentFormRequest extends FormRequest
     public function shipmentData(bool $generateReference = true): array
     {
         $data = $this->validated();
+        unset($data['pickup_address_id'], $data['customer_id'], $data['save_customer']);
         if ($generateReference) {
             $data['client_reference'] ??= self::generateReference();
         }
 
         return $data;
+    }
+
+    /** The saved customer picked from the search, if any (validated to exist). */
+    public function pickedCustomer(): ?Customer
+    {
+        $id = $this->validated('customer_id');
+
+        return is_string($id) && $id !== '' ? Customer::query()->where('public_id', $id)->first() : null;
     }
 
     /** @return array<string, string> */
@@ -323,6 +372,10 @@ class ShipmentFormRequest extends FormRequest
             'value.numeric' => 'Enter the parcel value.',
             'value.gt' => 'Enter the parcel value.',
             'value.max' => 'Enter the parcel value.',
+            'customer_id.exists' => 'Search again.',
+            'pickup_address_id.required' => 'Choose a pickup address.',
+            'pickup_address_id.string' => 'Choose a pickup address.',
+            'pickup_address_id.max' => 'Choose a pickup address.',
             'items.*.quantity.regex' => 'Whole number.',
             'parcel.type.required' => 'Choose the packaging.',
             'parcel.type.in' => 'Choose the packaging.',

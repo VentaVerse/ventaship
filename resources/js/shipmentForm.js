@@ -70,6 +70,29 @@ export function courierReset(courier, { parcel, firstDate }) {
     };
 }
 
+const PICKUP_KEYS = ['contact_name', 'contact_phone', 'address_1', 'address_2', 'barangay', 'district', 'city', 'state', 'postcode'];
+
+/** The query entries that describe a pickup address to the SPX pickup-time lookup; blanks left out. */
+export function pickupParams(pickup) {
+    if (!pickup || typeof pickup !== 'object') {
+        return [];
+    }
+    const out = [];
+    for (const key of PICKUP_KEYS) {
+        if (typeof pickup[key] === 'string' && pickup[key] !== '') {
+            out.push([`pickup[${key}]`, pickup[key]]);
+        }
+    }
+    const codes = pickup.codes && typeof pickup.codes === 'object' ? pickup.codes : {};
+    for (const level of ['state', 'city', 'barangay']) {
+        if (typeof codes[level] === 'string' && codes[level] !== '') {
+            out.push([`pickup[codes][${level}]`, codes[level]]);
+        }
+    }
+
+    return out;
+}
+
 export function shipmentForm(config) {
     return {
         account: config.account,
@@ -79,6 +102,8 @@ export function shipmentForm(config) {
         value: config.value,
         rows: [],
         seq: 0,
+        pickupId: config.pickupId ?? '',
+        pickupOpen: false,
         ...config.courier,
         slotSeq: 0,
 
@@ -94,6 +119,11 @@ export function shipmentForm(config) {
                     firstDate: config.firstDate,
                 }));
             });
+            // SPX pickup times belong to the pickup address they were loaded for.
+            this.$watch('pickupId', () => {
+                this.slotSeq++;
+                Object.assign(this, { slot: '', slots: [], slotState: 'idle' });
+            });
         },
 
         get courier() {
@@ -107,12 +137,7 @@ export function shipmentForm(config) {
         async loadSlots() {
             const seq = ++this.slotSeq;
             this.slotState = 'loading';
-            const params = new URLSearchParams({ account_id: this.account });
-            for (const [key, value] of new FormData(this.$root)) {
-                if (key.startsWith('pickup[') && typeof value === 'string') {
-                    params.append(key, value);
-                }
-            }
+            const params = new URLSearchParams([['account_id', this.account], ...pickupParams((config.pickups ?? {})[this.pickupId])]);
             try {
                 const res = await fetch(`${config.slotsUrl}?${params}`, {
                     headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },

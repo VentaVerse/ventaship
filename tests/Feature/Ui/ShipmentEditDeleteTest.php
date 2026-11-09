@@ -43,8 +43,7 @@ class ShipmentEditDeleteTest extends TestCase
             'value' => '1000.00',
             'parcel' => ['weight_kg' => '1.2', 'type' => 'box', 'length_cm' => '', 'width_cm' => '', 'height_cm' => ''],
             'payment' => ['method' => 'prepaid', 'cod_amount' => '', 'declared_value' => '1000'],
-            'pickup' => ['contact_name' => 'Venta Warehouse', 'contact_phone' => '09181234567', 'address_1' => '5 Shaw Blvd', 'address_2' => '',
-                'barangay' => '', 'city' => 'Mandaluyong', 'state' => 'Metro Manila', 'postcode' => '1550'],
+            'pickup_address_id' => $this->pickupId(),
         ], $over);
     }
 

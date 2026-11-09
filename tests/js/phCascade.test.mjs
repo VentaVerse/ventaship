@@ -109,3 +109,89 @@ test('failed load sets an error and retry loads again', async () => {
     await retrying;
     assert.equal(c.lists.cities.length, 1);
 });
+
+test('fill sets the codes level by level, through a district, and keeps the postcode', async () => {
+    const c = make({ lists: { provinces: [{ code: 'NCR', name: 'Metro Manila' }], cities: [], districts: [], barangays: [] } });
+    c.sel.state = 'OLD';
+    c.free.barangay = true;
+    const done = c.fill({ state: 'Metro Manila', city: 'Manila', district: 'Ermita', barangay: 'Barangay 659', postcode: '1000',
+        codes: { state: 'NCR', city: 'MNL', barangay: 'B659' } });
+
+    assert.equal(c.sel.state, 'NCR');
+    assert.equal(c.free.barangay, false);
+    assert.equal(c.postcode, '1000');
+    take(c, 'city', 'NCR').resolve([{ code: 'MNL', name: 'Manila', zip: '1001' }]);
+    await tick();
+    assert.equal(c.sel.city, 'MNL');
+    take(c, 'district', 'MNL').resolve([{ code: 'ERM', name: 'Ermita' }]);
+    await tick();
+    assert.equal(c.sel.district, 'ERM');
+    take(c, 'barangay', 'ERM').resolve([{ code: 'B659', name: 'Barangay 659' }]);
+    await done;
+
+    assert.deepEqual(c.sel, { state: 'NCR', city: 'MNL', district: 'ERM', barangay: 'B659' });
+    assert.equal(c.name('district'), 'Ermita');
+    assert.equal(c.code('barangay'), 'B659');
+    assert.equal(c.postcode, '1000');
+});
+
+test('fill without codes matches by name, and a city without districts lists its barangays', async () => {
+    const c = make({ lists: { provinces: [{ code: 'CEB', name: 'Cebu' }], cities: [], districts: [], barangays: [] } });
+    const done = c.fill({ state: 'cebu ', city: 'Cebu City', barangay: 'Lahug', postcode: '' });
+    take(c, 'city', 'CEB').resolve([{ code: 'CC', name: 'Cebu City', zip: '6000' }]);
+    await tick();
+    take(c, 'district', 'CC').resolve([]);
+    await tick();
+    take(c, 'barangay', 'CC').resolve([{ code: 'LAH', name: 'Lahug' }]);
+    await done;
+
+    assert.deepEqual(c.sel, { state: 'CEB', city: 'CC', district: '', barangay: 'LAH' });
+    assert.equal(c.postcode, '6000');
+});
+
+test('fill leaves an unmatched level and everything below it as text', async () => {
+    const c = make({ lists: { provinces: [{ code: 'NCR', name: 'Metro Manila' }], cities: [], districts: [], barangays: [] } });
+    const done = c.fill({ state: 'Metro Manila', city: 'Atlantis', barangay: 'Deep', postcode: '9999' });
+    take(c, 'city', 'NCR').resolve([{ code: 'MNL', name: 'Manila' }]);
+    await done;
+
+    assert.equal(c.sel.state, 'NCR');
+    assert.equal(c.free.city, true);
+    assert.equal(c.text.city, 'Atlantis');
+    assert.equal(c.free.district, false);
+    assert.equal(c.free.barangay, true);
+    assert.equal(c.name('barangay'), 'Deep');
+    assert.equal(c.postcode, '9999');
+
+    const lost = make();
+    await lost.fill({ state: 'Lost Province', city: 'Atlantis' });
+    assert.equal(lost.free.state, true);
+    assert.equal(lost.name('state'), 'Lost Province');
+    assert.equal(lost.name('city'), 'Atlantis');
+});
+
+test('a second fill wins over one still loading', async () => {
+    const c = make({ lists: { provinces: [{ code: 'NCR', name: 'Metro Manila' }, { code: 'CEB', name: 'Cebu' }], cities: [], districts: [], barangays: [] } });
+    const first = c.fill({ state: 'Metro Manila', city: 'Manila' });
+    const second = c.fill({ state: 'Cebu', city: 'Cebu City' });
+    take(c, 'city', 'CEB').resolve([{ code: 'CC', name: 'Cebu City' }]);
+    await tick();
+    take(c, 'city', 'NCR').resolve([{ code: 'MNL', name: 'Manila' }]);
+    take(c, 'district', 'CC').resolve([]);
+    await tick();
+    take(c, 'barangay', 'CC').resolve([]);
+    await Promise.all([first, second]);
+
+    assert.equal(c.sel.state, 'CEB');
+    assert.equal(c.sel.city, 'CC');
+});
+
+test('the fill event only reaches its own prefix', async () => {
+    const c = make();
+    c.prefix = 'recipient';
+    const got = [];
+    c.fill = async (a) => got.push(a);
+    c.onFill({ detail: { prefix: 'pickup', address: { state: 'X' } } });
+    c.onFill({ detail: { prefix: 'recipient', address: { state: 'Y' } } });
+    assert.deepEqual(got, [{ state: 'Y' }]);
+});

@@ -15,6 +15,8 @@ export function phCascade(config) {
         postcodeEdited: false,
         error: null,
         tickets: { state: 0, city: 0, district: 0, barangay: 0 },
+        prefix: config.prefix ?? '',
+        fills: 0,
 
         async fetchList(level, parent) {
             const res = await fetch(`${config.url}/${PH_LIST[level]}?parent=${encodeURIComponent(parent)}`, {
@@ -161,6 +163,84 @@ export function phCascade(config) {
         async retry() {
             if (this.error) {
                 await this.reload(this.error.from);
+            }
+        },
+
+        // The `ph-fill` window event (`{ prefix, address }`) fills this cascade when the prefix is its own.
+        onFill(event) {
+            const detail = event?.detail ?? {};
+            if (detail.prefix === this.prefix && detail.address && typeof detail.address === 'object') {
+                this.fill(detail.address);
+            }
+        },
+
+        // The row of `level` for a saved address: by code, else by name (case and spaces ignored).
+        match(level, code, name) {
+            const options = this.options(level);
+            const key = String(name ?? '').trim().toLowerCase();
+
+            return (code ? options.find((o) => o.code === code) : null)
+                ?? (key !== '' ? options.find((o) => String(o.name).trim().toLowerCase() === key) : null)
+                ?? null;
+        },
+
+        // A level the lists do not have, and everything under it, stays the saved text (as the server render does).
+        freeFrom(level, address) {
+            [level, ...this.below(level)].forEach((l) => {
+                this.text[l] = String(address[l] ?? '').trim();
+                this.free[l] = this.text[l] !== '';
+            });
+        },
+
+        // Sets a saved address (shipment `recipient` shape) level by level: each code is chosen once its list has
+        // loaded. A newer fill, or the admin changing a level meanwhile, stops this one.
+        async fill(address) {
+            const run = ++this.fills;
+            const live = () => run === this.fills;
+            const codes = address.codes && typeof address.codes === 'object' ? address.codes : {};
+            this.clear(PH_LEVELS);
+            this.postcode = String(address.postcode ?? '').trim();
+            this.postcodeEdited = false;
+
+            const state = this.match('state', codes.state, address.state);
+            if (!state) {
+                return this.freeFrom('state', address);
+            }
+            this.sel.state = state.code;
+            if (!(await this.load('city', state.code, 'state')) || !live()) {
+                return;
+            }
+
+            const city = this.match('city', codes.city, address.city);
+            if (!city) {
+                return this.freeFrom('city', address);
+            }
+            this.sel.city = city.code;
+            if (this.postcode === '') {
+                this.applyZip();
+            }
+            if (!(await this.load('district', city.code, 'city')) || !live()) {
+                return;
+            }
+
+            if (this.lists.districts.length > 0) {
+                const district = this.match('district', null, address.district);
+                if (!district) {
+                    return this.freeFrom('district', address);
+                }
+                this.sel.district = district.code;
+                if (!(await this.load('barangay', district.code, 'district')) || !live()) {
+                    return;
+                }
+            } else if (!(await this.load('barangay', city.code, 'city')) || !live()) {
+                return;
+            }
+
+            const barangay = this.match('barangay', codes.barangay, address.barangay);
+            if (barangay) {
+                this.sel.barangay = barangay.code;
+            } else {
+                this.freeFrom('barangay', address);
             }
         },
 

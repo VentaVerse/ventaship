@@ -12,11 +12,12 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
+use Tests\Concerns\BuildsShipments;
 use Tests\TestCase;
 
 class ShipmentCourierFieldsTest extends TestCase
 {
-    use RefreshDatabase;
+    use BuildsShipments, RefreshDatabase;
 
     /** @var array<string, CourierAccount> */
     private array $accounts = [];
@@ -71,8 +72,7 @@ class ShipmentCourierFieldsTest extends TestCase
             'items' => [['name' => 'Blue Tee', 'quantity' => '2']],
             'value' => '1000',
             'payment' => ['method' => 'prepaid'],
-            'pickup' => ['contact_name' => 'Venta Warehouse', 'contact_phone' => '09181234567', 'address_1' => '5 Shaw Blvd',
-                'city' => 'Mandaluyong', 'state' => 'Metro Manila', 'postcode' => '1550'],
+            'pickup_address_id' => $this->pickupId(),
         ], $own, $over);
     }
 

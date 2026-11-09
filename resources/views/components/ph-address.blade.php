@@ -69,6 +69,7 @@
 
     $config = [
         'url' => url('/ph'),
+        'prefix' => $dot,
         'sel' => $sel,
         'free' => $free,
         'text' => ['state' => $text('state'), 'city' => $text('city'), 'district' => $text('district'), 'barangay' => $text('barangay')],
@@ -83,7 +84,7 @@
     ];
 @endphp
 
-<div class="ph-addr" x-data="phAddress(@js($config))">
+<div class="ph-addr" x-data="phAddress(@js($config))" x-on:ph-fill.window="onFill($event)">
     @foreach($fields as $level => [$label, $key])
         @php $id = 'ph-'.$slug.'-'.$level; @endphp
         <x-ui.field :label="$label" :for="$id" :error-key="$dot.'.'.$level" class="ph-addr__{{ $level }}" x-show="show('{{ $level }}')" x-cloak>

@@ -65,20 +65,18 @@ class ShipmentCreateTest extends TestCase
             'value' => '1000.00',
             'parcel' => ['weight_kg' => '1.2', 'type' => 'box', 'length_cm' => '', 'width_cm' => '', 'height_cm' => ''],
             'payment' => ['method' => 'prepaid', 'cod_amount' => '', 'declared_value' => '1000'],
-            'pickup' => ['contact_name' => 'Venta Warehouse', 'contact_phone' => '09181234567', 'address_1' => '5 Shaw Blvd', 'address_2' => '',
-                'barangay' => '', 'city' => 'Mandaluyong', 'state' => 'Metro Manila', 'postcode' => '1550'],
+            'pickup_address_id' => $this->pickupId(),
         ], $over);
     }
 
-    public function test_form_renders_with_sender_prefilled_and_accounts_listed(): void
+    public function test_form_renders_with_the_default_pickup_and_accounts_listed(): void
     {
         $this->sender();
         CourierAccount::factory()->create(['courier' => 'spx', 'label' => 'Second', 'status' => 'disabled']);
 
         $this->get('/shipments/new')->assertOk()
-            ->assertSeeText(['Add shipment', 'Courier', 'Customer', 'Items', 'Parcel', 'Payment', 'Sender', 'Order reference', 'QuadX', 'Add item', 'Book shipment'])
-            ->assertSee('value="Venta Warehouse"', false)
-            ->assertSee('value="5 Shaw Blvd"', false)
+            ->assertSeeText(['Add shipment', 'Courier', 'Pickup', 'Customer', 'Items', 'Parcel', 'Payment', 'Order reference', 'QuadX', 'Add item', 'Book shipment'])
+            ->assertSeeText(['Venta Warehouse', '5 Shaw Blvd'])
             ->assertSee('role="radiogroup"', false)
             ->assertDontSeeText('Second');
 
@@ -231,13 +229,13 @@ class ShipmentCreateTest extends TestCase
         $this->assertSame(0, Shipment::query()->count());
     }
 
-    public function test_form_renders_customer_and_sender_inputs_without_stray_directives(): void
+    public function test_form_renders_customer_and_pickup_inputs_without_stray_directives(): void
     {
         $this->sender();
 
         $html = $this->get('/shipments/new')->assertOk()->getContent();
 
-        foreach (['recipient[first_name]', 'recipient[phone]', 'pickup[contact_name]', 'pickup[city]'] as $name) {
+        foreach (['recipient[first_name]', 'recipient[phone]', 'pickup_address_id'] as $name) {
             $this->assertStringContainsString('name="'.$name.'"', $html);
         }
         $this->assertStringNotContainsString('@required(', $html);

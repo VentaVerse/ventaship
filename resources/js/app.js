@@ -1,5 +1,6 @@
 import './bootstrap';
 import Alpine from 'alpinejs';
+import { customerSearch } from './customerSearch';
 import { phCascade } from './phCascade';
 import { shipmentForm } from './shipmentForm';
 
@@ -40,6 +41,8 @@ Alpine.data('confirmDialog', () => ({
 Alpine.data('shipmentForm', (config) => shipmentForm(config));
 
 Alpine.data('phAddress', (config) => phCascade(config));
+
+Alpine.data('customerSearch', (config) => customerSearch(config));
 
 Alpine.data('bulkSelect', () => ({
     count: 0,

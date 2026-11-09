@@ -395,45 +395,217 @@
     }
 
     /* Sender */
-    .sh-sender__card {
+    .sh-sec__head {
         display: flex;
         align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+    }
+
+    .sh-sec__head > .st-h {
+        margin: 0;
+    }
+
+    /* Pickup: the chosen saved address as a card; Change lists them all as radios. */
+    .sh-pickups {
+        display: grid;
+        gap: 8px;
+    }
+
+    .sh-addr {
+        position: relative;
+        display: flex;
+        align-items: flex-start;
         gap: 12px;
         padding: 12px 14px;
-        border: 1px solid var(--bl-rule-2);
+        border: 1.5px solid var(--bl-rule-2);
         border-radius: var(--bl-r-ctrl);
+        background: var(--bl-sheet);
+        cursor: pointer;
     }
 
-    .sh-sender__icon {
+    .sh-addr:has(.sh-addr__input:checked) {
+        border-color: var(--bl-brand-btn);
+        background: var(--bl-brand-w);
+    }
+
+    .sh-addr:has(.sh-addr__input:focus-visible) {
+        outline: 2px solid var(--bl-brand);
+        outline-offset: 2px;
+    }
+
+    .sh-addr__input {
         flex: none;
-        color: var(--bl-ink-3);
+        width: 16px;
+        height: 16px;
+        margin: 2px 0 0;
+        accent-color: var(--bl-brand-btn);
     }
 
-    .sh-sender__text {
-        flex: 1;
+    /* Collapsed, the one card shown needs no visible radio; it stays in the form and in the tab order. */
+    .sh-pickups:not(.is-open) .sh-addr__input {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+    }
+
+    .sh-addr__text {
+        display: grid;
+        gap: 2px;
         min-width: 0;
         font-size: 13px;
     }
 
-    .sh-sender__name {
+    .sh-addr__name {
+        font-size: 13.5px;
         font-weight: 600;
     }
 
-    .sh-sender__phone {
+    .sh-addr__name .x-badge {
         margin-left: 6px;
-        font-weight: 400;
-        color: var(--bl-ink-2);
+        vertical-align: middle;
     }
 
-    .sh-sender__addr {
-        margin-top: 2px;
+    .sh-addr__line {
         color: var(--bl-ink-2);
+        line-height: 1.45;
         overflow-wrap: anywhere;
     }
 
-    .sh-sender__fields {
+    .sh-customer {
         display: grid;
         gap: 14px;
+    }
+
+    .sh-switch {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+        cursor: pointer;
+    }
+
+    .sh-switch__input {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 34px;
+        height: 100%;
+        margin: 0;
+        opacity: 0;
+        cursor: pointer;
+    }
+
+    .sh-switch__track {
+        position: relative;
+        flex: none;
+        width: 34px;
+        height: 20px;
+        border-radius: 999px;
+        background: var(--bl-field-edge);
+        transition: background-color .15s;
+    }
+
+    .sh-switch__track::after {
+        content: "";
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #fff;
+        transition: transform .15s;
+    }
+
+    .sh-switch__input:checked ~ .sh-switch__track {
+        background: var(--bl-brand-btn);
+    }
+
+    .sh-switch__input:checked ~ .sh-switch__track::after {
+        transform: translateX(14px);
+    }
+
+    .sh-switch__input:focus-visible ~ .sh-switch__track {
+        outline: 2px solid var(--bl-brand);
+        outline-offset: 2px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .sh-switch__track,
+        .sh-switch__track::after {
+            transition: none;
+        }
+    }
+
+    /* Customer search: a combobox over the saved customers. */
+    .sh-find {
+        position: relative;
+    }
+
+    .sh-find__box {
+        position: relative;
+    }
+
+    .sh-find__icon {
+        position: absolute;
+        top: 50%;
+        left: 12px;
+        color: var(--bl-ink-3);
+        transform: translateY(-50%);
+        pointer-events: none;
+    }
+
+    .sh-find__input.x-input {
+        width: 100%;
+        padding-left: 36px;
+    }
+
+    .sh-find__list {
+        position: absolute;
+        z-index: 20;
+        top: calc(100% + 6px);
+        right: 0;
+        left: 0;
+        max-height: 320px;
+        margin: 0;
+        padding: 0;
+        overflow-y: auto;
+        list-style: none;
+        border: 1px solid var(--bl-rule-2);
+        border-radius: 12px;
+        background: var(--bl-sheet);
+        box-shadow: var(--bl-lift-2);
+    }
+
+    .sh-find__opt {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 2px 10px;
+        padding: 9px 12px;
+        border-bottom: 1px solid var(--bl-rule);
+        font-size: 13px;
+        cursor: pointer;
+    }
+
+    .sh-find__opt:last-child {
+        border-bottom: 0;
+    }
+
+    .sh-find__opt.is-active {
+        background: var(--bl-chrome);
+        box-shadow: inset 2px 0 0 var(--bl-brand-btn);
+    }
+
+    .sh-find__name {
+        font-weight: 600;
+    }
+
+    .sh-find__meta {
+        color: var(--bl-ink-2);
     }
 
     /* Summary */
@@ -521,8 +693,15 @@
 
         .sh-seg__opt,
         .sh-check,
-        .sh-fold__toggle {
+        .sh-fold__toggle,
+        .sh-find__opt,
+        .sh-addr,
+        .sh-switch {
             min-height: 44px;
+        }
+
+        .sh-find__opt {
+            align-items: center;
         }
 
         .sh-pack {

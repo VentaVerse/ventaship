@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Ui;
 
+use App\Addresses\Customers;
 use App\Addresses\PickupAddresses;
 use App\Api\ApiError;
 use App\Couriers\CourierAccounts;
@@ -11,6 +12,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Ui\ShipmentFormRequest;
 use App\Models\AuditEntry;
 use App\Models\CourierAccount;
+use App\Models\PickupAddress;
 use App\Models\Shipment;
 use App\Shipments\CourierFormFields;
 use App\Shipments\ShipmentCreator;
@@ -20,6 +22,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -69,6 +72,7 @@ class ShipmentsController extends Controller
         try {
             if (! $form->boolean('book')) {
                 $this->auditUpdate($form, $creator->update($shipment, $data));
+                $this->rememberCustomer($form, $shipment, false);
 
                 return redirect()->route('shipments.show', $shipment->public_id)->with('status', 'Saved');
             }
@@ -78,6 +82,7 @@ class ShipmentsController extends Controller
 
         return $this->once($form, function () use ($form, $creator, $shipment, $data) {
             $this->auditUpdate($form, $creator->update($shipment, $data));
+            $this->rememberCustomer($form, $shipment, false);
             $booked = $creator->submit($shipment->refresh(), now: true);
             $this->audit($form, 'shipment.book_requested', $shipment);
 
@@ -139,6 +144,7 @@ class ShipmentsController extends Controller
     {
         return $this->once($form, function () use ($form, $creator) {
             $shipment = $creator->create(null, $form->shipmentData(), 'manual', now: true);
+            $this->rememberCustomer($form, $shipment, true);
             $this->audit($form, 'shipment.created', $shipment, [
                 'courier' => $shipment->courier,
                 'source' => 'manual',
@@ -194,6 +200,27 @@ class ShipmentsController extends Controller
         }
 
         return $this->toShipment($shipment->public_id, $this->outcome($shipment));
+    }
+
+    /**
+     * The form's customer choice, once the shipment is saved: a customer picked from the search gets this shipment
+     * counted (`$created`) and its time, never a new address; a new one is saved only with "Save customer" on.
+     * A failure is logged and never reaches the booking.
+     */
+    private function rememberCustomer(ShipmentFormRequest $form, Shipment $shipment, bool $created): void
+    {
+        DB::afterCommit(function () use ($form, $shipment, $created) {
+            try {
+                $customers = app(Customers::class);
+                if (($picked = $form->pickedCustomer()) !== null) {
+                    $customers->recordShipment($picked, $created);
+                } elseif ($form->boolean('save_customer')) {
+                    $customers->upsertFromShipment($shipment->refresh(), $created);
+                }
+            } catch (Throwable $e) {
+                Log::warning('Saving the customer failed', ['shipment_id' => $shipment->id, 'exception' => $e::class]);
+            }
+        });
     }
 
     private function failed(ApiError $e, ?Shipment $editing): RedirectResponse
@@ -390,12 +417,58 @@ class ShipmentsController extends Controller
             'services' => $this->servicesFor($usable),
             'fields' => $this->courierFieldsFor($usable),
             'lbcDates' => CourierFormFields::lbcDates(),
-            'sender' => $editing === null ? $pickups->default()?->toPickup() : ((array) $editing->pickup ?: null),
+            'pickups' => $this->pickupOptions($pickups, $editing),
             'token' => $token,
             'editing' => $editing !== null,
             'shipment' => $editing,
             'prefill' => $editing === null ? [] : $this->prefill($editing),
         ]);
+    }
+
+    /**
+     * The pickup radios: every saved address, the default first. An edit whose own snapshot is no saved address gets
+     * a leading `current` option; otherwise the matching address is selected. A new shipment selects the default.
+     *
+     * @return list<array{id: string, label: string, default: bool, selected: bool, pickup: array<string, mixed>}>
+     */
+    private function pickupOptions(PickupAddresses $pickups, ?Shipment $editing): array
+    {
+        $default = $pickups->default();
+        $options = PickupAddress::query()->orderByDesc('is_default')->orderBy('label')->orderBy('id')->get()
+            ->map(fn (PickupAddress $a) => ['id' => $a->public_id, 'label' => $a->label, 'default' => $a->is($default), 'selected' => false, 'pickup' => $a->toPickup()])
+            ->all();
+
+        $own = $editing !== null && is_array($editing->pickup) && $editing->pickup !== [] ? $editing->pickup : null;
+        $match = null;
+        if ($own !== null) {
+            $key = self::pickupKey($own);
+            $match = collect($options)->search(fn (array $o) => self::pickupKey($o['pickup']) === $key);
+            if ($match === false) {
+                array_unshift($options, ['id' => 'current', 'label' => 'Current', 'default' => false, 'selected' => false, 'pickup' => $own]);
+                $match = 0;
+            }
+        } elseif ($options !== []) {
+            $match = 0;
+        }
+        if ($match !== null) {
+            $options[$match]['selected'] = true;
+        }
+
+        return $options;
+    }
+
+    /** A pickup's comparable content: blanks as null, names trimmed, codes sorted. Country and extra keys are ignored. */
+    private static function pickupKey(array $pickup): string
+    {
+        $out = [];
+        foreach (PickupAddress::FIELDS as $field) {
+            $value = is_scalar($pickup[$field] ?? null) ? trim((string) $pickup[$field]) : '';
+            $out[$field] = $value === '' ? null : $value;
+        }
+        $codes = array_filter(array_map(fn ($c) => is_scalar($c) ? trim((string) $c) : '', array_intersect_key((array) ($pickup['codes'] ?? []), array_flip(['state', 'city', 'barangay']))));
+        ksort($codes);
+
+        return json_encode($out + ['codes' => $codes]);
     }
 
     /** @return list<array{value: string, label: string}> */

@@ -13,10 +13,7 @@ use Illuminate\Database\DeadlockException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
-use Mockery;
-use RuntimeException;
 use Tests\Concerns\BuildsShipments;
 use Tests\TestCase;
 
@@ -43,9 +40,38 @@ class CustomersTest extends TestCase
         return app(ShipmentCreator::class);
     }
 
+    /** A shipment booked through the API, then saved as a customer the way the form's "Save customer" does. */
     private function book(string $ref, array $recipient = []): Shipment
     {
-        return $this->creator()->create($this->client, $this->shipmentBody(['client_reference' => $ref, 'recipient' => $recipient]));
+        $shipment = $this->creator()->create($this->client, $this->shipmentBody(['client_reference' => $ref, 'recipient' => $recipient]));
+        app(Customers::class)->upsertFromShipment($shipment);
+
+        return $shipment;
+    }
+
+    public function test_an_api_shipment_never_saves_a_customer(): void
+    {
+        $this->creator()->create($this->client, $this->shipmentBody(['client_reference' => 'API1']), now: true);
+        $draft = $this->creator()->create($this->client, $this->shipmentBody(['client_reference' => 'API2', 'submit' => false]), 'manual');
+        $this->creator()->update($draft, $this->shipmentBody(['client_reference' => 'API2']));
+
+        $this->assertSame(2, Shipment::query()->count());
+        $this->assertSame(0, Customer::query()->count());
+    }
+
+    public function test_a_picked_customer_is_counted_without_touching_its_address(): void
+    {
+        $this->book('P1');
+        $c = Customer::query()->sole();
+        $this->travel(5)->minutes();
+
+        app(Customers::class)->recordShipment($c);
+        app(Customers::class)->recordShipment($c, false);
+
+        $fresh = $c->fresh();
+        $this->assertSame(2, $fresh->shipments_count);
+        $this->assertSame(now()->toDateTimeString(), $fresh->last_shipped_at->toDateTimeString());
+        $this->assertSame($c->address, $fresh->address);
     }
 
     public function test_a_created_shipment_saves_its_recipient_as_a_customer(): void
@@ -89,10 +115,12 @@ class CustomersTest extends TestCase
         $this->assertSame(2, Customer::query()->count());
     }
 
-    public function test_editing_a_draft_updates_the_customer_without_counting_again(): void
+    public function test_saving_an_edited_draft_again_updates_the_customer_without_counting_again(): void
     {
         $draft = $this->creator()->create($this->client, $this->shipmentBody(['client_reference' => 'D1', 'submit' => false]), 'manual');
+        app(Customers::class)->upsertFromShipment($draft);
         $this->creator()->update($draft, $this->shipmentBody(['client_reference' => 'D1', 'recipient' => ['address_1' => '9 New St']]));
+        app(Customers::class)->upsertFromShipment($draft->refresh(), false);
 
         $c = Customer::query()->sole();
         $this->assertSame(1, $c->shipments_count);
@@ -105,31 +133,6 @@ class CustomersTest extends TestCase
 
         $this->assertNull(app(Customers::class)->upsertFromShipment($s));
         $this->assertSame(0, Customer::query()->count());
-    }
-
-    public function test_an_upsert_failure_never_fails_the_booking(): void
-    {
-        $customers = Mockery::mock(Customers::class);
-        $customers->shouldReceive('upsertFromShipment')->andThrow(new RuntimeException('boom'));
-        $this->app->instance(Customers::class, $customers);
-        Log::spy();
-        $this->fake->booksAs('QX-1');
-
-        $s = $this->creator()->create($this->client, $this->shipmentBody(['client_reference' => 'F1']), 'manual', now: true);
-
-        $this->assertSame('booked', $s->state);
-        Log::shouldHaveReceived('warning')->withArgs(fn (string $m, array $ctx) => $m === 'Saving the customer failed' && $ctx['shipment_id'] === $s->id)->once();
-        $this->assertSame(0, Customer::query()->count());
-    }
-
-    public function test_the_upsert_runs_after_the_callers_transaction_commits(): void
-    {
-        DB::transaction(function () {
-            $this->book('T1');
-            $this->assertSame(0, Customer::query()->count());
-        });
-
-        $this->assertSame(1, Customer::query()->count());
     }
 
     public function test_search_matches_name_or_phone_caps_results_and_needs_two_characters(): void

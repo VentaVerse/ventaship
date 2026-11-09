@@ -47,6 +47,18 @@ class Customers
         }
     }
 
+    /**
+     * A shipment sent to a customer picked on the form: its last shipped time moves on, and with `$count` (a new
+     * shipment, not an edited one) its count goes up. The saved name and address stay as they are.
+     */
+    public function recordShipment(Customer $customer, bool $count = true): void
+    {
+        Customer::query()->whereKey($customer->getKey())->update(array_filter([
+            'shipments_count' => $count ? DB::raw('shipments_count + 1') : null,
+            'last_shipped_at' => now(),
+        ]));
+    }
+
     /** @return Collection<int, Customer> name or phone matches, most recently shipped first */
     public function search(string $q, int $limit = 8): Collection
     {

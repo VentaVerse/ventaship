@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Ui\AddressesController;
 use App\Http\Controllers\Ui\CourierAccountsController;
+use App\Http\Controllers\Ui\CustomerSearchController;
 use App\Http\Controllers\Ui\FulfillmentController;
 use App\Http\Controllers\Ui\PhAddressController;
 use App\Http\Controllers\Ui\PlatformsController;
@@ -41,6 +42,7 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
         Route::delete('/', [AddressesController::class, 'destroyPickup'])->name('addresses.pickup.destroy');
         Route::post('default', [AddressesController::class, 'makeDefault'])->name('addresses.pickup.default');
     });
+    Route::get('customers/search', CustomerSearchController::class)->name('customers.search');
     Route::prefix('addresses/customers/{customer:public_id}')->group(function () {
         Route::get('edit', [AddressesController::class, 'editCustomer'])->name('addresses.customers.edit');
         Route::put('/', [AddressesController::class, 'updateCustomer'])->name('addresses.customers.update');

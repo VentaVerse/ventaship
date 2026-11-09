@@ -25,7 +25,7 @@
     $r = is_array($shipment->recipient) ? $shipment->recipient : null;
     $name = $r ? trim(($r['first_name'] ?? '').' '.($r['last_name'] ?? '')) : '';
     $name = $name !== '' ? $name : null;
-    $address = $r ? collect([$r['address_1'] ?? null, $r['address_2'] ?? null, $r['barangay'] ?? null, $r['city'] ?? null, $r['state'] ?? null, $r['postcode'] ?? null])->filter()->implode(', ') : '';
+    $address = $r ? collect([$r['address_1'] ?? null, $r['address_2'] ?? null, $r['barangay'] ?? null, $r['district'] ?? null, $r['city'] ?? null, $r['state'] ?? null, $r['postcode'] ?? null])->filter()->implode(', ') : '';
     $pay = ShipmentBadges::payment($shipment);
     $refs = collect([$shipment->courier_ref, $shipment->client_reference])->filter()->unique()->implode(' · ');
     $tracking = $shipment->tracking_number ? TrackingLink::for($shipment) : null;

@@ -8,6 +8,7 @@ use App\Couriers\CourierRegistry;
 use App\Couriers\FakeCourier;
 use App\Models\Admin;
 use App\Models\CourierAccount;
+use App\Models\PickupAddress;
 use App\Models\Shipment;
 use App\Support\PhAddress;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -52,8 +53,7 @@ class ShipmentFormRedesignTest extends TestCase
             'value' => '1300.17',
             'parcel' => ['type' => 'box'],
             'payment' => ['method' => 'prepaid'],
-            'pickup' => ['contact_name' => 'Venta Warehouse', 'contact_phone' => '09181234567', 'address_1' => '5 Shaw Blvd',
-                'city' => 'Mandaluyong', 'state' => 'Metro Manila'],
+            'pickup_address_id' => $this->pickupId(),
         ], $over);
     }
 
@@ -157,7 +157,9 @@ class ShipmentFormRedesignTest extends TestCase
         // A name that does not belong to its code is refused.
         $this->post('/shipments', $this->form(['recipient' => ['city' => 'Makati'] + $recipient]))
             ->assertSessionHasErrors(['recipient.state' => 'Choose from the list.']);
-        $this->post('/shipments', $this->form(['pickup' => ['codes' => ['state' => 'bogus']]]))
+        // A saved pickup address whose codes no longer chain is refused the same way.
+        $stale = $this->savedPickup(['label' => 'Stale', 'codes' => ['state' => 'bogus']]);
+        $this->post('/shipments', $this->form(['pickup_address_id' => $stale->public_id]))
             ->assertSessionHasErrors(['pickup.state' => 'Choose from the list.']);
         $this->assertSame(1, Shipment::query()->count());
     }
@@ -202,14 +204,14 @@ class ShipmentFormRedesignTest extends TestCase
         @$dom->loadHTML($this->get('/shipments/new')->assertOk()->getContent());
         $xpath = new \DOMXPath($dom);
         $fields = [];
-        foreach ($xpath->query('//input[starts-with(@name, "pickup[") or @name="form_token"]') as $input) {
+        foreach ($xpath->query('//input[(@name="pickup_address_id" and @checked) or @name="form_token"]') as $input) {
             $fields[] = rawurlencode($input->getAttribute('name')).'='.rawurlencode($input->getAttribute('value'));
         }
         parse_str(implode('&', $fields), $posted);
         $tile = $xpath->query('//*[@data-courier="quadx"]//input[@name="account_id"]')->item(0);
         $this->assertNotNull($tile);
-        $this->assertSame($codes, $posted['pickup']['codes']);
-        $this->assertSame($district['name'], $posted['pickup']['district']);
+        $this->assertSame(PickupAddress::query()->sole()->public_id, $posted['pickup_address_id']);
+        $this->assertArrayNotHasKey('pickup', $posted);
         $this->assertSame($default->public_id, $tile->getAttribute('value'));
 
         $this->post('/shipments', $posted + [
@@ -276,20 +278,6 @@ class ShipmentFormRedesignTest extends TestCase
         $this->assertSame(1, substr_count($html, 'Not set up'));
     }
 
-    public function test_sender_collapsed_when_a_default_pickup_address_exists(): void
-    {
-        // No sender yet: expanded.
-        $this->assertStringContainsString('x-data="{ open: true }"', $this->get('/shipments/new')->getContent());
-
-        app(PickupAddresses::class)->create(['label' => 'Main', 'contact_name' => 'Venta Warehouse', 'contact_phone' => '09181234567',
-            'address_1' => '5 Shaw Blvd', 'city' => 'Mandaluyong', 'state' => 'Metro Manila']);
-
-        $html = $this->get('/shipments/new')->assertOk()->getContent();
-        $this->assertStringContainsString('x-data="{ open: false }"', $html);
-        $this->assertMatchesRegularExpression('/class="sh-sender__card".*Venta Warehouse.*5 Shaw Blvd.*Change/s', $html);
-        $this->assertStringContainsString('name="pickup[contact_name]"', $html);
-    }
-
     public function test_form_has_no_money_inputs_and_shows_summary(): void
     {
         $html = $this->get('/shipments/new')->assertOk()->getContent();
@@ -299,7 +287,6 @@ class ShipmentFormRedesignTest extends TestCase
         $this->assertStringContainsString('Collect on delivery', $html);
         $this->assertStringContainsString('Declared value', $html);
         $this->assertStringContainsString('name="recipient[codes][city]"', $html);
-        $this->assertStringContainsString('name="pickup[codes][city]"', $html);
         $this->assertMatchesRegularExpression('/<aside class="sh-summary".*Book shipment/s', $html);
         $this->assertMatchesRegularExpression('/<main[^>]*class="x-content x-content--wide"/', $html);
     }

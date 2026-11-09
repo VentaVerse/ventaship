@@ -2,9 +2,11 @@
 
 namespace Tests\Concerns;
 
+use App\Addresses\PickupAddresses;
 use App\Couriers\CourierRegistry;
 use App\Couriers\FakeCourier;
 use App\Models\CourierAccount;
+use App\Models\PickupAddress;
 
 trait BuildsShipments
 {
@@ -19,6 +21,21 @@ trait BuildsShipments
             'is_default' => true,
             'default_slot' => $courier,
         ]);
+    }
+
+    /** A saved pickup address (the default when it is the first), the one the shipment form tests post by id. */
+    protected function savedPickup(array $overrides = []): PickupAddress
+    {
+        return app(PickupAddresses::class)->create($overrides + [
+            'label' => 'Main', 'contact_name' => 'Venta Warehouse', 'contact_phone' => '09181234567',
+            'address_1' => '5 Shaw Blvd', 'city' => 'Mandaluyong', 'state' => 'Metro Manila', 'postcode' => '1550',
+        ]);
+    }
+
+    /** The default saved pickup address's public id, saving one first when there is none. */
+    protected function pickupId(): string
+    {
+        return (PickupAddress::query()->where('is_default', true)->first() ?? $this->savedPickup())->public_id;
     }
 
     /** A valid POST /shipments body; $overrides are merged with array_replace_recursive. */

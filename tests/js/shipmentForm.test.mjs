@@ -79,3 +79,14 @@ test('switching courier clears the other courier\'s choices', async () => {
     assert.equal(courierReset('quadx', { parcel: null, firstDate: '' }).shippingPayment, 'cash');
     assert.equal(courierReset('lbc', { parcel: null, firstDate: '' }).shippingPayment, '');
 });
+
+test('the SPX pickup-time query carries the chosen pickup address', async () => {
+    const { pickupParams } = await import('../../resources/js/shipmentForm.js');
+    const params = pickupParams({ contact_name: 'Venta', contact_phone: '0918', address_1: '5 Shaw', address_2: null, city: 'Manila', codes: { state: 'NCR', city: 'MNL' }, country: 'PH' });
+
+    assert.deepEqual(params, [
+        ['pickup[contact_name]', 'Venta'], ['pickup[contact_phone]', '0918'], ['pickup[address_1]', '5 Shaw'], ['pickup[city]', 'Manila'],
+        ['pickup[codes][state]', 'NCR'], ['pickup[codes][city]', 'MNL'],
+    ]);
+    assert.deepEqual(pickupParams(undefined), []);
+});
