@@ -4,16 +4,16 @@ namespace App\Webhooks\Inbound;
 
 use App\Models\CourierAccount;
 use App\Models\WebhookReceipt;
+use App\Support\AfterResponse;
 use App\Webhooks\Inbound\Jobs\ProcessReceipt;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-use Throwable;
 
 /**
  * Stores inbound courier webhooks as webhook_receipts (base plan §3 "Fast acknowledgement"). Nothing here parses
- * the courier's payload or touches a shipment: a known account's receipt is queued for ProcessReceipt and the
- * controller answers at once.
+ * the courier's payload or touches a shipment: a known account's receipt is processed by ProcessReceipt in this
+ * process once the response is sent (AfterResponse), so the courier is answered at once even with no queue worker.
+ * A run that fails leaves the receipt `received`, and ventaship:receipts-reprocess queues it again after two minutes.
  *
  * - accepted: the raw body exactly as received (getContent(), capped at 64 KB) plus the allow-listed headers.
  * - unrouted: no account found; at most 16 KB of the body, pruned after 7 days.
@@ -32,7 +32,7 @@ final class ReceiptIngestor
 
     private const EXTERNAL_ID_MAX = 100;
 
-    /** Stores the receipt and queues it. Null when this is a duplicate of a receipt already stored (SPX `id`). */
+    /** Stores the receipt and processes it after the response. Null for a duplicate of a stored receipt (SPX `id`). */
     public function accept(CourierAccount $account, Request $r, string $routedBy): ?WebhookReceipt
     {
         $raw = $r->getContent();
@@ -52,16 +52,14 @@ final class ReceiptIngestor
                 'error' => $problem,
             ]);
         } catch (UniqueConstraintViolationException) {
-            return null; // the courier sent this delivery before: already stored and queued
+            return null; // the courier sent this delivery before: already stored and processed
         }
 
         if ($problem === null) {
-            try {
-                ProcessReceipt::dispatch($receipt->id);
-            } catch (Throwable $e) {
-                // Still stored: ventaship:receipts-reprocess queues it again after two minutes.
-                Log::error('Courier webhook receipt could not be queued', ['receipt' => $receipt->id, 'exception' => $e::class]);
-            }
+            $id = $receipt->id;
+            // Not through the sync queue: its failed() would settle the receipt as failed instead of leaving it for
+            // ventaship:receipts-reprocess.
+            AfterResponse::run("process receipt {$id}", fn () => app()->call([new ProcessReceipt($id, inline: true), 'handle']));
         }
 
         return $receipt;

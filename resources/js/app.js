@@ -188,15 +188,19 @@ Alpine.data('credentialField', (config) => ({
         }
     },
 
-    /** Copies the full value; fetches it first (audited like View) when it is not on screen. */
+    /**
+     * Copies the full value; fetches it first (audited like View) when it is not on screen. A plain value
+     * (config.value, nothing secret) is copied as it is.
+     */
     async copy() {
-        if (this.busy || !config.url) {
+        const plain = typeof config.value === 'string';
+        if (this.busy || (!config.url && !plain)) {
             return;
         }
         this.busy = true;
         this.error = '';
         try {
-            const value = this.state === 'viewing' ? this.$refs.input.value : await this.fetchValue();
+            const value = plain ? config.value : this.state === 'viewing' ? this.$refs.input.value : await this.fetchValue();
             if (value === null) {
                 return;
             }

@@ -7,6 +7,7 @@ use App\Models\Admin;
 use App\Models\AuditEntry;
 use App\Rules\PhPhone;
 use App\Support\PhAddress;
+use App\Support\SchedulerCron;
 use App\Support\Settings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,7 +22,7 @@ use Illuminate\View\View;
 
 class SettingsController extends Controller
 {
-    private const TABS = ['general' => 'General', 'couriers' => 'Couriers & safety', 'account' => 'Account'];
+    private const TABS = ['general' => 'General', 'couriers' => 'Couriers & safety', 'jobs' => 'Scheduled jobs', 'account' => 'Account'];
 
     /** Form field => settings key (dots are not valid in field names). */
     private const SWITCHES = [
@@ -70,7 +71,19 @@ class SettingsController extends Controller
             'sender' => collect(self::SENDER)->map(fn (string $key) => $settings->get($key))->all(),
             'senderAddress' => $this->storedAddress($settings),
             'admin' => $request->user(),
+            'cron' => $tab === 'jobs' ? $this->cron($settings) : null,
         ]);
+    }
+
+    /** @return array{line: string, command: string, fields: array<string, string>, lastRun: array{0: string, 1: string}} */
+    private function cron(Settings $settings): array
+    {
+        return [
+            'line' => SchedulerCron::line(),
+            'command' => SchedulerCron::command(),
+            'fields' => SchedulerCron::FIELDS,
+            'lastRun' => SchedulerCron::lastRunBadge(SchedulerCron::lastRun($settings)),
+        ];
     }
 
     public function update(Request $request, Settings $settings): RedirectResponse

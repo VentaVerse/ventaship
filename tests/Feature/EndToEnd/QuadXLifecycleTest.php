@@ -89,13 +89,11 @@ class QuadXLifecycleTest extends TestCase
                 ->assertOk();
         }
 
-        // 7. Outgoing delivery. One event per shipment goes out per run, the next waiting for the one before it.
-        $runs = 0;
-        do {
-            $this->artisan('ventaship:events-deliver')->assertSuccessful();
-            $runs++;
-        } while ($runs < 20 && OutgoingEvent::query()->where('status', 'pending')->exists());
-        $this->assertSame(6, $runs, 'six events, one per run');
+        // 7. Outgoing delivery: each event went out right after the response of the request that recorded it, so the
+        // scheduled retry path finds nothing left.
+        $this->assertSame(6, OutgoingEvent::query()->where('status', 'delivered')->count());
+        $this->assertFalse(OutgoingEvent::query()->where('status', 'pending')->exists());
+        $this->artisan('ventaship:events-deliver')->assertSuccessful()->expectsOutput('Queued 0 event(s).');
 
         // 8. Received in sequence order, each signed with the app's webhook secret.
         $hooks = Http::recorded(fn (Request $r) => str_starts_with($r->url(), self::HOOK_URL))->map(fn (array $pair) => $pair[0])->values();

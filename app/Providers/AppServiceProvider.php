@@ -3,10 +3,13 @@
 namespace App\Providers;
 
 use App\Models\ApiToken;
+use App\Support\AfterResponse;
 use App\Support\Settings;
 use App\Support\Vault\CredentialVault;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobAttempted;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Sanctum\Sanctum;
@@ -20,6 +23,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton(CredentialVault::class);
         $this->app->scoped(Settings::class);
+        $this->app->singleton(AfterResponse::class);
     }
 
     /**
@@ -29,6 +33,13 @@ class AppServiceProvider extends ServiceProvider
     {
         Sanctum::usePersonalAccessTokenModel(ApiToken::class);
         $this->configureRateLimits();
+
+        // A queue worker never terminates between jobs: its after-response work runs after each job instead.
+        Event::listen(function (JobAttempted $event): void {
+            if ($event->connectionName !== 'sync') {
+                $this->app->make(AfterResponse::class)->flush();
+            }
+        });
     }
 
     /**

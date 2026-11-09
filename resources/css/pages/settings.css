@@ -119,3 +119,22 @@
         background: var(--bl-paper);
     }
 }
+
+@layer components {
+    .st-copy--short {
+        flex: 0 0 64px;
+        max-width: 64px;
+        text-align: center;
+    }
+
+    @media (max-width: 640px) {
+        .st-jobs .x-btn {
+            min-height: 44px;
+            min-width: 44px;
+        }
+
+        .st-copy--short {
+            max-width: 64px;
+        }
+    }
+}

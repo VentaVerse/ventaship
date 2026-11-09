@@ -8,6 +8,7 @@ use App\Models\Shipment;
 use App\Models\WebhookReceipt;
 use App\Shipments\BookingOutcomes;
 use App\Shipments\StatusRecorder;
+use App\Support\AfterResponse;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Bus\Dispatcher;
@@ -29,7 +30,8 @@ use Throwable;
  *
  * Receipt outcome: `processed` when any event matched (or there were none), `unmatched` when none did, `failed`
  * when the body cannot be read. Any unmatched event relays the raw receipt when the account has a relay URL; if
- * the relay cannot be queued the receipt becomes `relay_pending` and ventaship:receipts-reprocess queues it again.
+ * the relay cannot be queued (or, run inline after the response, fails) the receipt becomes `relay_pending` and
+ * ventaship:receipts-reprocess queues it again.
  * A bad receipt is settled as failed and never blocks the others; a database error is retried.
  */
 class ProcessReceipt implements ShouldQueue
@@ -50,7 +52,8 @@ class ProcessReceipt implements ShouldQueue
 
     private const REMARKS_MAX = 2000;
 
-    public function __construct(public int $receiptId)
+    /** @param  bool  $inline  run after the response, not by a queue worker: the relay runs the same way */
+    public function __construct(public int $receiptId, public bool $inline = false)
     {
         $this->onQueue('inbound');
     }
@@ -146,6 +149,12 @@ class ProcessReceipt implements ShouldQueue
 
         // The raw body cannot be split: one unmatched event relays the whole delivery, as the courier sent it.
         if ($unmatched > 0 && filled($account->relay_url) && ! $account->trashed()) {
+            if ($this->inline) {
+                $this->relayAfterResponse($receipt->id);
+
+                return;
+            }
+
             try {
                 app(Dispatcher::class)->dispatch(new RelayReceipt($receipt->id));
             } catch (Throwable $e) {
@@ -154,6 +163,19 @@ class ProcessReceipt implements ShouldQueue
                 $receipt->forceFill(['status' => 'relay_pending'])->save();
             }
         }
+    }
+
+    /** A relay that fails here leaves the receipt `relay_pending`: ventaship:receipts-reprocess queues it again. */
+    private function relayAfterResponse(int $id): void
+    {
+        AfterResponse::run("relay receipt {$id}", function () use ($id): void {
+            try {
+                app()->call([new RelayReceipt($id), 'handle']);
+            } catch (Throwable $e) {
+                Log::warning('Courier webhook relay failed; left for reprocess', ['receipt' => $id, 'exception' => $e::class]);
+                WebhookReceipt::query()->whereKey($id)->whereIn('status', ['unmatched', 'processed'])->update(['status' => 'relay_pending']);
+            }
+        });
     }
 
     /** @param  array<string, mixed>  $event */

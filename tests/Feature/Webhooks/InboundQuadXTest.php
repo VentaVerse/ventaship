@@ -75,14 +75,15 @@ class InboundQuadXTest extends TestCase
         $this->assertSame([], $response->headers->getCookies(), 'no session or XSRF cookie is set');
     }
 
-    public function test_processing_runs_on_the_inbound_queue(): void
+    public function test_processing_runs_after_the_response_not_on_the_queue(): void
     {
         Queue::fake();
+        $this->bookedShipment();
 
         $this->postRaw('/webhooks/quadx?token='.self::TOKEN, $this->fixtureBody())->assertOk();
 
-        Queue::assertPushedOn('inbound', ProcessReceipt::class);
-        $this->assertSame('received', WebhookReceipt::query()->sole()->status);
+        Queue::assertNothingPushed();
+        $this->assertSame('processed', WebhookReceipt::query()->sole()->status);
     }
 
     public function test_processing_job_times_out_before_its_queue_hands_it_to_another_worker(): void

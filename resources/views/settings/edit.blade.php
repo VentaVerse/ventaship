@@ -91,6 +91,33 @@
             </div>
             @include('settings._bar', ['tab' => 'couriers'])
         </form>
+    @elseif($tab === 'jobs')
+        <div class="st-jobs" x-data="{ status: '' }" x-on:credential-status="status = ''; $nextTick(() => status = $event.detail)">
+            <div class="st-sec">
+                <h2 class="st-h">Scheduler</h2>
+                <div class="st-row">
+                    <div class="fm-field">
+                        <span class="fm-label">Last run</span>
+                        <span><x-ui.badge :tone="$cron['lastRun'][1]">{{ $cron['lastRun'][0] }}</x-ui.badge></span>
+                    </div>
+                </div>
+                <div class="st-row">
+                    <x-ui.copy-value label="Cron line" id="f-cron-line" :value="$cron['line']" />
+                </div>
+            </div>
+            <div class="st-sec">
+                <h2 class="st-h">HestiaCP</h2>
+                @foreach($cron['fields'] as $field => $value)
+                    <div class="st-row">
+                        <x-ui.copy-value :label="$field" :id="'f-cron-' . strtolower($field)" :value="$value" :short="true" />
+                    </div>
+                @endforeach
+                <div class="st-row">
+                    <x-ui.copy-value label="Command" id="f-cron-command" :value="$cron['command']" />
+                </div>
+            </div>
+            <p class="x-sr" aria-live="polite" x-text="status"></p>
+        </div>
     @else
         <form method="POST" action="{{ route('settings.account') }}" novalidate>
             @csrf
