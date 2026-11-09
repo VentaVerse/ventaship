@@ -31,12 +31,17 @@
                 </x-ui.field>
             </div>
             <div class="st-row">
+                <x-ui.field label="Address line 2" name="address_2">
+                    <x-ui.input id="f-address-2" name="address_2" class="st-ctl" value="{{ old('address_2', $values['address_2'] ?? '') }}" maxlength="255" autocomplete="off" />
+                </x-ui.field>
+            </div>
+            <div class="st-row">
                 <x-ph-address prefix="address" :values="old('address', $values)" />
             </div>
         </div>
         <div class="st-bar">
             @if($customer)
-                <x-ui.button class="addr-delete" x-on:click="$dispatch('confirm', {{ Js::from(['title' => 'Delete '.$customer->name.'?', 'confirm' => 'Delete customer', 'dismiss' => 'Keep customer', 'form' => 'delete-customer', 'tone' => 'danger']) }})">Delete</x-ui.button>
+                <x-ui.button class="addr-delete" x-on:click="$dispatch('confirm', {{ Js::from(['title' => 'Delete '.$customer->shownName().'?', 'confirm' => 'Delete customer', 'dismiss' => 'Keep customer', 'form' => 'delete-customer', 'tone' => 'danger']) }})">Delete</x-ui.button>
             @endif
             <x-ui.button :href="route('addresses.index', ['tab' => 'customers'])">Discard</x-ui.button>
             <x-ui.button variant="primary" type="submit">Save</x-ui.button>

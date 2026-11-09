@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Ui;
 
-use App\Addresses\Customers;
 use App\Addresses\PickupAddresses;
 use App\Models\Admin;
 use App\Models\Customer;
@@ -109,9 +108,20 @@ class AddressesPageTest extends TestCase
         $pickups->create($this->flat($this->pickupInput(['label' => 'Shop', 'contact_name' => 'Ben Lim'])));
 
         $res = $this->actingAs($this->admin())->get(route('addresses.index'))->assertOk();
-        $res->assertSeeInOrder(['Warehouse', 'Default', 'Shop'])->assertSee('Ana Reyes')->assertSee('09171234567')
-            ->assertSee('Makati')->assertSee('Add address')->assertSee('Make default');
+        $res->assertSeeInOrder(['Warehouse', 'Default', 'Shop'])->assertSee('Ana Reyes')->assertSee('0917 123 4567')
+            ->assertDontSee('09171234567')->assertSee('Makati')->assertSee('Add address')->assertSee('Make default');
         $this->assertSame(1, substr_count($res->getContent(), 'Make default</button>'));
+    }
+
+    public function test_the_pickup_tab_header_says_label_and_rows_open_the_address(): void
+    {
+        $a = app(PickupAddresses::class)->create($this->flat($this->pickupInput()));
+
+        $html = $this->actingAs($this->admin())->get(route('addresses.index'))->assertOk()
+            ->assertSee('<th scope="col">Label</th>', false)->assertDontSee('<th scope="col">Name</th>', false)->getContent();
+        $this->assertStringContainsString('<a class="addr-link" href="'.route('addresses.pickup.edit', $a).'">Warehouse</a>', $html);
+        $this->assertStringContainsString('data-label="Contact"', $html);
+        $this->assertStringContainsString('data-label="Address"', $html);
     }
 
     public function test_the_pickup_tab_empty_state(): void
@@ -125,7 +135,8 @@ class AddressesPageTest extends TestCase
         $this->customer('09189990000', 'Maria');
 
         $this->actingAs($this->admin())->get(route('addresses.index', ['tab' => 'customers']))
-            ->assertOk()->assertSee('Juan Cruz')->assertSee('Maria Cruz')->assertSee('09171234567')->assertSee('9 Luna St');
+            ->assertOk()->assertSee('Juan Cruz')->assertSee('Maria Cruz')->assertSee('0917 123 4567')->assertDontSee('09171234567')
+            ->assertSee('9 Luna St');
 
         $this->actingAs($this->admin())->get(route('addresses.index', ['tab' => 'customers', 'q' => 'mari']))
             ->assertOk()->assertSee('Maria Cruz')->assertDontSee('Juan Cruz');
@@ -145,10 +156,51 @@ class AddressesPageTest extends TestCase
             ->assertOk()->assertSee('51 to 51 of 51')->assertSee('data-customer-row', false);
     }
 
-    public function test_customers_tab_empty_state(): void
+    public function test_customers_tab_empty_state_offers_add_customer(): void
     {
-        $this->actingAs($this->admin())->get(route('addresses.index', ['tab' => 'customers']))->assertOk()->assertSee('No customers');
-        $this->actingAs($this->admin())->get(route('addresses.index', ['tab' => 'customers', 'q' => 'zz']))->assertOk()->assertSee('No customers');
+        $html = $this->actingAs($this->admin())->get(route('addresses.index', ['tab' => 'customers']))->assertOk()
+            ->assertSee('No customers')->assertDontSee('Clear search')->getContent();
+        $this->assertSame(2, substr_count($html, 'href="'.route('addresses.customers.create').'"'));
+    }
+
+    public function test_a_search_without_matches_offers_clear_search(): void
+    {
+        $this->customer();
+
+        $html = $this->actingAs($this->admin())->get(route('addresses.index', ['tab' => 'customers', 'q' => '<b>zz</b>']))->assertOk()
+            ->assertSee('No customers match "<b>zz</b>"')->assertSee('Clear search')->getContent();
+        $this->assertStringNotContainsString('<b>zz</b>', $html);
+        $this->assertStringContainsString('href="'.route('addresses.index', ['tab' => 'customers']).'"', $html);
+        $this->assertSame(1, substr_count($html, 'href="'.route('addresses.customers.create').'"'));
+    }
+
+    public function test_a_one_character_search_is_not_ignored(): void
+    {
+        $this->customer('09171234567', 'Juan');
+        $this->customer('09189990000', 'Maria');
+
+        $this->actingAs($this->admin())->get(route('addresses.index', ['tab' => 'customers', 'q' => 'j']))
+            ->assertOk()->assertSee('Juan Cruz')->assertDontSee('Maria Cruz');
+        $this->actingAs($this->admin())->get(route('addresses.index', ['tab' => 'customers', 'q' => '8']))
+            ->assertOk()->assertSee('Maria Cruz')->assertDontSee('Juan Cruz');
+        $this->actingAs($this->admin())->get(route('addresses.index', ['tab' => 'customers', 'q' => 'x']))
+            ->assertOk()->assertSee('No customers match "x"')->assertSee('Clear search');
+    }
+
+    public function test_a_nameless_customer_shows_the_grouped_phone(): void
+    {
+        $c = Customer::query()->create([
+            'phone' => '09182223333', 'name' => '09182223333', 'shipments_count' => 1, 'last_shipped_at' => now(),
+            'address' => ['phone' => '09182223333', 'address_1' => '4 Rizal Ave', 'city' => 'Bangued', 'state' => 'Abra', 'codes' => []],
+        ]);
+
+        $html = $this->actingAs($this->admin())->get(route('addresses.index', ['tab' => 'customers']))->assertOk()->getContent();
+        $this->assertStringContainsString('<a class="addr-link" href="'.route('addresses.customers.edit', $c).'">0918 222 3333</a>', $html);
+        $this->assertStringContainsString('aria-label="Edit 0918 222 3333"', $html);
+        $this->assertStringNotContainsString('aria-label="Edit "', $html);
+        foreach (['Phone', 'Address', 'Shipments', 'Last shipped'] as $label) {
+            $this->assertStringContainsString('data-label="'.$label.'"', $html);
+        }
     }
 
     public function test_an_unknown_tab_shows_pickup(): void
@@ -283,31 +335,96 @@ class AddressesPageTest extends TestCase
         $this->assertSame(3, $c->shipments_count);
     }
 
-    public function test_the_customer_form_has_no_email_or_address_line_2_and_keeps_stored_ones(): void
+    public function test_the_customer_form_has_no_email_and_keeps_the_stored_one(): void
     {
         $c = $this->customer();
-        $c->forceFill(['address' => ['email' => 'juan@example.com', 'address_2' => 'Unit 4'] + (array) $c->address])->save();
+        $c->forceFill(['address' => ['email' => 'juan@example.com'] + (array) $c->address])->save();
 
         foreach ([route('addresses.customers.create'), route('addresses.customers.edit', $c)] as $url) {
             $html = $this->actingAs($this->admin())->get($url)->assertOk()->getContent();
             $this->assertStringNotContainsString('name="email"', $html);
-            $this->assertStringNotContainsString('name="address_2"', $html);
-            $this->assertStringNotContainsString('Address line 2', $html);
             $this->assertStringNotContainsString('>Email<', $html);
         }
 
-        $this->put(route('addresses.customers.update', $c), $this->customerInput(['email' => 'x@example.com', 'address_2' => 'Hijack']))
+        $this->put(route('addresses.customers.update', $c), $this->customerInput(['email' => 'x@example.com']))
             ->assertSessionHasNoErrors();
         $c->refresh();
         $this->assertSame('7 Luna St', $c->address['address_1']);
         $this->assertSame('juan@example.com', $c->address['email']);
-        $this->assertSame('Unit 4', $c->address['address_2']);
 
-        $this->post(route('addresses.customers.store'), $this->customerInput(['phone' => '0917 222 3333', 'email' => 'x@example.com', 'address_2' => 'Unit 9']))
+        $this->post(route('addresses.customers.store'), $this->customerInput(['phone' => '0917 222 3333', 'email' => 'x@example.com']))
             ->assertSessionHasNoErrors();
-        $new = Customer::query()->where('phone', '09172223333')->sole();
-        $this->assertNull($new->address['email']);
-        $this->assertNull($new->address['address_2']);
+        $this->assertNull(Customer::query()->where('phone', '09172223333')->sole()->address['email']);
+    }
+
+    public function test_the_customer_address_line_2_round_trips(): void
+    {
+        $this->actingAs($this->admin())->get(route('addresses.customers.create'))->assertOk()
+            ->assertSee('Address line 2')->assertSee('name="address_2"', false);
+
+        $this->post(route('addresses.customers.store'), $this->customerInput(['address_2' => 'Unit 9']))->assertSessionHasNoErrors();
+        $c = Customer::query()->sole();
+        $this->assertSame('Unit 9', $c->address['address_2']);
+
+        $this->get(route('addresses.customers.edit', $c))->assertOk()->assertSee('value="Unit 9"', false);
+        $this->get(route('addresses.index', ['tab' => 'customers']))->assertSee('7 Luna St, Unit 9');
+
+        $this->put(route('addresses.customers.update', $c), $this->customerInput(['address_2' => 'Unit 10']))->assertSessionHasNoErrors();
+        $this->assertSame('Unit 10', $c->fresh()->address['address_2']);
+
+        $this->put(route('addresses.customers.update', $c), $this->customerInput(['address_2' => '']))->assertSessionHasNoErrors();
+        $this->assertNull($c->fresh()->address['address_2']);
+
+        $this->put(route('addresses.customers.update', $c), $this->customerInput(['address_2' => str_repeat('x', 256)]))
+            ->assertSessionHasErrors(['address_2' => 'Too long.']);
+    }
+
+    public function test_empty_forms_get_plain_messages(): void
+    {
+        $empty = ['address' => ['state' => '', 'city' => '', 'barangay' => '', 'district' => '', 'postcode' => '']];
+        $forms = [
+            [route('addresses.pickup.store'), ['label', 'contact_name', 'contact_phone', 'address_1']],
+            [route('addresses.customers.store'), ['phone', 'address_1']],
+        ];
+
+        foreach ($forms as [$url, $required]) {
+            $this->actingAs($this->admin())->post($url, $empty)->assertSessionHasErrors();
+            $errors = session('errors')->getBag('default');
+            foreach ($required as $key) {
+                $this->assertSame('Required.', $errors->first($key), $url.' '.$key);
+            }
+            $this->assertSame('Choose a province.', $errors->first('address.state'));
+            $this->assertSame('Choose a city or municipality.', $errors->first('address.city'));
+            $this->assertSame('Choose a barangay.', $errors->first('address.barangay'));
+            foreach ($errors->all() as $message) {
+                foreach (['address.', 'address 1', 'contact phone', 'contact name', 'field is required', '_'] as $leak) {
+                    $this->assertStringNotContainsString($leak, $message, $url);
+                }
+            }
+        }
+
+        $this->post(route('addresses.pickup.store'), $this->pickupInput(['address' => ['postcode' => str_repeat('9', 17)] + $this->pickupInput()['address']]))
+            ->assertSessionHasErrors(['address.postcode' => 'Too long.']);
+        $this->post(route('addresses.pickup.store'), $this->pickupInput(['contact_phone' => '12']))
+            ->assertSessionHasErrors(['contact_phone' => 'Enter the 10-digit mobile number.']);
+    }
+
+    public function test_the_address_block_is_one_column_only_in_label_left_forms(): void
+    {
+        $css = file_get_contents(resource_path('css/pages/settings.css'));
+        $this->assertMatchesRegularExpression('/\.st-row \.ph-addr \{\s*grid-template-columns: minmax\(0, 1fr\);/', $css);
+        $this->assertMatchesRegularExpression('/\.st-row \.x-phone \{\s*max-width: 320px;/', $css);
+
+        // The shipment form's own address grid (two columns from 640px) is not inside a label-left row.
+        $components = file_get_contents(resource_path('css/blotter-components.css'));
+        $this->assertMatchesRegularExpression('/@media \(min-width: 640px\) \{\s*\.ph-addr \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/', $components);
+        $form = file_get_contents(resource_path('views/shipments/form.blade.php'));
+        $this->assertStringContainsString('<x-ph-address prefix="recipient"', $form);
+        $this->assertStringNotContainsString('st-row', $form);
+
+        foreach (['pickup', 'customer'] as $view) {
+            $this->assertMatchesRegularExpression('/<div class="st-row">\s*<x-ph-address /', file_get_contents(resource_path("views/addresses/{$view}.blade.php")));
+        }
     }
 
     public function test_customer_phone_errors_are_field_errors(): void

@@ -10,6 +10,7 @@ use App\Models\Shipment;
 use App\Shipments\CourierFormFields;
 use App\Rules\PhMobile;
 use App\Support\PhAddress;
+use App\Support\PlainMessages;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -352,9 +353,7 @@ class ShipmentFormRequest extends FormRequest
     }
 
     /**
-     * Plain messages, never an attribute name: the field's own label is right above its error. Specific keys come
-     * first (Laravel takes the first pattern that matches); the generic ones are repeated for nested keys, since a
-     * `*` matches one segment only.
+     * Plain messages, never an attribute name (PlainMessages): the field's own label is right above its error.
      *
      * @return array<string, string>
      */
@@ -380,34 +379,8 @@ class ShipmentFormRequest extends FormRequest
             'pickup_date.required' => 'Choose a date.',
             'pickup_date.in' => 'Choose a date.',
         ];
-        $generic = [
-            '*.required_with' => 'Required.',
-            '*.required' => 'Required.',
-            '*.required_if' => 'Required.',
-            '*.max' => 'Too long.',
-            '*.string' => 'Not valid.',
-            '*.in' => 'Not valid.',
-            '*.regex' => 'Not valid.',
-            '*.email' => 'Not a valid email.',
-            '*.numeric' => 'Not a number.',
-            '*.integer' => 'Not a whole number.',
-            '*.decimal' => 'At most 2 decimals.',
-            '*.gt' => 'Must be more than 0.',
-            '*.min' => 'Too small.',
-            '*.prohibited_unless' => 'Not valid.',
-            '*.array' => 'Not valid.',
-            '*.boolean' => 'Not valid.',
-            '*.exists' => 'Not valid.',
-        ];
 
-        $nested = [];
-        foreach (['*.', '*.*.', '*.*.*.'] as $depth) {
-            foreach ($generic as $key => $message) {
-                $nested[$depth.substr($key, 2)] = $message;
-            }
-        }
-
-        return $specific + $nested;
+        return PlainMessages::with($specific);
     }
 
     /**

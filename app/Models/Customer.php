@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\HasPublicId;
+use App\Support\PhPhone;
 use App\Support\Vault\VaultEncryptedJson;
 use Illuminate\Database\Eloquent\Model;
 
@@ -21,5 +22,14 @@ class Customer extends Model
     protected function casts(): array
     {
         return ['address' => VaultEncryptedJson::class, 'shipments_count' => 'integer', 'last_shipped_at' => 'datetime'];
+    }
+
+    /** The name, or the grouped phone ("0917 123 4567") for a customer saved without one (stored name = phone). */
+    public function shownName(): string
+    {
+        $name = trim((string) $this->name);
+        $nameless = $name === '' || $name === trim((string) $this->phone);
+
+        return $nameless ? (string) PhPhone::shown($this->phone) : $name;
     }
 }

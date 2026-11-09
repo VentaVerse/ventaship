@@ -31,6 +31,24 @@
         max-width: 160px;
     }
 
+    .st-row .x-phone {
+        max-width: 320px;
+    }
+
+    /* The address block in a label-left form: one row per level, same label column and control width as the rest.
+       The shipment form's own address grid (not in a .st-row) is untouched. */
+    .st-row .ph-addr {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+    }
+
+    .st-row .ph-addr .x-select-wrap,
+    .st-row .ph-addr__free,
+    .st-row .ph-addr__postcode .x-input {
+        width: 100%;
+        max-width: 320px;
+    }
+
     .st-row .fm-error {
         grid-column: 2;
     }

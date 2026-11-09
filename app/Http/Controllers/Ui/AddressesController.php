@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\PickupAddress;
 use App\Rules\PhMobile;
+use App\Support\PlainMessages;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -15,6 +16,8 @@ use Illuminate\View\View;
 class AddressesController extends Controller
 {
     private const PER_PAGE = 50;
+
+    private const SEARCH_MAX = 100;
 
     public function index(Request $request): View
     {
@@ -28,8 +31,9 @@ class AddressesController extends Controller
             ]);
         }
 
+        $q = mb_substr($q, 0, self::SEARCH_MAX);
         $customers = Customer::query()
-            ->when(mb_strlen($q) >= Customers::SEARCH_MIN, fn ($query) => app(Customers::class)->matching($query, $q))
+            ->when($q !== '', fn ($query) => app(Customers::class)->matching($query, $q))
             ->orderByDesc('last_shipped_at')->orderByDesc('id')
             ->paginate(self::PER_PAGE)->withQueryString();
 
@@ -95,8 +99,8 @@ class AddressesController extends Controller
 
     public function updateCustomer(Request $request, Customer $customer, Customers $customers): RedirectResponse
     {
-        // The form has no Email or Address line 2: a customer's stored ones (from its shipments) are kept.
-        $stored = array_intersect_key((array) $customer->address, array_flip(['email', 'address_2']));
+        // The form has no Email: a customer's stored one (from its shipments) is kept.
+        $stored = array_intersect_key((array) $customer->address, array_flip(['email']));
         $customers->update($customer, $this->customerData($request) + $stored);
 
         return redirect()->route('addresses.index', ['tab' => 'customers'])->with('status', 'Saved');
@@ -121,9 +125,10 @@ class AddressesController extends Controller
             'last_name' => ['nullable', ...$max],
             'phone' => ['required', 'string', new PhMobile],
             'address_1' => ['required', ...$max],
+            'address_2' => ['nullable', ...$max],
             'address' => ['required', 'array'],
             ...$this->addressRules(),
-        ]));
+        ], $this->messages(), $this->attributes()));
     }
 
     /** @return array<string, mixed> */
@@ -141,7 +146,40 @@ class AddressesController extends Controller
             'address_2' => ['nullable', ...$max],
             'address' => ['required', 'array'],
             ...$this->addressRules(),
-        ]));
+        ], $this->messages(), $this->attributes()));
+    }
+
+    /** @return array<string, string> plain messages, never an internal key (the field's label is right above it) */
+    private function messages(): array
+    {
+        return PlainMessages::with([
+            'address.state.required' => 'Choose a province.',
+            'address.city.required' => 'Choose a city or municipality.',
+            'address.barangay.required' => 'Choose a barangay.',
+        ]);
+    }
+
+    /** @return array<string, string> the fields' labels, for any message that still names its field */
+    private function attributes(): array
+    {
+        return [
+            'label' => 'label',
+            'contact_name' => 'contact name',
+            'contact_phone' => 'phone',
+            'first_name' => 'first name',
+            'last_name' => 'last name',
+            'phone' => 'phone',
+            'address_1' => 'street',
+            'address_2' => 'address line 2',
+            'address' => 'address',
+            'address.state' => 'province',
+            'address.city' => 'city or municipality',
+            'address.district' => 'district',
+            'address.barangay' => 'barangay',
+            'address.postcode' => 'postcode',
+            'address.codes' => 'address',
+            'address.codes.*' => 'address',
+        ];
     }
 
     /** @return array<string, array<int, mixed>> the PSGC block, posted as address[...] */

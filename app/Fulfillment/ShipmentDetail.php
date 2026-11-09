@@ -10,6 +10,7 @@ use App\Shipments\CourierFormFields;
 use App\Shipments\ItemsText;
 use App\Shipments\TrackingLink;
 use App\Support\Money;
+use App\Support\PhPhone;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
@@ -80,15 +81,10 @@ final class ShipmentDetail
         return $phone !== '' ? $phone : null;
     }
 
-    /** The phone as people read it, "0917 123 4567"; anything that is not an 11-digit 09 number is shown as stored. */
+    /** The phone as people read it, "0917 123 4567" (PhPhone::shown). */
     public function phoneShown(): ?string
     {
-        $phone = $this->phone();
-        $digits = preg_replace('/\D/', '', (string) $phone);
-
-        return strlen($digits) === 11 && str_starts_with($digits, '09')
-            ? substr($digits, 0, 4).' '.substr($digits, 4, 3).' '.substr($digits, 7)
-            : $phone;
+        return PhPhone::shown($this->phone());
     }
 
     public function address(): ?string

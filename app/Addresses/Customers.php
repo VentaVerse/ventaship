@@ -87,10 +87,13 @@ class Customers
             $digits = '0'.substr($digits, 2);
         }
 
+        // A one-character search (the Addresses list allows it) still reaches the phone when that character is a digit.
+        $minDigits = min(self::SEARCH_MIN, mb_strlen($q));
+
         return $query
-            ->where(function ($w) use ($like, $digits) {
+            ->where(function ($w) use ($like, $digits, $minDigits) {
                 $w->whereRaw("name like ? escape '!'", [$like]);
-                if (strlen($digits) >= self::SEARCH_MIN) {
+                if ($digits !== '' && strlen($digits) >= $minDigits) {
                     $w->orWhere('phone', 'like', '%'.$digits.'%');
                 }
             })

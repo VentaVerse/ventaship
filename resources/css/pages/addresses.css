@@ -36,6 +36,26 @@
         overflow-wrap: anywhere;
     }
 
+    /* The whole row opens the address; the row's buttons stay on top for their own focus rings. */
+    .addr-table tbody tr {
+        position: relative;
+    }
+
+    .addr-table tbody tr:hover {
+        background: var(--bl-chrome);
+    }
+
+    .addr-link {
+        color: var(--bl-ink);
+        text-decoration: none;
+    }
+
+    .addr-link::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+    }
+
     .addr-name .x-badge {
         margin-left: 8px;
         vertical-align: middle;
@@ -46,6 +66,8 @@
     }
 
     .addr-act {
+        position: relative;
+        z-index: 1;
         text-align: right;
         white-space: nowrap;
     }
@@ -85,13 +107,19 @@
         }
 
         .addr-table td[data-label] {
-            display: inline-block;
-            margin-right: 14px;
+            padding-top: 6px;
         }
 
         .addr-table td[data-label]::before {
-            content: attr(data-label) " ";
-            color: var(--bl-ink-2);
+            content: attr(data-label);
+            display: block;
+            font-size: 12px;
+            color: var(--bl-ink-3);
+        }
+
+        .addr-table td.addr-pair {
+            display: inline-block;
+            margin-right: 20px;
         }
 
         .addr-act {

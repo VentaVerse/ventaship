@@ -11,6 +11,8 @@
 @endsection
 
 @php
+    use App\Support\PhPhone;
+
     $line = fn (array $a): string => collect([$a['address_1'] ?? null, $a['address_2'] ?? null, $a['barangay'] ?? null, $a['city'] ?? null, $a['state'] ?? null, $a['postcode'] ?? null])
         ->map(fn ($p) => trim((string) $p))->filter()->implode(', ');
 @endphp
@@ -30,21 +32,21 @@
         @else
             <table class="addr-table">
                 <thead>
-                    <tr><th scope="col">Name</th><th scope="col">Contact</th><th scope="col">Address</th><th scope="col"><span class="x-sr">Actions</span></th></tr>
+                    <tr><th scope="col">Label</th><th scope="col">Contact</th><th scope="col">Address</th><th scope="col"><span class="x-sr">Actions</span></th></tr>
                 </thead>
                 <tbody>
                     @foreach($pickups as $p)
                         @php $a = $p->toPickup(); @endphp
                         <tr>
                             <td class="addr-name">
-                                {{ $p->label }}
+                                <a class="addr-link" href="{{ route('addresses.pickup.edit', $p) }}">{{ $p->label }}</a>
                                 @if($p->is_default)<x-ui.badge tone="good">Default</x-ui.badge>@endif
                             </td>
-                            <td>
+                            <td data-label="Contact">
                                 <div>{{ $a['contact_name'] }}</div>
-                                <div class="addr-sub">{{ $a['contact_phone'] }}</div>
+                                <div class="addr-sub x-num">{{ PhPhone::shown($a['contact_phone'] ?? null) }}</div>
                             </td>
-                            <td>{{ $line($a) }}</td>
+                            <td class="addr-sub" data-label="Address">{{ $line($a) }}</td>
                             <td class="addr-act">
                                 @unless($p->is_default)
                                     <form method="POST" action="{{ route('addresses.pickup.default', $p) }}">
@@ -66,8 +68,15 @@
             <x-ui.button type="submit">Search</x-ui.button>
         </form>
 
-        @if($customers->isEmpty())
-            <x-ui.empty title="No customers" />
+        @if($customers->isEmpty() && $q !== '')
+            @php $noMatch = 'No customers match "'.$q.'"'; @endphp
+            <x-ui.empty :title="$noMatch">
+                <x-slot:action><x-ui.button :href="route('addresses.index', ['tab' => 'customers'])">Clear search</x-ui.button></x-slot:action>
+            </x-ui.empty>
+        @elseif($customers->isEmpty())
+            <x-ui.empty title="No customers">
+                <x-slot:action><x-ui.button variant="primary" :href="route('addresses.customers.create')">Add customer</x-ui.button></x-slot:action>
+            </x-ui.empty>
         @else
             <table class="addr-table">
                 <thead>
@@ -75,13 +84,14 @@
                 </thead>
                 <tbody>
                     @foreach($customers as $c)
+                        @php $shown = $c->shownName(); @endphp
                         <tr data-customer-row>
-                            <td class="addr-name">{{ $c->name }}</td>
-                            <td class="x-mono">{{ $c->phone }}</td>
-                            <td>{{ $line((array) $c->address) }}</td>
-                            <td class="x-num" data-label="Shipments">{{ number_format($c->shipments_count) }}</td>
-                            <td data-label="Last shipped">{{ $c->last_shipped_at?->format('j M Y') ?? 'Never' }}</td>
-                            <td class="addr-act"><x-ui.button size="sm" :href="route('addresses.customers.edit', $c)" :aria-label="'Edit ' . $c->name">Edit</x-ui.button></td>
+                            <td class="addr-name"><a class="addr-link" href="{{ route('addresses.customers.edit', $c) }}">{{ $shown }}</a></td>
+                            <td class="x-num" data-label="Phone">{{ PhPhone::shown($c->phone) }}</td>
+                            <td class="addr-sub" data-label="Address">{{ $line((array) $c->address) }}</td>
+                            <td class="x-num addr-pair" data-label="Shipments">{{ number_format($c->shipments_count) }}</td>
+                            <td class="addr-pair" data-label="Last shipped">{{ $c->last_shipped_at?->format('j M Y') ?? 'Never' }}</td>
+                            <td class="addr-act"><x-ui.button size="sm" :href="route('addresses.customers.edit', $c)" :aria-label="'Edit ' . $shown">Edit</x-ui.button></td>
                         </tr>
                     @endforeach
                 </tbody>
