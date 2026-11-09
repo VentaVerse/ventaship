@@ -59,13 +59,13 @@ class LoginTest extends TestCase
 
         $this->from('/login')->post('/login', ['login' => 'ana@example.com', 'password' => 'nope'])
             ->assertRedirect('/login')
-            ->assertSessionHasErrors(['login' => 'Wrong username or password.'])
+            ->assertSessionHasErrors(['auth' => 'Wrong username or password.'])
             ->assertSessionHasInput('login', 'ana@example.com')
             ->assertSessionMissing('_old_input.password');
         $this->assertGuest();
 
         $this->post('/login', ['login' => 'nobody@example.com', 'password' => 'nope'])
-            ->assertSessionHasErrors(['login' => 'Wrong username or password.']);
+            ->assertSessionHasErrors(['auth' => 'Wrong username or password.']);
     }
 
     public function test_empty_fields_say_required(): void
@@ -98,12 +98,12 @@ class LoginTest extends TestCase
         $this->admin();
         for ($i = 0; $i < 5; $i++) {
             $this->post('/login', ['login' => 'ana@example.com', 'password' => 'nope'])
-                ->assertSessionHasErrors(['login' => 'Wrong username or password.']);
+                ->assertSessionHasErrors(['auth' => 'Wrong username or password.']);
         }
 
         $response = $this->post('/login', ['login' => 'Ana@example.com', 'password' => 'correct-horse-battery']);
-        $response->assertSessionHasErrors('login');
-        $this->assertMatchesRegularExpression('/^Too many attempts\. Try again in \d+ seconds\.$/', session('errors')->first('login'));
+        $response->assertSessionHasErrors('auth');
+        $this->assertMatchesRegularExpression('/^Too many attempts\. Try again in \d+ seconds\.$/', session('errors')->first('auth'));
         $this->assertGuest();
     }
 
@@ -129,13 +129,43 @@ class LoginTest extends TestCase
         $this->admin();
 
         $this->post('/login', ['login' => 'ana', 'password' => 'nope'])
-            ->assertSessionHasErrors(['login' => 'Wrong username or password.']);
+            ->assertSessionHasErrors(['auth' => 'Wrong username or password.']);
         $this->assertGuest();
     }
 
     public function test_login_page_asks_for_username(): void
     {
         $this->get('/login')->assertOk()->assertSee('Username')->assertSee('name="login"', false);
+    }
+
+    public function test_empty_fields_are_marked_under_each_field_not_in_the_alert(): void
+    {
+        $this->from('/login')->post('/login', ['login' => 'ana', 'password' => '']);
+        $html = $this->get('/login')->getContent();
+
+        $this->assertStringContainsString('id="f-password-error"', $html);
+        $this->assertStringNotContainsString('id="f-login-error"', $html);
+        $this->assertMatchesRegularExpression('/id="f-password"[^>]*aria-invalid="true"/', $html);
+        $this->assertMatchesRegularExpression('/id="f-password"[^>]*aria-describedby="f-password-error"/', $html);
+        $this->assertStringNotContainsString('role="alert"', $html);
+    }
+
+    public function test_wrong_password_shows_the_alert_without_marking_a_field(): void
+    {
+        $this->admin();
+        $this->from('/login')->post('/login', ['login' => 'ana@example.com', 'password' => 'nope']);
+        $html = $this->get('/login')->getContent();
+
+        $this->assertStringContainsString('role="alert"', $html);
+        $this->assertStringNotContainsString('aria-invalid', $html);
+    }
+
+    public function test_login_label_and_password_reveal(): void
+    {
+        $this->get('/login')->assertOk()
+            ->assertSee('Username or email')
+            ->assertSee('class="lg-eye"', false)
+            ->assertSee("show ? 'Hide password' : 'Show password'", false);
     }
 
     public function test_logout_invalidates_session(): void

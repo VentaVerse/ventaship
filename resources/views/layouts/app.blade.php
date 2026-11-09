@@ -28,7 +28,7 @@
             @include('partials.nav', ['navGroups' => \App\Support\Navigation::groups()])
         </div>
 
-        <div class="x-side__foot" x-data="{ mode: (window.ventashipTheme && window.ventashipTheme.get()) || 'light' }">
+        <div class="x-side__foot" x-data="{ mode: (window.ventashipTheme && window.ventashipTheme.get()) || 'system' }">
             @php $adminName = auth()->user()?->name; @endphp
             @if($adminName)
                 <span class="x-side__user">{{ $adminName }}</span>

@@ -34,7 +34,7 @@ class LoginController extends Controller
 
         if (RateLimiter::tooManyAttempts($key, self::MAX_ATTEMPTS)) {
             throw ValidationException::withMessages([
-                'login' => 'Too many attempts. Try again in '.RateLimiter::availableIn($key).' seconds.',
+                'auth' => 'Too many attempts. Try again in '.RateLimiter::availableIn($key).' seconds.',
             ]);
         }
 
@@ -44,7 +44,7 @@ class LoginController extends Controller
         if (! Auth::guard('web')->attempt($credentials, $request->boolean('remember'))) {
             RateLimiter::hit($key, self::DECAY_SECONDS);
 
-            throw ValidationException::withMessages(['login' => 'Wrong username or password.']);
+            throw ValidationException::withMessages(['auth' => 'Wrong username or password.']);
         }
 
         RateLimiter::clear($key);

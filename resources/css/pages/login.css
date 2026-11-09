@@ -88,17 +88,58 @@
         text-align: center;
     }
 
-    .lg-card .x-input {
-        border-color: var(--bl-rule-2);
+    .lg-pass {
+        position: relative;
     }
 
-    .lg-card .x-input:focus {
-        border-color: var(--bl-brand-btn);
-        outline: none;
-        box-shadow: 0 0 0 3px var(--bl-brand-w);
+    .lg-pass .x-input {
+        padding-right: 44px;
+    }
+
+    .lg-eye {
+        position: absolute;
+        top: 0;
+        right: 0;
+        display: grid;
+        place-items: center;
+        width: 40px;
+        height: 100%;
+        border: 0;
+        border-radius: 0 var(--bl-r-ctrl) var(--bl-r-ctrl) 0;
+        background: none;
+        color: var(--bl-ink-2);
+        cursor: pointer;
+    }
+
+    .lg-eye:hover {
+        color: var(--bl-ink);
+    }
+
+    .lg-eye:focus-visible {
+        outline: 2px solid var(--bl-brand-btn);
+        outline-offset: -2px;
     }
 
     .lg-card .x-input.is-invalid {
         border-color: var(--bl-bad);
+    }
+
+    @media (max-width: 639px) {
+        .lg-card .x-input,
+        .lg-submit {
+            height: 44px;
+        }
+
+        .lg-card .x-input {
+            font-size: 16px;
+        }
+
+        .lg-eye {
+            width: 44px;
+        }
+
+        .lg-check {
+            min-height: 44px;
+        }
     }
 }

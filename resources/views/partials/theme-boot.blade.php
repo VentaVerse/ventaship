@@ -10,7 +10,7 @@
         document.documentElement.setAttribute('data-theme-mode', mode);
     }
     function get() {
-        try { return localStorage.getItem(KEY) || 'light'; } catch (e) { return 'light'; }
+        try { return localStorage.getItem(KEY) || 'system'; } catch (e) { return 'system'; }
     }
     apply(get());
     window.ventashipTheme = {
