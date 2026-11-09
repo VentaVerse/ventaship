@@ -44,3 +44,33 @@ export function focusFirstInvalid(doc, win) {
 
     return target;
 }
+
+/**
+ * Once a marked field is edited (typed, picked, or filled by a customer pick) its error is stale: the mark, the red
+ * edge and the message under it go, until the next submit says otherwise.
+ */
+export function clearInvalid(target) {
+    const marked = target?.closest?.('[aria-invalid="true"]');
+    if (!marked) {
+        return false;
+    }
+    const field = marked.closest('.fm-field');
+    const errorId = marked.getAttribute('aria-describedby');
+    marked.removeAttribute('aria-invalid');
+    marked.classList.remove('is-invalid');
+    marked.querySelectorAll?.('.is-invalid').forEach((el) => el.classList.remove('is-invalid'));
+    marked.closest('.x-phone.is-invalid')?.classList.remove('is-invalid');
+    const message = errorId ? marked.ownerDocument.getElementById(errorId) : field?.querySelector('.fm-error');
+    if (message) {
+        message.hidden = true;
+    }
+    field?.classList.remove('fm-field--invalid');
+
+    return true;
+}
+
+export function watchInvalid(doc) {
+    const handler = (e) => clearInvalid(e.target);
+    doc.addEventListener('input', handler);
+    doc.addEventListener('change', handler);
+}
