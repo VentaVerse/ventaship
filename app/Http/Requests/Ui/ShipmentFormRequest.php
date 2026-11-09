@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\PickupAddress;
 use App\Models\Shipment;
 use App\Shipments\CourierFormFields;
+use App\Rules\PhMobile;
 use App\Support\PhAddress;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -68,6 +69,9 @@ class ShipmentFormRequest extends FormRequest
 
         $input = $this->all();
         unset($input['pickup'], $input['items']);
+        if (is_array($input['recipient'] ?? null) && array_key_exists('phone', $input['recipient'])) {
+            $input['recipient']['phone'] = PhMobile::canonical($input['recipient']['phone']) ?? $input['recipient']['phone'];
+        }
         if ($this->chosenPickup !== null) {
             $input['pickup'] = $this->chosenPickup;
         }
@@ -281,6 +285,7 @@ class ShipmentFormRequest extends FormRequest
                 }
             }],
         ] + $this->parcelRules() + $payment + ($this->chosenPickup !== null ? $this->pickupRules() : []) + $this->recipientRules();
+        $rules['recipient.phone'] = ['required', 'string', new PhMobile];
 
         return $this->spxRules($rules);
     }

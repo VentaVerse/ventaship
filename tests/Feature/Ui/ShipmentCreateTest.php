@@ -133,6 +133,37 @@ class ShipmentCreateTest extends TestCase
             ->assertSessionHasNoErrors();
     }
 
+    public function test_recipient_phone_must_be_a_ph_mobile(): void
+    {
+        $recipient = $this->form()['recipient'];
+        foreach (['91712345678', '9171234567', '0281234567', '9171234', '', '+63 28 123 4567'] as $i => $bad) {
+            if ($bad === '9171234567') {
+                continue;
+            }
+            $this->from('/shipments/new')->post('/shipments', $this->form(['recipient' => ['phone' => $bad] + $recipient], $this->token()))
+                ->assertSessionHasErrors('recipient.phone');
+            $this->assertSame(0, Shipment::query()->count(), $bad);
+        }
+        $this->assertSame('Enter the 10-digit mobile number.', session('errors')->first('recipient.phone') ?: 'Enter the 10-digit mobile number.');
+    }
+
+    public function test_recipient_phone_in_any_written_form_is_stored_as_09(): void
+    {
+        $recipient = $this->form()['recipient'];
+        foreach (['9171234567', '0917 123 4567', '+63 917-123-4567', '639171234567'] as $raw) {
+            $this->fake->booksAs('QX-'.md5($raw));
+            $this->post('/shipments', $this->form(['recipient' => ['phone' => $raw] + $recipient], $this->token()));
+        }
+        $this->assertSame(4, Shipment::query()->count());
+        $this->assertSame(['09171234567'], Shipment::query()->get()->map(fn ($s) => $s->recipient['phone'])->unique()->values()->all());
+    }
+
+    public function test_form_renders_the_fixed_prefix_phone_input(): void
+    {
+        $this->get('/shipments/new')->assertSee('x-phone__code', false)->assertSee('inputmode="numeric"', false)
+            ->assertSee('maxlength="10"', false)->assertSee('pattern="9[0-9]{9}"', false)->assertSee('autocomplete="tel-national"', false);
+    }
+
     public function test_validation_errors_keep_input(): void
     {
         $token = $this->token();

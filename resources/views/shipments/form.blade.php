@@ -16,7 +16,7 @@
     $personFields = [
         'first_name' => ['label' => 'First name', 'required' => true],
         'last_name' => ['label' => 'Last name'],
-        'phone' => ['label' => 'Phone', 'type' => 'tel', 'required' => true, 'max' => 32],
+        'phone' => ['label' => 'Phone', 'type' => 'phone', 'required' => true],
     ];
     $streetFields = [
         'address_1' => ['label' => 'Street', 'required' => true, 'class' => 'sh-span'],

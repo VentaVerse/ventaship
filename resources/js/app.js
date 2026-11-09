@@ -3,6 +3,7 @@ import Alpine from 'alpinejs';
 import { copyText } from './copyText';
 import { customerSearch } from './customerSearch';
 import { phCascade } from './phCascade';
+import { phoneInput } from './phoneInput';
 import { shipmentForm } from './shipmentForm';
 
 Alpine.data('confirmDialog', () => ({
@@ -42,6 +43,8 @@ Alpine.data('confirmDialog', () => ({
 Alpine.data('shipmentForm', (config) => shipmentForm(config));
 
 Alpine.data('phAddress', (config) => phCascade(config));
+
+Alpine.data('phoneInput', () => phoneInput());
 
 Alpine.data('customerSearch', (config) => customerSearch(config));
 

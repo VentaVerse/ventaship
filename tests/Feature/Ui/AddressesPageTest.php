@@ -65,6 +65,29 @@ class AddressesPageTest extends TestCase
         ];
     }
 
+    public function test_phone_fields_are_mobile_only_and_stored_as_09(): void
+    {
+        $a = $this->actingAs($this->admin());
+        foreach (['91712345678', '0281234567', '12345'] as $bad) {
+            $a->post(route('addresses.customers.store'), $this->customerInput(['phone' => $bad]))->assertSessionHasErrors('phone');
+            $a->post(route('addresses.pickup.store'), $this->pickupInput(['contact_phone' => $bad]))->assertSessionHasErrors('contact_phone');
+        }
+        $this->assertSame(0, Customer::query()->count());
+        $this->assertSame(0, PickupAddress::query()->count());
+
+        $a->post(route('addresses.customers.store'), $this->customerInput(['phone' => '9171234567']))->assertSessionDoesntHaveErrors();
+        $a->post(route('addresses.pickup.store'), $this->pickupInput(['contact_phone' => '+63 917-123-4567']))->assertSessionDoesntHaveErrors();
+        $this->assertSame('09171234567', Customer::query()->sole()->phone);
+        $this->assertSame('09171234567', PickupAddress::query()->sole()->address['contact_phone']);
+    }
+
+    public function test_edit_forms_prefill_the_ten_national_digits(): void
+    {
+        $c = $this->customer('09171234567');
+        $this->actingAs($this->admin())->get(route('addresses.customers.edit', $c))
+            ->assertSee('value="9171234567"', false)->assertSee('+63');
+    }
+
     public function test_guests_are_redirected(): void
     {
         $this->get(route('addresses.index'))->assertRedirect(route('login'));
@@ -153,7 +176,7 @@ class AddressesPageTest extends TestCase
     {
         $this->actingAs($this->admin())->post(route('addresses.pickup.store'), $this->pickupInput(['label' => '', 'contact_phone' => '123', 'address_1' => '']))
             ->assertSessionHasErrors(['label', 'contact_phone', 'address_1']);
-        $this->assertSame('Enter a valid phone.', session('errors')->first('contact_phone'));
+        $this->assertSame('Enter the 10-digit mobile number.', session('errors')->first('contact_phone'));
         $this->assertSame(0, PickupAddress::query()->count());
     }
 
@@ -232,7 +255,7 @@ class AddressesPageTest extends TestCase
 
         $this->actingAs($this->admin())->post(route('addresses.customers.store'), $this->customerInput(['phone' => '12']))
             ->assertSessionHasErrors('phone');
-        $this->assertSame('Enter a valid phone.', session('errors')->first('phone'));
+        $this->assertSame('Enter the 10-digit mobile number.', session('errors')->first('phone'));
 
         $this->actingAs($this->admin())->post(route('addresses.customers.store'), $this->customerInput(['phone' => '0917 555 0000']))
             ->assertSessionHasErrors('phone');
@@ -294,7 +317,7 @@ class AddressesPageTest extends TestCase
 
         $this->actingAs($this->admin())->put(route('addresses.customers.update', $c), $this->customerInput(['phone' => '12']))
             ->assertSessionHasErrors('phone');
-        $this->assertSame('Enter a valid phone.', session('errors')->first('phone'));
+        $this->assertSame('Enter the 10-digit mobile number.', session('errors')->first('phone'));
 
         $this->actingAs($this->admin())->put(route('addresses.customers.update', $c), $this->customerInput(['phone' => '0917 555 0000']))
             ->assertRedirect()->assertSessionHasErrors('phone');

@@ -7,7 +7,7 @@ use App\Addresses\PickupAddresses;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\PickupAddress;
-use App\Rules\PhPhone;
+use App\Rules\PhMobile;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -114,10 +114,12 @@ class AddressesController extends Controller
     {
         $max = ['string', 'max:255'];
 
+        $request->merge(['phone' => PhMobile::canonical($request->input('phone')) ?? $request->input('phone')]);
+
         return $this->flatten($request->validate([
             'first_name' => ['nullable', ...$max],
             'last_name' => ['nullable', ...$max],
-            'phone' => ['required', 'string', 'max:32', new PhPhone('Enter a valid phone.')],
+            'phone' => ['required', 'string', new PhMobile],
             'address_1' => ['required', ...$max],
             'address' => ['required', 'array'],
             ...$this->addressRules(),
@@ -129,10 +131,12 @@ class AddressesController extends Controller
     {
         $max = ['string', 'max:255'];
 
+        $request->merge(['contact_phone' => PhMobile::canonical($request->input('contact_phone')) ?? $request->input('contact_phone')]);
+
         return $this->flatten($request->validate([
             'label' => ['required', ...$max],
             'contact_name' => ['required', ...$max],
-            'contact_phone' => ['required', 'string', 'max:32', new PhPhone('Enter a valid phone.')],
+            'contact_phone' => ['required', 'string', new PhMobile],
             'address_1' => ['required', ...$max],
             'address_2' => ['nullable', ...$max],
             'address' => ['required', 'array'],

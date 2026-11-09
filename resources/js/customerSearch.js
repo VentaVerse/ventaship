@@ -1,3 +1,4 @@
+import { nationalDigits } from './phoneInput.js';
 // The Add / Edit shipment form's customer search: a combobox over GET /customers/search. The rows are the matches
 // plus a last "New customer" row. Picking a customer fills the recipient's name, phone and street, and sends the
 // address to the recipient PSGC cascade (phCascade.fill) through the `ph-fill` window event.
@@ -38,7 +39,7 @@ export function recipientValues(address) {
     return { first_name: text(address.first_name), last_name: text(address.last_name), phone: text(address.phone), address_1: street };
 }
 
-const digits = (v) => String(v ?? '').replace(/\D+/g, '');
+const digits = (v) => nationalDigits(v);
 
 const byId = (id) => (typeof document === 'undefined' ? null : document.getElementById(id));
 

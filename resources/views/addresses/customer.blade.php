@@ -22,7 +22,7 @@
             </div>
             <div class="st-row">
                 <x-ui.field label="Phone" name="phone" required>
-                    <x-ui.input type="tel" id="f-phone" name="phone" class="st-ctl" value="{{ old('phone', $customer?->phone) }}" maxlength="32" autocomplete="off" />
+                    <x-ui.phone id="f-phone" name="phone" value="{{ old('phone', $customer?->phone) }}" />
                 </x-ui.field>
             </div>
             <div class="st-row">
