@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Support\PhPhone;
+use App\Couriers\Support\PhPhone;
 use PHPUnit\Framework\TestCase;
 
 class PhPhoneTest extends TestCase

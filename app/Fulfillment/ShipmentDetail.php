@@ -10,7 +10,7 @@ use App\Shipments\CourierFormFields;
 use App\Shipments\ItemsText;
 use App\Shipments\TrackingLink;
 use App\Support\Money;
-use App\Support\PhPhone;
+use App\Couriers\Support\PhPhone;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;

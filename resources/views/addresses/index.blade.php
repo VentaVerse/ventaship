@@ -11,7 +11,7 @@
 @endsection
 
 @php
-    use App\Support\PhPhone;
+    use App\Couriers\Support\PhPhone;
 
     $line = fn (array $a): string => collect([$a['address_1'] ?? null, $a['address_2'] ?? null, $a['barangay'] ?? null, $a['city'] ?? null, $a['state'] ?? null, $a['postcode'] ?? null])
         ->map(fn ($p) => trim((string) $p))->filter()->implode(', ');

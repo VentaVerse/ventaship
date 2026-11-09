@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use App\Support\HasPublicId;
-use App\Support\PhPhone;
+use App\Couriers\Support\PhPhone;
 use App\Support\Vault\VaultEncryptedJson;
 use Illuminate\Database\Eloquent\Model;
 
