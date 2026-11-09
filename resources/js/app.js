@@ -1,5 +1,6 @@
 import './bootstrap';
 import Alpine from 'alpinejs';
+import { copyText } from './copyText';
 import { customerSearch } from './customerSearch';
 import { phCascade } from './phCascade';
 import { shipmentForm } from './shipmentForm';
@@ -207,10 +208,13 @@ Alpine.data('credentialField', (config) => ({
             if (value === null) {
                 return;
             }
-            await navigator.clipboard.writeText(value);
-            this.announce('Copied');
+            if (await copyText(value)) {
+                this.announce('Copied');
+            } else {
+                this.error = "Couldn't copy";
+            }
         } catch (e) {
-            this.error = 'Could not copy it.';
+            this.error = "Couldn't copy";
         } finally {
             this.busy = false;
         }
