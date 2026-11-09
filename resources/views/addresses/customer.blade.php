@@ -5,7 +5,7 @@
 @section('crumb')<a href="{{ route('addresses.index', ['tab' => 'customers']) }}">Addresses</a>@endsection
 
 @section('content')
-<section class="x-panel ad-page">
+<section class="x-panel addr-page">
     <form method="POST" action="{{ route('addresses.customers.update', $customer) }}" novalidate>
         @csrf
         @method('PUT')
@@ -45,7 +45,7 @@
             </div>
         </div>
         <div class="st-bar">
-            <x-ui.button class="ad-delete" x-on:click="$dispatch('confirm', {{ Js::from(['title' => 'Delete '.$customer->name.'?', 'confirm' => 'Delete customer', 'dismiss' => 'Keep customer', 'form' => 'delete-customer']) }})">Delete</x-ui.button>
+            <x-ui.button class="addr-delete" x-on:click="$dispatch('confirm', {{ Js::from(['title' => 'Delete '.$customer->name.'?', 'confirm' => 'Delete customer', 'dismiss' => 'Keep customer', 'form' => 'delete-customer']) }})">Delete</x-ui.button>
             <x-ui.button :href="route('addresses.index', ['tab' => 'customers'])">Discard</x-ui.button>
             <x-ui.button variant="primary" type="submit">Save</x-ui.button>
         </div>
