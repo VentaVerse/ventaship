@@ -43,6 +43,8 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
         Route::post('default', [AddressesController::class, 'makeDefault'])->name('addresses.pickup.default');
     });
     Route::get('customers/search', CustomerSearchController::class)->name('customers.search');
+    Route::get('addresses/customers/new', [AddressesController::class, 'createCustomer'])->name('addresses.customers.create');
+    Route::post('addresses/customers', [AddressesController::class, 'storeCustomer'])->name('addresses.customers.store');
     Route::prefix('addresses/customers/{customer:public_id}')->group(function () {
         Route::get('edit', [AddressesController::class, 'editCustomer'])->name('addresses.customers.edit');
         Route::put('/', [AddressesController::class, 'updateCustomer'])->name('addresses.customers.update');

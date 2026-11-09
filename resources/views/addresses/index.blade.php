@@ -5,6 +5,8 @@
 @section('actions')
     @if($tab === 'pickup')
         <x-ui.button variant="primary" :href="route('addresses.pickup.create')">Add address</x-ui.button>
+    @else
+        <x-ui.button variant="primary" :href="route('addresses.customers.create')">Add customer</x-ui.button>
     @endif
 @endsection
 

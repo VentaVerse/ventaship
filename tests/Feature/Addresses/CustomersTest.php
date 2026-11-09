@@ -179,6 +179,36 @@ class CustomersTest extends TestCase
         $this->assertSame(1, Shipment::query()->count());
     }
 
+    public function test_create_saves_a_customer_with_no_shipments(): void
+    {
+        $c = app(Customers::class)->create(['first_name' => 'Maria', 'last_name' => 'Santos', 'phone' => '0917 333 4444',
+            'address_1' => '3 Mabini St', 'city' => 'Manila', 'state' => 'Metro Manila', 'postcode' => '1000', 'codes' => ['state' => '1300000000']]);
+
+        $this->assertTrue($c->exists);
+        $this->assertStringStartsWith('cus_', $c->public_id);
+        $this->assertSame('Maria Santos', $c->name);
+        $this->assertSame('09173334444', $c->phone);
+        $this->assertSame('09173334444', $c->address['phone']);
+        $this->assertSame(['state' => '1300000000'], $c->address['codes']);
+        $this->assertSame(0, $c->shipments_count);
+        $this->assertNull($c->last_shipped_at);
+    }
+
+    public function test_create_reports_a_bad_or_taken_phone(): void
+    {
+        $this->book('X1', ['phone' => '09171110000']);
+
+        foreach (['12345' => 'Enter a valid phone.', '+63 917 111 0000' => 'Another customer has this phone.'] as $phone => $message) {
+            try {
+                app(Customers::class)->create(['first_name' => 'A', 'phone' => $phone]);
+                $this->fail('expected a validation error');
+            } catch (ValidationException $e) {
+                $this->assertSame(['phone' => [$message]], $e->errors());
+            }
+        }
+        $this->assertSame(1, Customer::query()->count());
+    }
+
     public function test_update_reports_a_bad_phone_as_a_field_error(): void
     {
         $this->book('V1');

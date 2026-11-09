@@ -98,17 +98,37 @@ class Customers
     }
 
     /**
+     * A customer added by hand: no shipments yet, never shipped.
+     *
+     * @param  array<string, mixed>  $data  the shipment `recipient` shape
+     *
+     * @throws ValidationException `phone`: not a PH mobile number, or already another customer's
+     */
+    public function create(array $data): Customer
+    {
+        return $this->save(new Customer(['shipments_count' => 0]), $data);
+    }
+
+    /**
      * @param  array<string, mixed>  $data  the shipment `recipient` shape
      *
      * @throws ValidationException `phone`: not a PH mobile number, or already another customer's
      */
     public function update(Customer $customer, array $data): Customer
     {
+        return $this->save($customer, $data);
+    }
+
+    /** @param  array<string, mixed>  $data */
+    private function save(Customer $customer, array $data): Customer
+    {
         $address = self::address($data);
         if ($address['phone'] === null) {
             throw ValidationException::withMessages(['phone' => 'Enter a valid phone.']);
         }
-        if (Customer::query()->where('phone', $address['phone'])->whereKeyNot($customer->getKey())->exists()) {
+        $taken = Customer::query()->where('phone', $address['phone'])
+            ->when($customer->exists, fn ($q) => $q->whereKeyNot($customer->getKey()));
+        if ($taken->exists()) {
             throw ValidationException::withMessages(['phone' => 'Another customer has this phone.']);
         }
 

@@ -196,6 +196,54 @@ class AddressesPageTest extends TestCase
         $this->assertTrue($second->fresh()->is_default);
     }
 
+    public function test_the_customers_tab_has_add_customer_and_the_pickup_tab_does_not(): void
+    {
+        $this->actingAs($this->admin())->get(route('addresses.index', ['tab' => 'customers']))->assertOk()
+            ->assertSee('Add customer')->assertSee(route('addresses.customers.create'))->assertDontSee('Add address');
+        $this->actingAs($this->admin())->get(route('addresses.index', ['tab' => 'pickup']))->assertOk()
+            ->assertDontSee('Add customer');
+    }
+
+    public function test_create_a_customer(): void
+    {
+        $this->actingAs($this->admin())->get(route('addresses.customers.create'))->assertOk()
+            ->assertSee('Add customer')->assertSee('First name')->assertSee('Last name')->assertSee('Phone')->assertSee('Street')
+            ->assertSee('Postcode')->assertSee(route('addresses.customers.store'))->assertDontSee('Delete');
+
+        $this->actingAs($this->admin())->post(route('addresses.customers.store'), $this->customerInput(['phone' => '+63 917 222 3333']))
+            ->assertRedirect(route('addresses.index', ['tab' => 'customers']))->assertSessionHas('status', 'Added');
+
+        $c = Customer::query()->sole();
+        $this->assertSame('Juan Dela Cruz', $c->name);
+        $this->assertSame('09172223333', $c->phone);
+        $this->assertSame('7 Luna St', $c->address['address_1']);
+        $this->assertSame('Pasig', $c->address['city']);
+        $this->assertSame('1600', $c->address['postcode']);
+        $this->assertSame(0, $c->shipments_count);
+        $this->assertNull($c->last_shipped_at);
+
+        $this->actingAs($this->admin())->get(route('addresses.index', ['tab' => 'customers']))
+            ->assertSee('Juan Dela Cruz')->assertSee('Never');
+    }
+
+    public function test_create_customer_validation(): void
+    {
+        $this->customer('09175550000', 'Other');
+
+        $this->actingAs($this->admin())->post(route('addresses.customers.store'), $this->customerInput(['phone' => '12']))
+            ->assertSessionHasErrors('phone');
+        $this->assertSame('Enter a valid phone.', session('errors')->first('phone'));
+
+        $this->actingAs($this->admin())->post(route('addresses.customers.store'), $this->customerInput(['phone' => '0917 555 0000']))
+            ->assertSessionHasErrors('phone');
+        $this->assertSame('Another customer has this phone.', session('errors')->first('phone'));
+
+        $this->actingAs($this->admin())->post(route('addresses.customers.store'), $this->customerInput(['address_1' => '', 'address' => []]))
+            ->assertSessionHasErrors(['address_1', 'address', 'address.state', 'address.city']);
+
+        $this->assertSame(1, Customer::query()->count());
+    }
+
     public function test_edit_and_update_a_customer(): void
     {
         $c = $this->customer();
@@ -245,7 +293,7 @@ class AddressesPageTest extends TestCase
 
         foreach ([
             route('addresses.index'), route('addresses.index', ['tab' => 'customers']), route('addresses.pickup.create'),
-            route('addresses.pickup.edit', $a), route('addresses.customers.edit', $c),
+            route('addresses.pickup.edit', $a), route('addresses.customers.edit', $c), route('addresses.customers.create'),
         ] as $url) {
             $html = $this->actingAs($admin)->get($url)->assertOk()->getContent();
             $this->assertStringNotContainsString('style=', $html, $url);

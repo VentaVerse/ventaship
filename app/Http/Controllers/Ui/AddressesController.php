@@ -81,21 +81,21 @@ class AddressesController extends Controller
         return view('addresses.customer', ['customer' => $customer, 'values' => (array) $customer->address]);
     }
 
+    public function createCustomer(): View
+    {
+        return view('addresses.customer', ['customer' => null, 'values' => []]);
+    }
+
+    public function storeCustomer(Request $request, Customers $customers): RedirectResponse
+    {
+        $customers->create($this->customerData($request));
+
+        return redirect()->route('addresses.index', ['tab' => 'customers'])->with('status', 'Added');
+    }
+
     public function updateCustomer(Request $request, Customer $customer, Customers $customers): RedirectResponse
     {
-        $max = ['string', 'max:255'];
-        $data = $request->validate([
-            'first_name' => ['nullable', ...$max],
-            'last_name' => ['nullable', ...$max],
-            'phone' => ['required', 'string', 'max:32', new PhPhone('Enter a valid phone.')],
-            'email' => ['nullable', 'email', 'max:255'],
-            'address_1' => ['required', ...$max],
-            'address_2' => ['nullable', ...$max],
-            'address' => ['required', 'array'],
-            ...$this->addressRules(),
-        ]);
-
-        $customers->update($customer, $this->flatten($data));
+        $customers->update($customer, $this->customerData($request));
 
         return redirect()->route('addresses.index', ['tab' => 'customers'])->with('status', 'Saved');
     }
@@ -105,6 +105,23 @@ class AddressesController extends Controller
         $customers->delete($customer);
 
         return redirect()->route('addresses.index', ['tab' => 'customers'])->with('status', 'Deleted');
+    }
+
+    /** @return array<string, mixed> */
+    private function customerData(Request $request): array
+    {
+        $max = ['string', 'max:255'];
+
+        return $this->flatten($request->validate([
+            'first_name' => ['nullable', ...$max],
+            'last_name' => ['nullable', ...$max],
+            'phone' => ['required', 'string', 'max:32', new PhPhone('Enter a valid phone.')],
+            'email' => ['nullable', 'email', 'max:255'],
+            'address_1' => ['required', ...$max],
+            'address_2' => ['nullable', ...$max],
+            'address' => ['required', 'array'],
+            ...$this->addressRules(),
+        ]));
     }
 
     /** @return array<string, mixed> */
