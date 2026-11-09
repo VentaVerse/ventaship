@@ -241,7 +241,7 @@ class SpxFulfillmentTest extends TestCase
         $result = $this->courier()->createShipment($order, $this->opts(['parcel' => 'small', 'shipping_payment' => 'sender_pay']));
 
         $this->assertFalse($result['success']);
-        $this->assertStringContainsString('valid PH mobile number', $result['error']);
+        $this->assertSame("The customer's phone isn't a valid PH mobile number.", $result['error']);
         Http::assertNothingSent();
     }
 
@@ -342,7 +342,7 @@ class SpxFulfillmentTest extends TestCase
         $result = $this->courier()->createShipment($order, ['parcel' => 'small', 'shipping_payment' => 'sender_pay']);
 
         $this->assertFalse($result['success']);
-        $this->assertStringContainsString('pickup address', $result['error']);
+        $this->assertSame("The sender's province is missing.", $result['error']);
         Http::assertNothingSent();
     }
 
@@ -355,7 +355,120 @@ class SpxFulfillmentTest extends TestCase
         $result = $this->courier()->createShipment($order, $this->opts(['parcel' => 'small', 'shipping_payment' => 'sender_pay']));
 
         $this->assertFalse($result['success']);
-        $this->assertStringContainsString('shipping province/city/barangay/postal code', $result['error']);
+        $this->assertSame("The customer's province is missing.", $result['error']);
+        Http::assertNothingSent();
+    }
+
+    // ------------------------------------------------------------------
+    // Missing postcode filled from PSGC; specific refusals; coverage code.
+    // ------------------------------------------------------------------
+
+    /** @return array<string, mixed> */
+    private function binRecipient(string $barangay, string $postcode = ''): array
+    {
+        return ['barangay' => $barangay, 'city' => 'Bangued (Capital)', 'state' => 'Abra', 'postcode' => $postcode, 'codes' => []];
+    }
+
+    public function test_the_creator_fills_a_missing_postcode_from_the_psgc_city(): void
+    {
+        $r = \App\Shipments\ShipmentCreator::attributes(['recipient' => $this->binRecipient('Agtangao')])['recipient'];
+        $this->assertSame('2805', $r['postcode']);
+
+        $p = \App\Shipments\ShipmentCreator::attributes(['pickup' => $this->binRecipient('Agtangao') + ['contact_phone' => '09171112222']])['pickup'];
+        $this->assertSame('2805', $p['postcode']);
+
+        $given = \App\Shipments\ShipmentCreator::attributes(['recipient' => $this->binRecipient('Agtangao', '9999')])['recipient'];
+        $this->assertSame('9999', $given['postcode']);
+
+        $unknown = \App\Shipments\ShipmentCreator::attributes(['recipient' => ['city' => 'Atlantis', 'state' => 'Abra']])['recipient'];
+        $this->assertEmpty($unknown['postcode']);
+    }
+
+    public function test_booking_an_unlisted_barangay_without_postcode_is_refused_naming_it_and_sends_nothing(): void
+    {
+        $this->configureAccountCredentials();
+        Http::fake();
+
+        $order = $this->makeOrder($this->binRecipient('Agtangao'));
+        $result = $this->courier()->createShipment($order, $this->opts(['parcel' => 'small', 'shipping_payment' => 'sender_pay']));
+
+        $this->assertFalse($result['success']);
+        $this->assertSame("SPX doesn't list the customer's barangay.", $result['error']);
+        Http::assertNothingSent();
+    }
+
+    public function test_a_listed_barangay_without_postcode_books_with_the_psgc_postcode(): void
+    {
+        $this->configureAccountCredentials();
+        Http::fake([
+            '*batch_create_order*' => Http::response(['ret_code' => 0, 'message' => 'success.', 'data' => ['batch_no' => 1]]),
+            '*get_order_create_result*' => Http::response($this->doneCreateResultResponse('SPEPH000000000002')),
+        ]);
+
+        $order = $this->makeOrder($this->binRecipient('Zone 4 Pob. (Town Proper)'));
+        $result = $this->courier()->createShipment($order, $this->opts(['parcel' => 'small', 'shipping_payment' => 'sender_pay']));
+
+        $this->assertTrue($result['success']);
+        Http::assertSent(function ($request) {
+            if (!str_contains($request->url(), 'batch_create_order')) {
+                return false;
+            }
+            $d = $request->data()['orders'][0]['deliver_info'];
+
+            return $d['deliver_post_code'] === '2805'
+                && $d['deliver_state'] === 'North Luzon'
+                && $d['deliver_city'] === 'Abra'
+                && $d['deliver_district'] === 'Bangued'
+                && $d['deliver_street'] === 'Zone 4 Pob. (Town Proper)';
+        });
+    }
+
+    public function test_missing_fields_are_named_by_side_and_first_missing_wins(): void
+    {
+        $this->configureAccountCredentials();
+        Http::fake();
+
+        foreach ([
+            [['barangay' => ''], "The customer's barangay is missing."],
+            [['city' => '', 'barangay' => ''], "The customer's city is missing."],
+            [['city' => 'Atlantis'], "The customer's postcode is missing."],
+        ] as [$over, $message]) {
+            $order = $this->makeOrder($over + ['postcode' => '', 'state' => 'Abra', 'city' => 'Bangued (Capital)', 'barangay' => 'Agtangao']);
+            $result = $this->courier()->createShipment($order, $this->opts(['parcel' => 'small', 'shipping_payment' => 'sender_pay']));
+            $this->assertSame($message, $result['error']);
+        }
+
+        $pickup = PickupPoint::fromArray([
+            'contact_name' => 'W', 'contact_phone' => '09171112222', 'address_1' => '1 St',
+            'barangay' => 'Bel-Air', 'city' => 'Atlantis', 'state' => 'Metro Manila', 'postcode' => '',
+        ]);
+        $result = $this->courier()->createShipment($this->makeOrder(), ['pickup' => $pickup, 'weight_kg' => 1] + ['parcel' => 'small']);
+        $this->assertSame("The sender's postcode is missing.", $result['error']);
+        Http::assertNothingSent();
+    }
+
+    public function test_coverage_for_an_unlisted_barangay_is_not_serviceable_with_a_code_and_no_http_call(): void
+    {
+        $this->configureAccountCredentials();
+        Http::fake();
+
+        $verdict = $this->courier()->checkServiceability($this->makeOrder($this->binRecipient('Agtangao')), $this->pickup());
+
+        $this->assertSame('not_serviceable', $verdict->status);
+        $this->assertSame('destination', $verdict->kind);
+        $this->assertSame('spx_unlisted_barangay', $verdict->code);
+        Http::assertNothingSent();
+    }
+
+    public function test_coverage_with_data_we_cannot_fill_is_unknown_with_a_code(): void
+    {
+        $this->configureAccountCredentials();
+        Http::fake();
+
+        $verdict = $this->courier()->checkServiceability($this->makeOrder(['city' => 'Atlantis', 'postcode' => '', 'barangay' => 'X']), $this->pickup());
+
+        $this->assertSame('unknown', $verdict->status);
+        $this->assertSame('missing_postcode', $verdict->code);
         Http::assertNothingSent();
     }
 

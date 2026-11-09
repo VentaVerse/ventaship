@@ -36,6 +36,7 @@ class CoverageController extends Controller
                 'ref' => $destination['ref'],
                 'verdict' => $verdict->status,
                 'kind' => $verdict->kind,
+                'code' => $verdict->code,
                 'reason' => $verdict->reason,
             ];
         }

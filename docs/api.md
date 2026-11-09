@@ -741,6 +741,7 @@ Response, one entry per destination, in request order:
 | `ref` | your `ref` |
 | `verdict` | `serviceable`, `not_serviceable`, or `unknown` (the courier could not be asked or gave no clear answer: it is **not** a refusal) |
 | `kind` | when recognised, which kind of problem: `destination`, `origin`, `cod`, `postcode`, `parcel` (these come with `not_serviceable`), or `slot`, `their_side`, `unreachable` (these come with `unknown`); otherwise `null` |
+| `code` | why, when Ventaship itself knows without asking the courier, else `null`. With `unknown`: `missing_province`, `missing_city`, `missing_barangay`, `missing_postcode`, `missing_phone` (the customer's address) or the same with `pickup_` (`missing_pickup_postcode`, ...) for the sender; add the field and ask again. With `not_serviceable` (SPX): `spx_unlisted_province`, `spx_unlisted_city`, `spx_unlisted_barangay` (SPX's location list does not have the customer's place; `spx_unlisted_pickup_*` for the sender), `spx_no_delivery`, `spx_no_cod`, `spx_no_pickup`, `spx_no_cod_pickup`. A missing postcode is first filled from the PSGC city, so `missing_postcode` only appears when the city cannot be matched |
 | `reason` | the courier's own words when it said something (always shown to people when `kind` is `null`; may also accompany a recognised `kind`, e.g. `destination`); otherwise `null` |
 
 <!-- fixture: coverage.response -->
@@ -751,10 +752,17 @@ Response, one entry per destination, in request order:
             "ref": "cart-1",
             "verdict": "serviceable",
             "kind": null,
+            "code": null,
             "reason": null
         }
     ]
 }
+```
+
+A destination SPX does not list, for example barangay Agtangao of Bangued, Abra:
+
+```json
+{"ref": "cart-2", "verdict": "not_serviceable", "kind": "destination", "code": "spx_unlisted_barangay", "reason": null}
 ```
 
 ---

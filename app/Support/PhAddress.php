@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Couriers\Spx\SpxLocations;
+
 /**
  * The Philippine address hierarchy (PSGC) from database/data/ph: province > city > (Manila district >) barangay.
  * Each level is indexed once (by code and by parent) and compiled to a PHP file named by the source's mtime, so
@@ -70,6 +72,57 @@ class PhAddress
         foreach ($this->children($level, $parent) as $row) {
             if (mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', $row['name']))) === $name) {
                 return $row;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The postcode of the PSGC city/municipality an address names, or null when it cannot be placed or the city has
+     * none. Codes win (city, else the barangay's city); otherwise province + city are matched by normalised name
+     * ("(Capital)", "City of", accents and case ignored, as SpxLocations does).
+     *
+     * @param  array{state?: ?string, city?: ?string, state_code?: ?string, city_code?: ?string, barangay_code?: ?string}  $a
+     */
+    public function postcodeFor(array $a): ?string
+    {
+        $cityRow = null;
+        $city = trim((string) ($a['city_code'] ?? ''));
+        $barangay = trim((string) ($a['barangay_code'] ?? ''));
+        if ($city !== '') {
+            $cityRow = $this->find('cities', $city);
+        }
+        if ($cityRow === null && $barangay !== '') {
+            $parent = $this->find('barangays', $barangay)['parent'] ?? null;
+            if ($parent !== null) {
+                $cityRow = $this->find('cities', $parent) ?? $this->find('cities', $this->find('districts', $parent)['parent'] ?? '');
+            }
+        }
+        if ($cityRow === null) {
+            $cityRow = $this->cityByName((string) ($a['state'] ?? ''), (string) ($a['city'] ?? ''), trim((string) ($a['state_code'] ?? '')));
+        }
+        $zip = trim((string) ($cityRow['zip'] ?? ''));
+
+        return $zip !== '' ? $zip : null;
+    }
+
+    /** @return array<string, string>|null */
+    private function cityByName(string $state, string $city, string $stateCode): ?array
+    {
+        $wantCity = SpxLocations::key($city);
+        if ($wantCity === '') {
+            return null;
+        }
+        $wantState = SpxLocations::key($state);
+        foreach ($this->provinces() as $province) {
+            if ($stateCode !== '' ? $province['code'] !== $stateCode : ($wantState === '' || SpxLocations::key($province['name']) !== $wantState)) {
+                continue;
+            }
+            foreach ($this->cities($province['code']) as $row) {
+                if (SpxLocations::key($row['name']) === $wantCity) {
+                    return $row;
+                }
             }
         }
 

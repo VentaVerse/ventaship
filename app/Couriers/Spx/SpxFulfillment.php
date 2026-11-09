@@ -8,6 +8,7 @@ use App\Couriers\Contracts\Courier;
 use App\Couriers\PickupOrigin;
 use App\Couriers\PickupPoint;
 use App\Couriers\ServiceabilityService;
+use App\Support\PhAddress;
 use App\Couriers\Support\OrderWeight;
 use App\Couriers\Support\PhPhone;
 use App\Couriers\Support\ServiceabilityVerdict;
@@ -685,12 +686,13 @@ class SpxFulfillment implements Courier
         if (!$built['ok'] && isset($built['kind'])) {
             // SPX's own location list rules the address out: a refusal we
             // can state without asking SPX.
-            return ServiceabilityVerdict::notServiceable($built['kind']);
+            return ServiceabilityVerdict::notServiceable($built['kind'], null, $built['code'] ?? null);
         }
         if (!$built['ok']) {
             // Our own missing data (an incomplete pickup origin, an address
             // we cannot map), so nothing was asked and nothing was refused.
-            return ServiceabilityVerdict::unknown(ServiceabilityVerdict::KIND_UNREACHABLE);
+            // `code` tells the API client which field to fix.
+            return ServiceabilityVerdict::unknown(ServiceabilityVerdict::KIND_UNREACHABLE, null, $built['code'] ?? null);
         }
 
         try {
@@ -1489,18 +1491,18 @@ class SpxFulfillment implements Courier
      * itself rules the address out, so checkServiceability() can say so
      * without asking SPX.
      *
-     * @return array{ok:bool, payload?:array, error?:string, kind?:string}
+     * @return array{ok:bool, payload?:array, error?:string, kind?:string, code?:string}
      */
     private function buildOrderPayload(CourierOrder $order, array $opts): array
     {
         $sender = $this->senderInfo($opts);
         if (!$sender['ok']) {
-            return ['ok' => false, 'error' => $sender['error']] + (isset($sender['kind']) ? ['kind' => $sender['kind']] : []);
+            return ['ok' => false, 'error' => $sender['error']] + array_intersect_key($sender, ['kind' => 1, 'code' => 1]);
         }
 
         $deliver = $this->deliverInfo($order);
         if (!$deliver['ok']) {
-            return ['ok' => false, 'error' => $deliver['error']] + (isset($deliver['kind']) ? ['kind' => $deliver['kind']] : []);
+            return ['ok' => false, 'error' => $deliver['error']] + array_intersect_key($deliver, ['kind' => 1, 'code' => 1]);
         }
 
         $fulfillment = $this->fulfillmentInfo($order, $opts);
@@ -1555,12 +1557,18 @@ class SpxFulfillment implements Courier
         $district = (string) ($pickup->district ?? '');
         $barangay = (string) ($pickup->barangay ?? '');
         $address  = (string) ($pickup->address_1 ?? '');
-        $postCode = (string) ($pickup->postcode ?? '');
+        $postCode = trim((string) ($pickup->postcode ?? ''));
         $name     = (string) ($pickup->contact_name ?? '') ?: 'Sender';
         $phone    = $this->normalizePhPhone($pickup->contact_phone ?? '');
 
-        if ($state === '' || $city === '' || $barangay === '' || $address === '' || $postCode === '' || $phone === null) {
-            return ['ok' => false, 'error' => 'The pickup address is incomplete: SPX needs its province, city, barangay, address, postal code and a valid PH mobile number.'];
+        if ($postCode === '') {
+            $postCode = (string) app(PhAddress::class)->postcodeFor([
+                'state' => $state, 'city' => $city, 'state_code' => $pickup->state_code ?? null,
+                'city_code' => $pickup->city_code ?? null, 'barangay_code' => $pickup->barangay_code ?? null,
+            ]);
+        }
+        if (($missing = self::missingField('sender', $state, $city, $barangay, $address, $postCode, $phone)) !== null) {
+            return ['ok' => false] + $missing;
         }
 
         $spx = $this->locations()->resolve([
@@ -1568,7 +1576,7 @@ class SpxFulfillment implements Courier
             'codes' => ['barangay' => (string) ($pickup->barangay_code ?? '')],
         ]);
         if (!$spx['ok']) {
-            return ['ok' => false, 'error' => self::unlistedMessage($spx['missing'], 'sender'), 'kind' => ServiceabilityVerdict::KIND_ORIGIN];
+            return ['ok' => false, 'error' => self::unlistedMessage($spx['missing'], 'sender'), 'kind' => ServiceabilityVerdict::KIND_ORIGIN, 'code' => 'spx_unlisted_pickup_' . $spx['missing']];
         }
         $at = $spx['location'];
 
@@ -1602,8 +1610,15 @@ class SpxFulfillment implements Courier
         $address  = trim((string) $order->shipping_address_1);
         $phone    = $this->normalizePhPhone($order->shipping_phone ?: $order->phone);
 
-        if ($state === '' || $city === '' || $barangay === '' || $postCode === '' || $phone === null) {
-            return ['ok' => false, 'error' => 'This order is missing a shipping province/city/barangay/postal code/valid PH mobile number. Cannot book with SPX until the shipping address is complete.'];
+        if ($postCode === '') {
+            $postCode = (string) app(PhAddress::class)->postcodeFor([
+                'state' => $state, 'city' => $city, 'state_code' => $order->shipping_state_code ?? null,
+                'city_code' => $order->shipping_city_code ?? null, 'barangay_code' => $order->shipping_barangay_code ?? null,
+            ]);
+        }
+        // The customer's street address is optional here (the barangay stands in), so it is passed as present.
+        if (($missing = self::missingField('customer', $state, $city, $barangay, 'x', $postCode, $phone)) !== null) {
+            return ['ok' => false] + $missing;
         }
 
         $spx = $this->locations()->resolve([
@@ -1611,7 +1626,7 @@ class SpxFulfillment implements Courier
             'codes' => ['barangay' => (string) ($order->shipping_barangay_code ?? '')],
         ]);
         if (!$spx['ok']) {
-            return ['ok' => false, 'error' => self::unlistedMessage($spx['missing'], 'customer'), 'kind' => ServiceabilityVerdict::KIND_DESTINATION];
+            return ['ok' => false, 'error' => self::unlistedMessage($spx['missing'], 'customer'), 'kind' => ServiceabilityVerdict::KIND_DESTINATION, 'code' => 'spx_unlisted_' . $spx['missing']];
         }
         $at = $spx['location'];
         if ($address === '') {
@@ -1647,6 +1662,27 @@ class SpxFulfillment implements Courier
         return app(SpxLocations::class);
     }
 
+    /**
+     * The first thing our own data lacks, naming whose address it is; null when complete.
+     *
+     * @return array{error:string, code:string}|null
+     */
+    private static function missingField(string $side, string $state, string $city, string $barangay, string $address, string $postCode, ?string $phone): ?array
+    {
+        $whose = $side === 'sender' ? "The sender's" : "The customer's";
+        $prefix = $side === 'sender' ? 'pickup_' : '';
+        foreach (['province' => $state, 'city' => $city, 'barangay' => $barangay, 'address' => $address, 'postcode' => $postCode] as $field => $value) {
+            if ($value === '') {
+                return ['error' => "{$whose} {$field} is missing.", 'code' => "missing_{$prefix}{$field}"];
+            }
+        }
+        if ($phone === null) {
+            return ['error' => "{$whose} phone isn't a valid PH mobile number.", 'code' => "missing_{$prefix}phone"];
+        }
+
+        return null;
+    }
+
     /** "SPX doesn't list the customer's barangay." — the level SpxLocations could not place, and whose address. */
     private static function unlistedMessage(string $level, string $whose): string
     {
@@ -1658,19 +1694,19 @@ class SpxFulfillment implements Courier
      * when COD) at the customer's barangay, pickup (and COD pickup when COD)
      * at the sender's when the parcel is collected rather than dropped off.
      *
-     * @return array{error:string, kind:string}|null
+     * @return array{error:string, kind:string, code:string}|null
      */
     private static function supportRefusal(string $senderFlags, string $deliverFlags, bool $cod, bool $pickup): ?array
     {
         $checks = [
-            [$deliverFlags, SpxLocations::DELIVER, true, "SPX doesn't deliver to this barangay.", ServiceabilityVerdict::KIND_DESTINATION],
-            [$deliverFlags, SpxLocations::COD_DELIVER, $cod, "SPX doesn't collect COD in this barangay.", ServiceabilityVerdict::KIND_COD],
-            [$senderFlags, SpxLocations::PICKUP, $pickup, "SPX doesn't pick up from the sender's barangay.", ServiceabilityVerdict::KIND_ORIGIN],
-            [$senderFlags, SpxLocations::COD_PICKUP, $pickup && $cod, "SPX doesn't pick up COD parcels from the sender's barangay.", ServiceabilityVerdict::KIND_ORIGIN],
+            [$deliverFlags, SpxLocations::DELIVER, true, "SPX doesn't deliver to this barangay.", ServiceabilityVerdict::KIND_DESTINATION, 'spx_no_delivery'],
+            [$deliverFlags, SpxLocations::COD_DELIVER, $cod, "SPX doesn't collect COD in this barangay.", ServiceabilityVerdict::KIND_COD, 'spx_no_cod'],
+            [$senderFlags, SpxLocations::PICKUP, $pickup, "SPX doesn't pick up from the sender's barangay.", ServiceabilityVerdict::KIND_ORIGIN, 'spx_no_pickup'],
+            [$senderFlags, SpxLocations::COD_PICKUP, $pickup && $cod, "SPX doesn't pick up COD parcels from the sender's barangay.", ServiceabilityVerdict::KIND_ORIGIN, 'spx_no_cod_pickup'],
         ];
-        foreach ($checks as [$flags, $flag, $needed, $error, $kind]) {
+        foreach ($checks as [$flags, $flag, $needed, $error, $kind, $code]) {
             if ($needed && !SpxLocations::supports($flags, $flag)) {
-                return ['error' => $error, 'kind' => $kind];
+                return ['error' => $error, 'kind' => $kind, 'code' => $code];
             }
         }
 

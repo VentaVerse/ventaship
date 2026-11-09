@@ -25,6 +25,9 @@ namespace App\Couriers\Support;
  * left NULL for a transport failure, where the message would be curl's or
  * ours and never the courier's.
  *
+ * `code` is the machine-readable WHY (`missing_postcode`, `spx_unlisted_barangay`, ...) when our own check knows it,
+ * for API clients; null when the courier itself answered.
+ *
  * `fees` is the price map the same call happened to return (QuadX's
  * /orders/estimates/rates answers with a fee per parcel category), keyed by
  * that courier's own parcel value so the booking form can print an exact fee
@@ -63,6 +66,7 @@ final class ServiceabilityVerdict implements \JsonSerializable
         public readonly array $fees = [],
         public readonly string $currency = 'PHP',
         public readonly ?string $kind = null,
+        public readonly ?string $code = null,
     ) {
     }
 
@@ -83,15 +87,15 @@ final class ServiceabilityVerdict implements \JsonSerializable
      * The courier said no. $kind is which no, when we recognise it; $reason
      * must be what IT said, and is what gets printed when we do not.
      */
-    public static function notServiceable(?string $kind = null, ?string $reason = null): self
+    public static function notServiceable(?string $kind = null, ?string $reason = null, ?string $code = null): self
     {
-        return new self(self::NOT_SERVICEABLE, $reason, [], 'PHP', $kind);
+        return new self(self::NOT_SERVICEABLE, $reason, [], 'PHP', $kind, $code);
     }
 
     /** We could not ask, or could not understand the answer. Never a refusal. */
-    public static function unknown(?string $kind = null, ?string $reason = null): self
+    public static function unknown(?string $kind = null, ?string $reason = null, ?string $code = null): self
     {
-        return new self(self::UNKNOWN, $reason, [], 'PHP', $kind);
+        return new self(self::UNKNOWN, $reason, [], 'PHP', $kind, $code);
     }
 
     public function isServiceable(): bool
@@ -110,12 +114,13 @@ final class ServiceabilityVerdict implements \JsonSerializable
         return $this->fees === [] ? null : min($this->fees);
     }
 
-    /** @return array{status:string, kind:?string, reason:?string, fees:array<string,float>, currency:string, from:?float} */
+    /** @return array{status:string, kind:?string, code:?string, reason:?string, fees:array<string,float>, currency:string, from:?float} */
     public function toArray(): array
     {
         return [
             'status'   => $this->status,
             'kind'     => $this->kind,
+            'code'     => $this->code,
             'reason'   => $this->reason,
             'fees'     => $this->fees,
             'currency' => $this->currency,
@@ -133,8 +138,8 @@ final class ServiceabilityVerdict implements \JsonSerializable
     {
         return match ($data['status'] ?? self::UNKNOWN) {
             self::SERVICEABLE     => self::serviceable($data['fees'] ?? [], $data['currency'] ?? 'PHP'),
-            self::NOT_SERVICEABLE => self::notServiceable($data['kind'] ?? null, $data['reason'] ?? null),
-            default               => self::unknown($data['kind'] ?? null, $data['reason'] ?? null),
+            self::NOT_SERVICEABLE => self::notServiceable($data['kind'] ?? null, $data['reason'] ?? null, $data['code'] ?? null),
+            default               => self::unknown($data['kind'] ?? null, $data['reason'] ?? null, $data['code'] ?? null),
         };
     }
 }

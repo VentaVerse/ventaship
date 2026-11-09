@@ -8,6 +8,7 @@ use App\Couriers\Support\PhPhone;
 use App\Models\ClientApp;
 use App\Models\Shipment;
 use App\Shipments\Jobs\BookShipment;
+use App\Support\PhAddress;
 use Closure;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
@@ -410,6 +411,13 @@ final class ShipmentCreator
         $out[$phoneKey] = self::localPhone($party[$phoneKey] ?? null);
         $out['country'] = $out['country'] ?? 'PH';
         $out['codes'] = self::pick(is_array($party['codes'] ?? null) ? $party['codes'] : [], ['state', 'city', 'barangay']);
+        if (trim((string) ($out['postcode'] ?? '')) === '') {
+            $out['postcode'] = (new PhAddress)->postcodeFor([
+                'state' => $out['state'] ?? null, 'city' => $out['city'] ?? null,
+                'state_code' => $out['codes']['state'] ?? null, 'city_code' => $out['codes']['city'] ?? null,
+                'barangay_code' => $out['codes']['barangay'] ?? null,
+            ]) ?? ($out['postcode'] ?? null);
+        }
 
         return $out;
     }
