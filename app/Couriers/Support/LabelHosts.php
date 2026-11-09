@@ -18,6 +18,15 @@ final class LabelHosts
         'spx' => ['spx.ph', 'shopee.ph', 'spx.co.th'],
     ];
 
+    /**
+     * Path-style S3 links (https://s3.<region>.amazonaws.com/<bucket>/...): the host is shared by every bucket, so
+     * the bucket (the first path segment) must be the courier's. QuadX's AWB buckets are named after its own domain
+     * (awbpod.staging.quadx.xyz on staging), which forces the path style over https.
+     */
+    private const S3_BUCKETS = [
+        'quadx' => ['quadx.xyz', 'quadx-awb'],
+    ];
+
     public static function allows(string $courier, mixed $url): bool
     {
         if (! is_string($url) || $url === '' || ! isset(self::HOSTS[$courier])) {
@@ -39,6 +48,15 @@ final class LabelHosts
         foreach (self::HOSTS[$courier] as $allowed) {
             if ($host === $allowed || str_ends_with($host, '.'.$allowed)) {
                 return true;
+            }
+        }
+
+        if (preg_match('/^s3[.-][a-z0-9-]+\.amazonaws\.com$|^s3\.amazonaws\.com$/', $host) === 1) {
+            $bucket = strtolower(explode('/', ltrim((string) ($parts['path'] ?? ''), '/'))[0]);
+            foreach (self::S3_BUCKETS[$courier] ?? [] as $allowed) {
+                if ($bucket !== '' && ($bucket === $allowed || str_ends_with($bucket, '.'.$allowed))) {
+                    return true;
+                }
             }
         }
 
