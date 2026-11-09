@@ -65,7 +65,7 @@ class ShipmentShowTest extends TestCase
         $res->assertSeeInOrder(['Customer', 'Parcel', 'Payment', 'Courier', 'Timeline']);
         $this->assertStringNotContainsString('>Source<', $res->getContent());
         $this->assertStringNotContainsString('Payment state', $res->getContent());
-        $res->assertSee('Maria Cruz')->assertSee('12 Rizal St')->assertSee('09171234567')
+        $res->assertSee('Maria Cruz')->assertSee('12 Rizal St')->assertSee('0917 123 4567')
             ->assertSee($s->courier_ref)->assertSee($s->client_reference)
             ->assertSee('Blue Tee')->assertSee('₱1,240.50')->assertSee('₱900.00')
             ->assertSee('COD · Unpaid')->assertSee('Address unclear')

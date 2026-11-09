@@ -80,6 +80,17 @@ final class ShipmentDetail
         return $phone !== '' ? $phone : null;
     }
 
+    /** The phone as people read it, "0917 123 4567"; anything that is not an 11-digit 09 number is shown as stored. */
+    public function phoneShown(): ?string
+    {
+        $phone = $this->phone();
+        $digits = preg_replace('/\D/', '', (string) $phone);
+
+        return strlen($digits) === 11 && str_starts_with($digits, '09')
+            ? substr($digits, 0, 4).' '.substr($digits, 4, 3).' '.substr($digits, 7)
+            : $phone;
+    }
+
     public function address(): ?string
     {
         $r = $this->recipient() ?? [];

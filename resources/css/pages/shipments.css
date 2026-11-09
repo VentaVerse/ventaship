@@ -840,6 +840,21 @@
         display: inline-flex;
     }
 
+    /* Copy beside a value is a quiet text action, not a bordered button. */
+    .sd-copy .x-btn {
+        height: auto;
+        padding: 2px 6px;
+        border-color: transparent;
+        background: none;
+        color: var(--bl-brand-btn);
+        font-size: 12px;
+        justify-items: start;
+    }
+
+    .sd-copy .x-btn:hover {
+        background: var(--bl-brand-w);
+    }
+
     .sd-actions {
         display: flex;
         flex-wrap: wrap;

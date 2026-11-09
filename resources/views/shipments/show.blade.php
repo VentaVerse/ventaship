@@ -133,7 +133,7 @@
                     @if($phone)
                         <dt>Phone</dt>
                         <dd class="sd-dd-copy">
-                            <span class="x-num">{{ $phone }}</span>
+                            <span class="x-num">{{ $detail->phoneShown() }}</span>
                             <span class="sd-copy" x-data="credentialField({{ Js::from($copy($phone)) }})"><x-ui.copy-button label="Copy phone number" /></span>
                         </dd>
                     @endif
