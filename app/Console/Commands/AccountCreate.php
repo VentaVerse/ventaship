@@ -8,7 +8,7 @@ use Illuminate\Console\Command;
 
 class AccountCreate extends Command
 {
-    protected $signature = 'ventaship:account-create {courier} {label} {--mode=staging} {--default}';
+    protected $signature = 'ventaship:account-create {courier} {label} {--mode=sandbox} {--default}';
 
     protected $description = 'Create a courier account and print its id and inbound webhook URL';
 

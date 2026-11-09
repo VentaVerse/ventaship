@@ -14,7 +14,7 @@ use Throwable;
 
 /**
  * One courier account's settings (courier_account_settings), loaded once. The keys are the ones each courier's
- * settingsSchema() declares (`quadx_staging_api_key`, `quadx_default_parcel`, ...). Secret values are stored
+ * settingsSchema() declares (`quadx_sandbox_api_key`, `quadx_default_parcel`, ...). Secret values are stored
  * encrypted with CredentialVault and only ever leave this class decrypted through secret().
  */
 final class AccountSettings

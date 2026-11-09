@@ -41,22 +41,21 @@ trait LbcFixtures
         $this->account = $this->lbcAccount();
     }
 
-    /** A production LBC account with every setting stored and (by default) a block of numbers. */
+    /** A sandbox LBC account with every setting stored and (by default) a block of numbers. */
     protected function lbcAccount(array $attributes = [], bool $withSeries = true): CourierAccount
     {
         $account = CourierAccount::factory()->create($attributes + [
             'courier' => 'lbc',
-            'mode' => 'production',
+            'mode' => 'sandbox',
         ]);
 
         $settings = AccountSettings::for($account);
-        $settings->write('lbc_mode', 'test');
         $settings->write('lbc_client_code', 'DEMO');
         $settings->write('lbc_shipper_account_no', self::ACCOUNT_NO);
-        $settings->writeSecret('lbc_test_common_key', 'common-key');
-        $settings->writeSecret('lbc_test_airwaybill_key', 'waybill-key');
-        $settings->writeSecret('lbc_test_pickup_key', 'pickup-key');
-        $settings->writeSecret('lbc_test_track_key', 'track-key');
+        $settings->writeSecret('lbc_sandbox_common_key', 'common-key');
+        $settings->writeSecret('lbc_sandbox_airwaybill_key', 'waybill-key');
+        $settings->writeSecret('lbc_sandbox_pickup_key', 'pickup-key');
+        $settings->writeSecret('lbc_sandbox_track_key', 'track-key');
 
         if ($withSeries) {
             app(TrackingNumberSeriesService::class)->addSeries($account, self::SERIES_FIRST, self::SERIES_LAST);

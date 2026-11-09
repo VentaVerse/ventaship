@@ -34,13 +34,13 @@ class SpxClientTest extends TestCase
         $this->assertFalse($this->client($account)->hasAccountCredentials());
         $this->assertSame(['App ID', 'App Secret'], $this->client($account)->missingCredentialLabels());
 
-        AccountSettings::for($account)->write('spx_app_id', '424242');
-        AccountSettings::for($account)->writeSecret('spx_secret_key', 'fake-app-secret-not-real');
+        AccountSettings::for($account)->write('spx_sandbox_app_id', '424242');
+        AccountSettings::for($account)->writeSecret('spx_sandbox_secret_key', 'fake-app-secret-not-real');
         $this->assertTrue($this->client($account)->isConfigured());
         $this->assertFalse($this->client($account)->hasAccountCredentials());
 
-        AccountSettings::for($account)->write('spx_user_id', '999999');
-        AccountSettings::for($account)->writeSecret('spx_user_secret', 'fake-user-secret-not-real');
+        AccountSettings::for($account)->write('spx_sandbox_user_id', '999999');
+        AccountSettings::for($account)->writeSecret('spx_sandbox_user_secret', 'fake-user-secret-not-real');
         $this->assertTrue($this->client($account)->hasAccountCredentials());
         $this->assertSame([], $this->client($account)->missingCredentialLabels());
     }
@@ -172,8 +172,8 @@ class SpxClientTest extends TestCase
     private function webhookAccount(): CourierAccount
     {
         $account = CourierAccount::factory()->create(['courier' => 'spx']);
-        AccountSettings::for($account)->write('spx_app_id', '100000');
-        AccountSettings::for($account)->writeSecret('spx_secret_key', 'H25HY53GO4BA2GQ');
+        AccountSettings::for($account)->write('spx_sandbox_app_id', '100000');
+        AccountSettings::for($account)->writeSecret('spx_sandbox_secret_key', 'H25HY53GO4BA2GQ');
 
         return $account;
     }

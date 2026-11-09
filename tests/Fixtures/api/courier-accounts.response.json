@@ -4,7 +4,7 @@
             "id": "acc_01m6ws8t06hsthfpfmv692k221",
             "courier": "quadx",
             "label": "QuadX main",
-            "mode": "staging",
+            "mode": "sandbox",
             "status": "active",
             "is_default": true,
             "issues": [],

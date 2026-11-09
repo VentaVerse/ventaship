@@ -2,7 +2,7 @@
     use App\Fulfillment\Couriers;
 
     $account = $card['account'];
-    $modeWord = $account ? ($account->mode === 'production' ? 'Live' : (strtolower($account->mode) === 'uat' ? 'UAT' : ucfirst($account->mode))) : null;
+    $modeWord = $account ? ($account->mode === 'production' ? 'Production' : 'Sandbox') : null;
     $check = $account ? ($account->last_check_ok === null ? ['Not checked', 'mute'] : ($account->last_check_ok ? ['Connected', 'good'] : ['Check failed', 'bad'])) : null;
 @endphp
 

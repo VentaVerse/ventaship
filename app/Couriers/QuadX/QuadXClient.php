@@ -19,7 +19,7 @@ use Illuminate\Support\Str;
 class QuadXClient
 {
     private const BASE_URLS = [
-        'staging'    => 'https://api.staging.quadx.xyz/v2',
+        'sandbox'    => 'https://api.staging.quadx.xyz/v2',
         'production' => 'https://api.quadx.xyz/v2',
     ];
 
@@ -35,7 +35,7 @@ class QuadXClient
      * exactly as QuadXFulfillment::settingsSchema() labels them — backs
      * QuadXFulfillment::configurationIssues() (Courier's
      * sanctioned evolution #6). Mode-aware the same way apiKey()/secretKey()
-     * already are: checks whichever mode (staging/production) is currently
+     * already are: checks whichever environment (sandbox/production) is currently
      * selected, never both.
      *
      * @return string[]
@@ -53,12 +53,12 @@ class QuadXClient
         return $missing;
     }
 
-    /** The environment this client talks to: the account's mode, 'staging' or 'production'. */
+    /** The environment this client talks to: the account's, 'sandbox' (QuadX staging) or 'production'. */
     public function mode(): string
     {
         $mode = (string) $this->settings->account()->mode;
 
-        return isset(self::BASE_URLS[$mode]) ? $mode : 'staging';
+        return isset(self::BASE_URLS[$mode]) ? $mode : 'sandbox';
     }
 
     public function baseUrl(): string

@@ -41,7 +41,7 @@ class SpxFulfillmentTest extends TestCase
 
     private function account(): CourierAccount
     {
-        return $this->account ??= CourierAccount::factory()->create(['courier' => 'spx', 'mode' => 'staging']);
+        return $this->account ??= CourierAccount::factory()->create(['courier' => 'spx', 'mode' => 'sandbox']);
     }
 
     private function courier(): SpxFulfillment
@@ -54,10 +54,10 @@ class SpxFulfillmentTest extends TestCase
     private function configureAccountCredentials(): void
     {
         $settings = AccountSettings::for($this->account());
-        $settings->write('spx_app_id', '424242');
-        $settings->writeSecret('spx_secret_key', 'fake-app-secret-not-real');
-        $settings->write('spx_user_id', '999999');
-        $settings->writeSecret('spx_user_secret', 'fake-user-secret-not-real');
+        $settings->write('spx_sandbox_app_id', '424242');
+        $settings->writeSecret('spx_sandbox_secret_key', 'fake-app-secret-not-real');
+        $settings->write('spx_sandbox_user_id', '999999');
+        $settings->writeSecret('spx_sandbox_user_secret', 'fake-user-secret-not-real');
     }
 
     /** The pickup origin the client sends with the shipment. */
@@ -320,8 +320,8 @@ class SpxFulfillmentTest extends TestCase
     public function test_create_shipment_fails_clearly_without_user_credentials_and_never_calls_spx(): void
     {
         // App-level creds only (isConfigured true), no user_id/user_secret.
-        AccountSettings::for($this->account())->write('spx_app_id', '424242');
-        AccountSettings::for($this->account())->writeSecret('spx_secret_key', 'x');
+        AccountSettings::for($this->account())->write('spx_sandbox_app_id', '424242');
+        AccountSettings::for($this->account())->writeSecret('spx_sandbox_secret_key', 'x');
         Http::fake();
 
         $order = $this->makeOrder();
@@ -1339,8 +1339,8 @@ class SpxFulfillmentTest extends TestCase
 
     public function test_verify_webhook_signature_accepts_a_correctly_signed_request(): void
     {
-        AccountSettings::for($this->account())->write('spx_app_id', '424242');
-        AccountSettings::for($this->account())->writeSecret('spx_secret_key', 'fake-app-secret-not-real');
+        AccountSettings::for($this->account())->write('spx_sandbox_app_id', '424242');
+        AccountSettings::for($this->account())->writeSecret('spx_sandbox_secret_key', 'fake-app-secret-not-real');
 
         $payload = '{"status_code":"4001","tracking_no":"SPEPH1"}';
         $timestamp = 1700000000;
@@ -1359,8 +1359,8 @@ class SpxFulfillmentTest extends TestCase
 
     public function test_verify_webhook_signature_rejects_a_request_with_no_signature_headers(): void
     {
-        AccountSettings::for($this->account())->write('spx_app_id', '424242');
-        AccountSettings::for($this->account())->writeSecret('spx_secret_key', 'fake-app-secret-not-real');
+        AccountSettings::for($this->account())->write('spx_sandbox_app_id', '424242');
+        AccountSettings::for($this->account())->writeSecret('spx_sandbox_secret_key', 'fake-app-secret-not-real');
 
         $request = Request::create('/webhooks/courier/spx', 'POST', content: '{"status_code":"4001"}');
 
@@ -1456,15 +1456,15 @@ class SpxFulfillmentTest extends TestCase
 
         $this->assertNull($schema->firstWhere('key', 'spx_enabled'));
         $this->assertNull($schema->firstWhere('key', 'spx_mode'));
-        $this->assertTrue($schema->firstWhere('key', 'spx_secret_key')['encrypted']);
-        $this->assertTrue($schema->firstWhere('key', 'spx_user_secret')['encrypted']);
+        $this->assertTrue($schema->firstWhere('key', 'spx_sandbox_secret_key')['encrypted']);
+        $this->assertTrue($schema->firstWhere('key', 'spx_sandbox_user_secret')['encrypted']);
     }
 
     public function test_create_shipper_account_sends_the_given_phone_and_email_and_stores_the_pair(): void
     {
         config(['mail.from.address' => 'never-sent@example.com']);
-        AccountSettings::for($this->account())->write('spx_app_id', '424242');
-        AccountSettings::for($this->account())->writeSecret('spx_secret_key', 'fake-app-secret-not-real');
+        AccountSettings::for($this->account())->write('spx_sandbox_app_id', '424242');
+        AccountSettings::for($this->account())->writeSecret('spx_sandbox_secret_key', 'fake-app-secret-not-real');
 
         Http::fake(['*account/create*' => Http::response([
             'ret_code' => 0, 'message' => 'success.', 'data' => ['user_id' => 555001, 'user_secret' => 'issued-user-secret'],
@@ -1476,9 +1476,9 @@ class SpxFulfillmentTest extends TestCase
         Http::assertSent(fn ($request) => $request->data() === ['phone' => '639171234567', 'email' => 'shop@example.com']);
 
         $settings = AccountSettings::for($this->account());
-        $this->assertSame('555001', $settings->read('spx_user_id'));
-        $this->assertSame('issued-user-secret', $settings->secret('spx_user_secret'));
-        $this->assertNotSame('issued-user-secret', $settings->read('spx_user_secret'), 'The user secret is stored encrypted.');
+        $this->assertSame('555001', $settings->read('spx_sandbox_user_id'));
+        $this->assertSame('issued-user-secret', $settings->secret('spx_sandbox_user_secret'));
+        $this->assertNotSame('issued-user-secret', $settings->read('spx_sandbox_user_secret'), 'The user secret is stored encrypted.');
     }
 
     public function test_create_shipper_account_refuses_a_bad_phone_or_email_and_an_existing_pair(): void
@@ -1488,7 +1488,7 @@ class SpxFulfillmentTest extends TestCase
 
         $this->assertStringContainsString('already on file', $this->courier()->createShipperAccount('09171234567', 'shop@example.com')['error']);
 
-        AccountSettings::for($this->account())->write('spx_user_id', null);
+        AccountSettings::for($this->account())->write('spx_sandbox_user_id', null);
         $this->assertStringContainsString('PH mobile', $this->courier()->createShipperAccount('12', 'shop@example.com')['error']);
         $this->assertStringContainsString('email', $this->courier()->createShipperAccount('09171234567', 'not-an-email')['error']);
 

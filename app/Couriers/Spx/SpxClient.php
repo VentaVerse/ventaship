@@ -35,7 +35,7 @@ use Illuminate\Support\Facades\Log;
 class SpxClient
 {
     private const BASE_URLS = [
-        'uat'        => 'https://test-stable.spx.ph/',
+        'sandbox'    => 'https://test-stable.spx.ph/',
         'production' => 'https://spx.ph/',
     ];
 
@@ -77,10 +77,16 @@ class SpxClient
         return $this->userId() !== null && $this->userSecret() !== null;
     }
 
-    /** 'production' for a production account, otherwise 'uat'. */
+    /** 'production' for a production account, otherwise 'sandbox' (SPX's UAT system). */
     public function mode(): string
     {
-        return $this->settings->account()->mode === 'production' ? 'production' : 'uat';
+        return $this->settings->account()->mode === 'production' ? 'production' : 'sandbox';
+    }
+
+    /** The settings key of one credential (app_id, secret_key, user_id, user_secret) for the account's environment. */
+    public function credentialKey(string $name): string
+    {
+        return 'spx_' . $this->mode() . '_' . $name;
     }
 
     public function baseUrl(): string
@@ -397,21 +403,21 @@ class SpxClient
 
     private function appId(): ?string
     {
-        return $this->settings->read('spx_app_id');
+        return $this->settings->read($this->credentialKey('app_id'));
     }
 
     private function appSecret(): ?string
     {
-        return $this->settings->secret('spx_secret_key');
+        return $this->settings->secret($this->credentialKey('secret_key'));
     }
 
     private function userId(): ?string
     {
-        return $this->settings->read('spx_user_id');
+        return $this->settings->read($this->credentialKey('user_id'));
     }
 
     private function userSecret(): ?string
     {
-        return $this->settings->secret('spx_user_secret');
+        return $this->settings->secret($this->credentialKey('user_secret'));
     }
 }

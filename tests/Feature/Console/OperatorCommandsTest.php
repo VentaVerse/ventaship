@@ -16,10 +16,10 @@ class OperatorCommandsTest extends TestCase
 
     public function test_account_mode_switches_prints_and_audits(): void
     {
-        $account = CourierAccount::factory()->create(['courier' => 'quadx', 'mode' => 'staging']);
+        $account = CourierAccount::factory()->create(['courier' => 'quadx', 'mode' => 'sandbox']);
 
         $this->artisan('ventaship:account-mode', ['account' => $account->public_id, 'mode' => 'production'])
-            ->expectsOutputToContain("{$account->public_id} (quadx) mode: staging → production")
+            ->expectsOutputToContain("{$account->public_id} (quadx) mode: sandbox → production")
             ->assertSuccessful();
 
         $this->assertSame('production', $account->refresh()->mode);
@@ -28,32 +28,33 @@ class OperatorCommandsTest extends TestCase
         $this->assertSame('courier_account.mode_changed', $audit->action);
         $this->assertSame('courier_account', $audit->subject_type);
         $this->assertSame($account->public_id, $audit->subject_id);
-        $this->assertSame(['mode' => ['from' => 'staging', 'to' => 'production']], $audit->changes);
+        $this->assertSame(['mode' => ['from' => 'sandbox', 'to' => 'production']], $audit->changes);
     }
 
-    public function test_account_mode_accepts_uat_for_spx_only(): void
+    public function test_account_mode_takes_sandbox_or_production_only(): void
     {
         $spx = CourierAccount::factory()->create(['courier' => 'spx', 'mode' => 'production']);
-        $quadx = CourierAccount::factory()->create(['courier' => 'quadx', 'mode' => 'staging']);
 
-        $this->artisan('ventaship:account-mode', ['account' => $spx->public_id, 'mode' => 'uat'])->assertSuccessful();
-        $this->assertSame('uat', $spx->refresh()->mode);
+        $this->artisan('ventaship:account-mode', ['account' => $spx->public_id, 'mode' => 'sandbox'])->assertSuccessful();
+        $this->assertSame('sandbox', $spx->refresh()->mode);
 
-        $this->artisan('ventaship:account-mode', ['account' => $quadx->public_id, 'mode' => 'uat'])
-            ->expectsOutputToContain('The mode for quadx must be one of: staging, production.')
-            ->assertFailed();
-        $this->assertSame('staging', $quadx->refresh()->mode);
+        foreach (['uat', 'staging', 'live'] as $old) {
+            $this->artisan('ventaship:account-mode', ['account' => $spx->public_id, 'mode' => $old])
+                ->expectsOutputToContain('The environment must be sandbox or production.')
+                ->assertFailed();
+        }
+        $this->assertSame('sandbox', $spx->refresh()->mode);
         $this->assertSame(1, AuditEntry::query()->count());
     }
 
     public function test_account_mode_refuses_unknown_accounts_and_skips_no_ops(): void
     {
-        $account = CourierAccount::factory()->create(['courier' => 'quadx', 'mode' => 'staging']);
+        $account = CourierAccount::factory()->create(['courier' => 'quadx', 'mode' => 'sandbox']);
 
-        $this->artisan('ventaship:account-mode', ['account' => 'acc_nope', 'mode' => 'staging'])->assertFailed();
+        $this->artisan('ventaship:account-mode', ['account' => 'acc_nope', 'mode' => 'sandbox'])->assertFailed();
         $this->artisan('ventaship:account-mode', ['account' => $account->public_id, 'mode' => 'Production'])->assertFailed();
-        $this->artisan('ventaship:account-mode', ['account' => $account->public_id, 'mode' => 'staging'])
-            ->expectsOutputToContain('already in staging mode')
+        $this->artisan('ventaship:account-mode', ['account' => $account->public_id, 'mode' => 'sandbox'])
+            ->expectsOutputToContain('already in sandbox mode')
             ->assertSuccessful();
 
         $account->delete();

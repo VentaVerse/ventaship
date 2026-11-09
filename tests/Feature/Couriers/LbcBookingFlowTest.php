@@ -251,7 +251,6 @@ class LbcBookingFlowTest extends TestCase
         $this->assertSame((string) self::SERIES_FIRST, $context['nextTrackingNumber']);
         $this->assertSame(self::FIRST_PICKUP, $context['pickupDateMin']);
         $this->assertTrue($context['confirm']);
-        $this->assertSame('Live', $this->lbc()->bookingModeLabel());
         Http::assertNothingSent();
     }
 

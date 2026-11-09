@@ -60,7 +60,7 @@ class ReadEndpointsTest extends TestCase
         $one->assertJsonPath('data.id', $account->public_id)
             ->assertJsonPath('data.courier', 'quadx')
             ->assertJsonPath('data.label', 'Main QuadX')
-            ->assertJsonPath('data.mode', 'staging')
+            ->assertJsonPath('data.mode', 'sandbox')
             ->assertJsonPath('data.status', 'active')
             ->assertJsonPath('data.is_default', true)
             ->assertJsonPath('data.issues', [])

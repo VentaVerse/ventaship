@@ -19,6 +19,9 @@ class CourierAccount extends Model
 
     protected $hidden = ['webhook_token', 'webhook_token_hash', 'relay_secret'];
 
+    /** @var array<string, mixed> a new account starts in the sandbox */
+    protected $attributes = ['mode' => 'sandbox'];
+
     /** A deleted account (soft or hard) gives up its default slot, so another account can take it. */
     protected static function booted(): void
     {

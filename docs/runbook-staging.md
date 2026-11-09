@@ -11,7 +11,7 @@ Run every command from `/home/ubuntu/ventaship`.
 - `.env` has `APP_URL=http://localhost:8040`, the MySQL `ventaship` database, and `VENTASHIP_VAULT_KEY` (base64, 32 bytes). Courier credentials are encrypted with that key: **lose it and every stored courier key is unreadable**.
 - `php artisan migrate` has run.
 - The cache store must support atomic locks (booking, cancels, labels and webhook processing take locks). `CACHE_STORE=database` is fine; `file` and `array` are not suitable for workers.
-- An account in `production` mode books real parcels; there is no separate lock. Keep the QuadX account in `staging` mode for this run.
+- A courier account is in `sandbox` (QuadX staging, SPX UAT) or `production` mode, switched on its Courier accounts page or with `ventaship:account-mode`. Each mode has its own keys. An account in `production` mode books real parcels; there is no separate lock. LBC has no test system: its sandbox keys reach the live gateway too. Keep the QuadX account in `sandbox` mode (QuadX staging) for this run.
 
 ## 2. Start the processes
 
@@ -57,14 +57,14 @@ php artisan ventaship:app-create "VentaCart Pro" --webhook-url=http://127.0.0.1:
 php artisan ventaship:key-issue app_… --name=staging
 #   12|vsk_…
 
-# The QuadX staging account, default for "courier": "quadx". Prints the inbound webhook URL (it carries a secret token).
-php artisan ventaship:account-create quadx "QuadX staging" --mode=staging --default
+# The QuadX account in sandbox mode (QuadX staging), default for "courier": "quadx". Prints the inbound webhook URL (it carries a secret token).
+php artisan ventaship:account-create quadx "QuadX" --mode=sandbox --default
 #   Account:     acc_…
 #   Webhook URL: http://localhost:8040/webhooks/quadx?token=…
 
-# The staging keys. Leave the value off so it is prompted for and kept out of shell history.
-php artisan ventaship:account-set acc_… quadx_staging_api_key --secret
-php artisan ventaship:account-set acc_… quadx_staging_secret_key --secret
+# The sandbox keys. Leave the value off so it is prompted for and kept out of shell history.
+php artisan ventaship:account-set acc_… quadx_sandbox_api_key --secret
+php artisan ventaship:account-set acc_… quadx_sandbox_secret_key --secret
 
 # Check them against QuadX staging, and look at what is stored (secrets masked).
 php artisan ventaship:account-test acc_…
@@ -137,7 +137,7 @@ QuadX must be able to reach the inbound URL printed by `account-create`:
 
 `localhost:8040` is not reachable from QuadX. Until the public https host is settled (owner decision **O1**), QuadX staging cannot call us, and the last steps are simulated (§6). Once O1 exists:
 
-1. Set `APP_URL` to the public base and run `ventaship:account-show acc_…`; the token is masked there, so keep the URL `account-create` printed (or create a new account).
+1. Set `APP_URL` to the public https base (for example `APP_URL=https://ship.example.ph`). The webhook address on the courier's Courier accounts page is built from it (View or Copy shows the full address); `ventaship:account-create` prints it too.
 2. In the QuadX staging dashboard, set the webhook URL to `https://{O1 host}/webhooks/quadx?token=…`.
 3. Behind a reverse proxy (Caddy, nginx, Cloudflare Tunnel), configure Laravel's trusted proxies (`$middleware->trustProxies(at: …)` in `bootstrap/app.php`) so `$request->ip()` is the courier's real address. Courier webhooks are throttled at 300 a minute **per IP**; without trusted proxies every courier shares the proxy's IP and one bucket.
 
@@ -207,8 +207,8 @@ _To be filled in by the owner after running §3–§7 with the real QuadX stagin
   ```bash
   php artisan ventaship:account-set acc_… quadx_production_api_key --secret
   php artisan ventaship:account-set acc_… quadx_production_secret_key --secret
-  php artisan ventaship:account-mode acc_… production    # prints "acc_… (quadx) mode: staging → production"
-  php artisan ventaship:account-mode acc_… staging       # back after the live parcel
+  php artisan ventaship:account-mode acc_… production    # prints "acc_… (quadx) mode: sandbox → production"
+  php artisan ventaship:account-mode acc_… sandbox       # back after the live parcel
   ```
 - [ ] §7 confirmed on staging.
 - [ ] `APP_ENV=production`, `APP_DEBUG=false`.

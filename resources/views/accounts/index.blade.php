@@ -6,7 +6,7 @@
 @php
     use App\Fulfillment\Couriers;
 
-    $modeWords = ['staging' => 'Staging', 'uat' => 'UAT', 'production' => 'Live'];
+    $envWords = ['sandbox' => 'Sandbox', 'production' => 'Production'];
 @endphp
 
 <section class="x-panel ac-list ac-page">
@@ -23,7 +23,7 @@
             </div>
             <div class="ac-row__badges">
                 @if($account)
-                    <x-ui.badge tone="cool">{{ $modeWords[$account->mode] ?? ucfirst($account->mode) }}</x-ui.badge>
+                    <x-ui.badge :tone="$account->mode === 'production' ? 'good' : 'cool'">{{ $envWords[$account->mode] ?? ucfirst($account->mode) }}</x-ui.badge>
                     @if(! $account->isActive())
                         <x-ui.badge>Inactive</x-ui.badge>
                     @endif

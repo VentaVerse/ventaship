@@ -740,18 +740,18 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
     {
         return [
             [
-                'key'         => 'quadx_staging_api_key',
+                'key'         => 'quadx_sandbox_api_key',
                 'label'       => 'API Key',
                 'type'        => 'password',
                 'encrypted'   => true,
-                'mode_scoped' => 'staging',
+                'mode_scoped' => 'sandbox',
             ],
             [
-                'key'         => 'quadx_staging_secret_key',
+                'key'         => 'quadx_sandbox_secret_key',
                 'label'       => 'Secret Key',
                 'type'        => 'password',
                 'encrypted'   => true,
-                'mode_scoped' => 'staging',
+                'mode_scoped' => 'sandbox',
             ],
             [
                 'key'         => 'quadx_production_api_key',

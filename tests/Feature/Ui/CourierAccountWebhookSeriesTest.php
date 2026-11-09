@@ -26,7 +26,7 @@ class CourierAccountWebhookSeriesTest extends TestCase
     {
         $token = bin2hex(random_bytes(16));
 
-        return CourierAccount::factory()->create(['courier' => $courier, 'label' => 'Main', 'mode' => 'staging', 'webhook_token' => $token, 'webhook_token_hash' => hash('sha256', $token)]);
+        return CourierAccount::factory()->create(['courier' => $courier, 'label' => 'Main', 'mode' => 'sandbox', 'webhook_token' => $token, 'webhook_token_hash' => hash('sha256', $token)]);
     }
 
     private function setBase(?string $url = self::BASE): void

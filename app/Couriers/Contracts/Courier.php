@@ -274,7 +274,7 @@ interface Courier
      *                          absent submission keeps the existing value;
      *                          only remove_secrets[] clears it. Default false.
      *   mode_scoped:  ?string  when set, this field only applies under that
-     *                          mode value (e.g. 'staging'/'production') and
+     *                          mode value (e.g. 'sandbox'/'production') and
      *                          the settings page groups it under that mode's
      *                          reveal block. The field (of any courier's
      *                          schema) whose own key ends in "_mode" drives

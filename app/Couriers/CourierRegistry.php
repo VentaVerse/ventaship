@@ -56,7 +56,7 @@ final class CourierRegistry
             return self::$fakes[$key] ?? throw new InvalidArgumentException("Unknown courier \"{$key}\".");
         }
 
-        $account = new CourierAccount(['courier' => $key, 'mode' => 'staging', 'status' => 'active']);
+        $account = new CourierAccount(['courier' => $key, 'mode' => 'sandbox', 'status' => 'active']);
 
         return new $cls($account, AccountSettings::empty($account));
     }

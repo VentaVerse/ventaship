@@ -72,13 +72,13 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
     ];
 
     /**
-     * Which of a subscription's two keys is sent. Both reach the live
-     * gateway; LBC calls the secondary one "test", but a booking sent with it
+     * The key sets, one per account environment. Both reach the live
+     * gateway; LBC calls the sandbox one "test", but a booking sent with it
      * is still a real booking.
      */
-    public const MODES = ['test', 'live'];
+    public const MODES = ['sandbox', 'production'];
 
-    public const DEFAULT_MODE = 'test';
+    public const DEFAULT_MODE = 'sandbox';
 
     /**
      * What configurationIssues() says instead of naming all four keys when
@@ -207,30 +207,18 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
         ));
     }
 
-    /**
-     * Which key set this account sends. An unrecognised value falls back to
-     * `test`. Not the account's mode: both key sets reach the live gateway.
-     */
+    /** Which key set this account sends: its environment, `sandbox` unless production. */
     public function mode(): string
     {
         return self::keySetOf($this->settings);
     }
 
-    /** The key set stored for an account (lbc_mode), `test` when unset or unrecognised. */
+    /** The key set for an account: its environment, `sandbox` unless production. */
     public static function keySetOf(AccountSettings $settings): string
     {
-        $stored = (string) $settings->read('lbc_mode');
+        $mode = (string) $settings->account()->mode;
 
-        return in_array($stored, self::MODES, true) ? $stored : self::DEFAULT_MODE;
-    }
-
-    /**
-     * The booking modal's environment chip. Always "Live", whichever key is
-     * sent: a "Test" chip would suggest a booking that books nothing.
-     */
-    public function bookingModeLabel(): string
-    {
-        return 'Live';
+        return in_array($mode, self::MODES, true) ? $mode : self::DEFAULT_MODE;
     }
 
     /** @throws \InvalidArgumentException for an API this class does not know */
@@ -291,9 +279,8 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
     }
 
     /**
-     * The per-account settings, in the order they are useful: the key set,
-     * where the calls go, who LBC thinks we are, and one key per API per key
-     * set. On/off is the account's status, and the tracking number blocks are
+     * The per-account settings, in the order they are useful: where the
+     * calls go, who LBC thinks we are, and one key per API per environment. On/off is the account's status, and the tracking number blocks are
      * tracking_series rows (ventaship:lbc-series-add), so neither is a
      * setting. There is no AppKey field: a pickup is accepted with that node
      * left out, authenticating on the header alone.
@@ -302,88 +289,81 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
     {
         return [
             [
-                'key'     => 'lbc_mode',
-                'label'   => 'Key set',
-                'type'    => 'select',
-                'options' => [
-                    ['value' => 'test', 'label' => 'Test'],
-                    ['value' => 'live', 'label' => 'Live'],
-                ],
-                'hint'    => 'LBC has no test system. Both keys reach the live gateway, so every booking is real. This only chooses which of the two keys is sent.',
-            ],
-            [
                 'key'         => 'lbc_gateway_url',
+                'section' => 'account',
                 'label'       => 'API gateway',
                 'type'        => 'text',
                 'placeholder' => self::DEFAULT_GATEWAY_URL,
             ],
             [
                 'key'   => 'lbc_client_code',
+                'section' => 'account',
                 'label' => 'Client code',
                 'type'  => 'text',
                 'hint'  => 'The code LBC assigned this store, up to five characters.',
             ],
             [
                 'key'   => 'lbc_shipper_account_no',
+                'section' => 'account',
                 'label' => 'Shipper Account No',
                 'type'  => 'text',
                 'hint'  => 'Your LBC account number, from LBC sales.',
             ],
             [
-                'key'         => 'lbc_test_common_key',
+                'key'         => 'lbc_sandbox_common_key',
                 'label'       => 'Common API key',
                 'type'        => 'secret',
                 'encrypted'   => true,
-                'mode_scoped' => 'test',
+                'mode_scoped' => 'sandbox',
             ],
             [
-                'key'         => 'lbc_test_airwaybill_key',
+                'key'         => 'lbc_sandbox_airwaybill_key',
                 'label'       => 'Air Waybill key',
                 'type'        => 'secret',
                 'encrypted'   => true,
-                'mode_scoped' => 'test',
+                'mode_scoped' => 'sandbox',
             ],
             [
-                'key'         => 'lbc_test_pickup_key',
+                'key'         => 'lbc_sandbox_pickup_key',
                 'label'       => 'Pickup Request key',
                 'type'        => 'secret',
                 'encrypted'   => true,
-                'mode_scoped' => 'test',
+                'mode_scoped' => 'sandbox',
             ],
             [
-                'key'         => 'lbc_test_track_key',
+                'key'         => 'lbc_sandbox_track_key',
                 'label'       => 'Track and Trace key',
                 'type'        => 'secret',
                 'encrypted'   => true,
-                'mode_scoped' => 'test',
+                'mode_scoped' => 'sandbox',
             ],
             [
-                'key'         => 'lbc_live_common_key',
+                'key'         => 'lbc_production_common_key',
                 'label'       => 'Common API key',
                 'type'        => 'secret',
                 'encrypted'   => true,
-                'mode_scoped' => 'live',
+                'mode_scoped' => 'production',
             ],
             [
-                'key'         => 'lbc_live_airwaybill_key',
+                'key'         => 'lbc_production_airwaybill_key',
                 'label'       => 'Air Waybill key',
                 'type'        => 'secret',
                 'encrypted'   => true,
-                'mode_scoped' => 'live',
+                'mode_scoped' => 'production',
             ],
             [
-                'key'         => 'lbc_live_pickup_key',
+                'key'         => 'lbc_production_pickup_key',
                 'label'       => 'Pickup Request key',
                 'type'        => 'secret',
                 'encrypted'   => true,
-                'mode_scoped' => 'live',
+                'mode_scoped' => 'production',
             ],
             [
-                'key'         => 'lbc_live_track_key',
+                'key'         => 'lbc_production_track_key',
                 'label'       => 'Track and Trace key',
                 'type'        => 'secret',
                 'encrypted'   => true,
-                'mode_scoped' => 'live',
+                'mode_scoped' => 'production',
             ],
         ];
     }

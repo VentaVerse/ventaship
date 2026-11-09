@@ -35,7 +35,7 @@ class QuadXFulfillmentTest extends TestCase
         $this->assertTrue($result['success']);
         $this->assertSame('QX-TEST-0001', $result['tracking_number']);
         $this->assertSame('for_pickup', $result['status']);
-        $this->assertSame('staging', $result['meta']['mode']);
+        $this->assertSame('sandbox', $result['meta']['mode']);
         $this->assertSame('VS000001', $result['meta']['reference_id']);
 
         Http::assertSentCount(1);

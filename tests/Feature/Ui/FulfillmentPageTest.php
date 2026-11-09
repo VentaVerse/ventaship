@@ -46,7 +46,7 @@ class FulfillmentPageTest extends TestCase
 
         $this->get('/')->assertOk()
             ->assertSeeText(['Shipments', 'All', 'Active', 'Finished', 'All statuses'])
-            ->assertSeeText(['QuadX', 'Live', 'Connected', 'LBC', 'No account'])
+            ->assertSeeText(['QuadX', 'Production', 'Connected', 'LBC', 'No account'])
             ->assertSeeText(['VS-24-00182', 'Maria Santos', 'Pasig City', '2 items', '₱1,240.00', 'COD · Unpaid', 'Booked', 'VentaCart Pro', 'Connect LBC']);
     }
 

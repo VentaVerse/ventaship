@@ -1221,7 +1221,7 @@ class SpxFulfillment implements Courier
      */
     public function createShipperAccount(string $phone, string $email): array
     {
-        if ($this->settings->read('spx_user_id') !== null) {
+        if ($this->settings->read($this->client->credentialKey('user_id')) !== null) {
             return ['ok' => false, 'error' => 'An SPX shipper account is already on file (User ID set). Remove it first if you really need to replace it, so existing bookings are not silently orphaned.'];
         }
 
@@ -1255,8 +1255,8 @@ class SpxFulfillment implements Courier
 
         // Both or neither: a User ID stored without its secret would read as an account on file that cannot book.
         DB::transaction(function () use ($userId, $userSecret) {
-            $this->settings->write('spx_user_id', (string) $userId);
-            $this->settings->writeSecret('spx_user_secret', (string) $userSecret);
+            $this->settings->write($this->client->credentialKey('user_id'), (string) $userId);
+            $this->settings->writeSecret($this->client->credentialKey('user_secret'), (string) $userSecret);
         });
 
         return ['ok' => true, 'message' => "Shipper account created (User ID {$userId})."];
@@ -1342,57 +1342,34 @@ class SpxFulfillment implements Courier
     }
 
     /**
-     * The per-account keys: spx_app_id, spx_secret_key, spx_user_id,
-     * spx_user_secret, spx_pouch_presets. On/off is the account's status and
-     * the environment (UAT or production) is the account's mode
-     * (courier_accounts columns), so neither is a setting. Unlike QuadX,
-     * SPX's app-id/app-secret and user-id/user-secret are NOT mode_scoped:
-     * SPX issues one set of each per integration (integration-brief.md §2).
+     * The per-account keys. The four credentials are stored once per
+     * environment (spx_sandbox_* reaches SPX's UAT system, spx_production_*
+     * its live one); the account's environment picks the set. On/off is the
+     * account's status, so it is not a setting.
      *
      * spx_pouch_presets has no first-class JSON/structured field type in
-     * this interface yet (only text|password|select|toggle exist — see
-     * settingsSchema()'s docblock) so it's declared as `type: 'text'`
-     * holding a raw JSON string of `{label,length_cm,width_cm,height_cm,
-     * max_weight_kg}` objects (see DEFAULT_POUCH_PRESETS above for the
-     * shape + the Small/Medium/Large defaults). Task T4 is expected to
-     * replace this with a proper structured editor.
+     * this interface yet, so it's declared as `type: 'text'` holding a raw
+     * JSON string of `{label,length_cm,width_cm,height_cm,max_weight_kg}`
+     * objects (see DEFAULT_POUCH_PRESETS above for the shape and defaults).
      */
     public function settingsSchema(): array
     {
+        $credentials = [];
+        foreach (['sandbox', 'production'] as $env) {
+            $credentials[] = ['key' => "spx_{$env}_app_id", 'label' => 'App ID', 'type' => 'text', 'mode_scoped' => $env];
+            $credentials[] = ['key' => "spx_{$env}_secret_key", 'label' => 'App Secret', 'type' => 'password', 'encrypted' => true, 'mode_scoped' => $env];
+            $credentials[] = ['key' => "spx_{$env}_user_id", 'label' => 'User ID', 'type' => 'text', 'mode_scoped' => $env];
+            $credentials[] = ['key' => "spx_{$env}_user_secret", 'label' => 'User Secret', 'type' => 'password', 'encrypted' => true, 'mode_scoped' => $env];
+        }
+
         return [
-            [
-                'key'   => 'spx_app_id',
-                'label' => 'App ID',
-                'type'  => 'text',
-                'help'  => 'Issued once per integration by SPX staff (not self-service).',
-            ],
-            [
-                'key'       => 'spx_secret_key',
-                'label'     => 'App Secret',
-                'type'      => 'password',
-                'encrypted' => true,
-                'help'      => 'Signs every request (the check-sign header). Issued together with the App ID.',
-            ],
-            [
-                'key'   => 'spx_user_id',
-                'label' => 'User ID',
-                'type'  => 'text',
-                'help'  => 'SPX account id, obtained via 3.1 Create Account.',
-            ],
-            [
-                'key'       => 'spx_user_secret',
-                'label'     => 'User Secret',
-                'type'      => 'password',
-                'encrypted' => true,
-                'help'      => 'Required in the body of every order-related SPX call.',
-            ],
+            ...$credentials,
             [
                 'key'   => 'spx_pouch_presets',
                 'label' => 'Pouch presets (JSON)',
                 'type'  => 'text',
                 'help'  => 'JSON array of {label, length_cm, width_cm, height_cm, max_weight_kg}. '
-                    . 'Defaults: Small 25×20×10cm/3kg, Medium 35×25×15cm/5kg, Large 45×35×20cm/10kg. '
-                    . 'No structured editor yet (Task T4): edit the raw JSON here.',
+                    . 'Defaults: Small 25×20×10cm/3kg, Medium 35×25×15cm/5kg, Large 45×35×20cm/10kg.',
             ],
         ];
     }

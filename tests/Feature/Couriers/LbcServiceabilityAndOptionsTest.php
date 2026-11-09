@@ -187,7 +187,7 @@ class LbcServiceabilityAndOptionsTest extends TestCase
         $this->assertNotContains('lbc_tracking_series_start', $keys);
         $this->assertNotContains('lbc_tracking_series_end', $keys);
         foreach (['common', 'airwaybill', 'pickup', 'track'] as $api) {
-            $field = collect($this->lbc()->settingsSchema())->firstWhere('key', "lbc_live_{$api}_key");
+            $field = collect($this->lbc()->settingsSchema())->firstWhere('key', "lbc_production_{$api}_key");
             $this->assertTrue($field['encrypted']);
         }
     }

@@ -12,7 +12,7 @@ class AccountMode extends Command
 {
     protected $signature = 'ventaship:account-mode {account} {mode}';
 
-    protected $description = "Switch a courier account between its courier's modes (audited)";
+    protected $description = "Switch a courier account between sandbox and production (audited)";
 
     public function handle(CourierAccounts $accounts): int
     {
@@ -20,7 +20,7 @@ class AccountMode extends Command
         $mode = (string) $this->argument('mode');
 
         $account = CourierAccount::query()->where('public_id', $publicId)->first();
-        if ($account === null || ! CourierRegistry::has($account->courier) || ! isset(CourierAccounts::MODES[$account->courier])) {
+        if ($account === null || ! CourierRegistry::has($account->courier)) {
             $this->error('No such account.');
 
             return self::FAILURE;

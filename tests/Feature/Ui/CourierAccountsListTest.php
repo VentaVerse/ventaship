@@ -23,12 +23,12 @@ class CourierAccountsListTest extends TestCase
 
     public function test_list_has_exactly_three_rows(): void
     {
-        CourierAccount::factory()->create(['courier' => 'spx', 'label' => 'Branch', 'mode' => 'uat', 'last_check_ok' => null]);
-        CourierAccount::factory()->create(['courier' => 'quadx', 'label' => 'Main account', 'mode' => 'staging', 'is_default' => true, 'default_slot' => 'quadx', 'last_check_ok' => true]);
+        CourierAccount::factory()->create(['courier' => 'spx', 'label' => 'Branch', 'mode' => 'production', 'last_check_ok' => null]);
+        CourierAccount::factory()->create(['courier' => 'quadx', 'label' => 'Main account', 'mode' => 'sandbox', 'is_default' => true, 'default_slot' => 'quadx', 'last_check_ok' => true]);
 
         $html = $this->actingAs($this->admin())->get(route('accounts.index'))->assertOk()
             ->assertDontSee('Connect courier')
-            ->assertSeeInOrder(['QuadX', 'Staging', 'Connected', 'SPX', 'UAT', 'Not checked', 'LBC', 'Set up'])
+            ->assertSeeInOrder(['QuadX', 'Sandbox', 'Connected', 'SPX', 'Production', 'Not checked', 'LBC', 'Set up'])
             ->assertSee(route('accounts.show', 'lbc'), false)
             ->getContent();
 
@@ -42,21 +42,21 @@ class CourierAccountsListTest extends TestCase
         CourierAccount::factory()->create(['courier' => 'quadx', 'label' => 'Main', 'mode' => 'production', 'last_check_ok' => false]);
 
         $this->actingAs($this->admin())->get(route('accounts.index'))
-            ->assertSee('Live')->assertSee('Check failed');
+            ->assertSee('Production')->assertSee('Check failed')->assertDontSee('Live');
     }
 
     public function test_show_without_account_offers_mode_and_set_up(): void
     {
         $this->actingAs($this->admin())->get(route('accounts.show', 'spx'))->assertOk()
-            ->assertSee('SPX')->assertSee('UAT')->assertSee('Live')->assertSee('Set up')
-            ->assertDontSee('Test connection')->assertDontSee('Keys');
+            ->assertSee('SPX')->assertSee('Sandbox')->assertSee('Production')->assertSee('Set up')
+            ->assertDontSee('UAT')->assertDontSee('Staging')->assertDontSee('Test connection')->assertDontSee('keys');
     }
 
     public function test_setup_creates_default_account_named_after_courier(): void
     {
         $admin = $this->admin();
 
-        $this->actingAs($admin)->post(route('accounts.setup', 'quadx'), ['mode' => 'staging'])
+        $this->actingAs($admin)->post(route('accounts.setup', 'quadx'), ['mode' => 'sandbox'])
             ->assertRedirect(route('accounts.show', 'quadx'))->assertSessionHas('status', 'Ready');
 
         $account = CourierAccount::query()->firstOrFail();
@@ -70,9 +70,12 @@ class CourierAccountsListTest extends TestCase
         $this->post(route('accounts.setup', 'quadx'), ['mode' => 'production'])->assertSessionHasErrors('mode');
         $this->assertSame(1, CourierAccount::query()->count());
 
-        $this->post(route('accounts.setup', 'spx'), ['mode' => 'uat'])->assertRedirect();
-        $this->assertSame('uat', CourierAccount::query()->where('courier', 'spx')->value('mode'));
-        $this->post(route('accounts.setup', 'lbc'), ['mode' => 'uat'])->assertSessionHasErrors('mode');
+        $this->post(route('accounts.setup', 'spx'), ['mode' => 'sandbox'])->assertRedirect();
+        $this->assertSame('sandbox', CourierAccount::query()->where('courier', 'spx')->value('mode'));
+        foreach (['uat', 'staging'] as $old) {
+            $this->post(route('accounts.setup', 'lbc'), ['mode' => $old])->assertSessionHasErrors('mode');
+        }
+        $this->assertNull(CourierAccount::query()->where('courier', 'lbc')->first());
     }
 
     public function test_setup_refuses_cleanly_while_locked_and_keeps_mode(): void
@@ -81,27 +84,27 @@ class CourierAccountsListTest extends TestCase
         $this->assertTrue($lock->get());
 
         $this->actingAs($this->admin())->from(route('accounts.show', 'spx'))
-            ->post(route('accounts.setup', 'spx'), ['mode' => 'uat'])
+            ->post(route('accounts.setup', 'spx'), ['mode' => 'sandbox'])
             ->assertRedirect(route('accounts.show', 'spx'))->assertSessionHasErrors('mode')
-            ->assertSessionHasInput('mode', 'uat');
+            ->assertSessionHasInput('mode', 'sandbox');
         $this->assertSame(0, CourierAccount::query()->count());
         $lock->release();
     }
 
-    public function test_setup_failure_in_set_mode_leaves_no_account(): void
+    public function test_setup_failure_leaves_no_account(): void
     {
         $this->partialMock(CourierAccounts::class, function ($m) {
-            $m->shouldReceive('setMode')->andThrow(new CourierAccountException('nope'));
+            $m->shouldReceive('create')->andThrow(new CourierAccountException('nope'));
         });
 
-        $this->actingAs($this->admin())->post(route('accounts.setup', 'spx'), ['mode' => 'uat'])->assertSessionHasErrors('mode');
+        $this->actingAs($this->admin())->post(route('accounts.setup', 'spx'), ['mode' => 'sandbox'])->assertSessionHasErrors('mode');
         $this->assertSame(0, CourierAccount::query()->withTrashed()->count());
         $this->assertTrue(Cache::lock('courier-setup:spx', 5)->get());
     }
 
     public function test_no_name_field(): void
     {
-        CourierAccount::factory()->create(['courier' => 'quadx', 'label' => 'Legacy label', 'mode' => 'staging']);
+        CourierAccount::factory()->create(['courier' => 'quadx', 'label' => 'Legacy label', 'mode' => 'sandbox']);
 
         $html = $this->actingAs($this->admin())->get(route('accounts.show', 'quadx'))->assertOk()->getContent();
         $this->assertStringNotContainsString('name="label"', $html);
@@ -142,7 +145,7 @@ class CourierAccountsListTest extends TestCase
         $accounts = app(CourierAccounts::class);
         $this->assertNull($accounts->forCourier('quadx'));
 
-        $account = $accounts->setUp('quadx', 'staging');
+        $account = $accounts->setUp('quadx', 'sandbox');
 
         $this->assertTrue($accounts->forCourier('quadx')->is($account));
         $this->assertSame(2, CourierAccount::query()->withTrashed()->where('courier', 'quadx')->count());
@@ -154,7 +157,7 @@ class CourierAccountsListTest extends TestCase
         $this->assertFalse(Route::has('accounts.store'));
         $admin = $this->admin();
         $this->actingAs($admin)->get('/accounts/new')->assertNotFound();
-        $this->post('/accounts', ['courier' => 'quadx', 'label' => 'A', 'mode' => 'staging'])->assertStatus(405);
+        $this->post('/accounts', ['courier' => 'quadx', 'label' => 'A', 'mode' => 'sandbox'])->assertStatus(405);
     }
 
     public function test_sidebar_shows_courier_accounts(): void

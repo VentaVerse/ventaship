@@ -19,19 +19,19 @@ class AccountCommandsTest extends TestCase
     {
         $account = CourierAccount::factory()->create(['courier' => 'quadx']);
 
-        $this->artisan('ventaship:account-set', ['account' => $account->public_id, 'key' => 'quadx_staging_api_key', '--secret' => true])
-            ->expectsQuestion('Value for quadx_staging_api_key', 'qx-hidden-key-WXYZ')
+        $this->artisan('ventaship:account-set', ['account' => $account->public_id, 'key' => 'quadx_sandbox_api_key', '--secret' => true])
+            ->expectsQuestion('Value for quadx_sandbox_api_key', 'qx-hidden-key-WXYZ')
             ->assertSuccessful();
         $this->artisan('ventaship:account-set', ['account' => $account->public_id, 'key' => 'quadx_default_parcel', 'value' => 'box'])
             ->assertSuccessful();
 
-        $raw = CourierAccountSetting::query()->where('key', 'quadx_staging_api_key')->value('value');
+        $raw = CourierAccountSetting::query()->where('key', 'quadx_sandbox_api_key')->value('value');
         $this->assertStringNotContainsString('qx-hidden-key', $raw);
-        $this->assertSame('qx-hidden-key-WXYZ', AccountSettings::for($account)->secret('quadx_staging_api_key'));
+        $this->assertSame('qx-hidden-key-WXYZ', AccountSettings::for($account)->secret('quadx_sandbox_api_key'));
 
         Artisan::call('ventaship:account-show', ['account' => $account->public_id]);
         $output = Artisan::output();
-        $this->assertStringContainsString('quadx_staging_api_key', $output);
+        $this->assertStringContainsString('quadx_sandbox_api_key', $output);
         $this->assertStringContainsString('WXYZ', $output);
         $this->assertStringNotContainsString('qx-hidden-key', $output);
         $this->assertStringNotContainsString($raw, $output);
@@ -43,7 +43,7 @@ class AccountCommandsTest extends TestCase
         $account = CourierAccount::factory()->create(['courier' => 'quadx']);
 
         $this->artisan('ventaship:account-set', ['account' => $account->public_id, 'key' => 'quadx_enabled', 'value' => '1'])->assertFailed();
-        $this->artisan('ventaship:account-set', ['account' => $account->public_id, 'key' => 'quadx_staging_api_key', 'value' => 'plain'])->assertFailed();
+        $this->artisan('ventaship:account-set', ['account' => $account->public_id, 'key' => 'quadx_sandbox_api_key', 'value' => 'plain'])->assertFailed();
         $this->artisan('ventaship:account-set', ['account' => $account->public_id, 'key' => 'quadx_default_parcel', 'value' => 'box', '--secret' => true])->assertFailed();
         $this->artisan('ventaship:account-set', ['account' => $account->public_id, 'key' => 'quadx_default_parcel', 'value' => 'crate'])->assertFailed();
         $this->artisan('ventaship:account-set', ['account' => 'acc_nope', 'key' => 'quadx_default_parcel', 'value' => 'box'])->assertFailed();
@@ -61,7 +61,7 @@ class AccountCommandsTest extends TestCase
         $account = CourierAccount::query()->sole();
         $this->assertStringContainsString($account->public_id, $output);
         $this->assertStringStartsWith('acc_', $account->public_id);
-        $this->assertSame('staging', $account->mode);
+        $this->assertSame('sandbox', $account->mode);
         $this->assertSame('active', $account->status);
         $this->assertFalse($account->is_default);
 
@@ -96,7 +96,7 @@ class AccountCommandsTest extends TestCase
     {
         $account = CourierAccount::factory()->create(['courier' => 'spx']);
 
-        $this->artisan('ventaship:account-set', ['account' => $account->public_id, 'key' => 'spx_app_id', 'value' => '424242'])
+        $this->artisan('ventaship:account-set', ['account' => $account->public_id, 'key' => 'spx_sandbox_app_id', 'value' => '424242'])
             ->assertSuccessful();
 
         $this->assertSame('424242', $account->refresh()->external_ref);

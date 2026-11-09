@@ -1,9 +1,10 @@
 @extends('layouts.app')
 
 @php
+    use App\Couriers\CourierAccounts;
     use App\Fulfillment\Couriers;
 
-    $modeWords = ['staging' => 'Staging', 'uat' => 'UAT', 'production' => 'Live'];
+    $envWords = ['sandbox' => 'Sandbox', 'production' => 'Production'];
     $name = Couriers::name($courier);
     $check = $account && $account->last_check_ok !== null ? ($account->last_check_ok ? ['Connected', 'good'] : ['Check failed', 'bad']) : ['Not checked', 'mute'];
 @endphp
@@ -16,7 +17,7 @@
 @if($account)
 @section('title_after')
     <span class="ac-title-badges">
-        <x-ui.badge tone="cool">{{ $modeWords[$account->mode] ?? ucfirst($account->mode) }}</x-ui.badge>
+        <x-ui.badge :tone="$account->mode === 'production' ? 'good' : 'cool'" data-env-badge>{{ $envWords[$account->mode] ?? ucfirst($account->mode) }}</x-ui.badge>
         <x-ui.badge :tone="$check[1]">{{ $check[0] }}</x-ui.badge>
         @if($account->status === 'inactive')
             <x-ui.badge>Inactive</x-ui.badge>
@@ -42,20 +43,18 @@
     <form method="POST" action="{{ route('accounts.setup', $courier) }}" novalidate>
         @csrf
         <div class="st-sec">
+            <h2 class="st-h" id="account-env-label">Environment</h2>
             <div class="st-row">
-                <div class="fm-field">
-                    <span class="fm-label" id="account-mode-label">Mode</span>
-                    <div class="ac-seg" id="account-mode" role="radiogroup" aria-labelledby="account-mode-label">
-                        @foreach($modes as $m)
-                            <label class="ac-seg__opt">
-                                <input type="radio" class="ac-seg__input" name="mode" value="{{ $m }}" @checked(old('mode', 'staging') === $m)>
-                                <span class="ac-seg__tick" aria-hidden="true"><x-ui.icon name="check" size="14" /></span>
-                                <span>{{ $modeWords[$m] ?? ucfirst($m) }}</span>
-                            </label>
-                        @endforeach
-                    </div>
-                    @error('mode')<div class="fm-error">{{ $message }}</div>@enderror
+                <div class="ac-seg" id="account-env" role="radiogroup" aria-labelledby="account-env-label">
+                    @foreach(CourierAccounts::ENVIRONMENTS as $e)
+                        <label class="ac-seg__opt">
+                            <input type="radio" class="ac-seg__input" name="mode" value="{{ $e }}" @checked(old('mode', 'sandbox') === $e)>
+                            <span class="ac-seg__tick" aria-hidden="true"><x-ui.icon name="check" size="14" /></span>
+                            <span>{{ $envWords[$e] }}</span>
+                        </label>
+                    @endforeach
                 </div>
+                @error('mode')<div class="fm-error">{{ $message }}</div>@enderror
             </div>
         </div>
         <div class="st-bar">
@@ -65,102 +64,87 @@
 </section>
 @else
 @php
-    $mode = old('mode', $account->mode);
-    $isOn = fn (string $key, bool $current) => old($key, $current ? '1' : '0') === '1';
+    $env = old('mode', $account->mode);
+    $env = array_key_exists($env, $envWords) ? $env : 'sandbox';
+    $confirm = ['title' => 'Switch ' . $name . ' to Production? Bookings will be real.', 'confirm' => 'Switch to Production', 'dismiss' => 'Back', 'form' => 'account-form', 'submitter' => 'account-save-confirmed'];
+    $plainInput = function (array $f, string $id) {
+        return ['id' => $id, 'name' => 'settings[' . $f['key'] . ']', 'value' => old('settings.' . $f['key'], $f['value'])];
+    };
 @endphp
 
-
 <section class="x-panel ac-page">
-    <form method="POST" action="{{ route('accounts.update', $courier) }}" novalidate
-          x-data="{ mode: @js($mode), modeWords: @js($modeWords), status: '' }"
+    <form method="POST" action="{{ route('accounts.update', $courier) }}" id="account-form" novalidate
+          x-data="{ env: @js($env), saved: @js($account->mode), status: '' }"
+          x-on:submit="if (env === 'production' && saved !== 'production' && $event.submitter?.id !== 'account-save-confirmed') { $event.preventDefault(); $dispatch('confirm', @js($confirm)) }"
           x-on:credential-status="status = ''; $nextTick(() => status = $event.detail)">
         @csrf
         @method('PUT')
         <div class="st-sec">
-            <h2 class="st-h">Account</h2>
+            <h2 class="st-h" id="account-env-label">Environment</h2>
             <div class="st-row">
-                <div class="fm-field">
-                    <span class="fm-label" id="account-mode-label">Mode</span>
-                    <div class="ac-seg" id="account-mode" role="radiogroup" aria-labelledby="account-mode-label">
-                        @foreach($modes as $m)
-                            <label class="ac-seg__opt">
-                                <input type="radio" class="ac-seg__input" name="mode" value="{{ $m }}" x-model="mode" @checked($mode === $m)>
-                                <span class="ac-seg__tick" aria-hidden="true"><x-ui.icon name="check" size="14" /></span>
-                                <span>{{ $modeWords[$m] ?? ucfirst($m) }}</span>
-                            </label>
-                        @endforeach
-                    </div>
-                    @error('mode')<div class="fm-error">{{ $message }}</div>@enderror
+                <div class="ac-seg" id="account-env" role="radiogroup" aria-labelledby="account-env-label">
+                    @foreach(CourierAccounts::ENVIRONMENTS as $e)
+                        <label class="ac-seg__opt">
+                            <input type="radio" class="ac-seg__input" name="mode" value="{{ $e }}" x-model="env" @checked($env === $e)>
+                            <span class="ac-seg__tick" aria-hidden="true"><x-ui.icon name="check" size="14" /></span>
+                            <span>{{ $envWords[$e] }}</span>
+                        </label>
+                    @endforeach
                 </div>
-            </div>
-            <div class="st-row st-row--switch">
-                <label class="st-switch" for="f-default">
-                    <span class="st-switch__label">Default for {{ $name }}</span>
-                    <input type="hidden" name="default" value="0">
-                    <input type="checkbox" class="st-switch__input" role="switch" id="f-default" name="default" value="1" @checked($isOn('default', (bool) $account->is_default))>
-                    <span class="st-switch__track" aria-hidden="true"></span>
-                </label>
-            </div>
-            <div class="st-row st-row--switch">
-                <label class="st-switch" for="f-active">
-                    <span class="st-switch__label">Active</span>
-                    <input type="hidden" name="active" value="0">
-                    <input type="checkbox" class="st-switch__input" role="switch" id="f-active" name="active" value="1" @checked($isOn('active', $account->status === 'active'))>
-                    <span class="st-switch__track" aria-hidden="true"></span>
-                </label>
+                @error('mode')<div class="fm-error">{{ $message }}</div>@enderror
             </div>
         </div>
 
-        @if($keyGroups !== [])
-            <div class="st-sec">
-                <h2 class="st-h ac-keys-h">Keys
-                    <x-ui.badge :tone="$mode === 'production' ? 'good' : 'cool'" data-keys-badge x-bind:class="{ 'x-badge--good': mode === 'production', 'x-badge--cool': mode !== 'production' }"><span x-text="modeWords[mode] ?? mode">{{ $modeWords[$mode] ?? ucfirst($mode) }}</span></x-ui.badge>
-                </h2>
-                @foreach($keyGroups as $group)
-                    @php $groupMode = $group['mode']; @endphp
-                    <div class="ac-keys" data-keys="{{ $group['scope'] ?? 'all' }}"
-                         @if($groupMode !== null) x-bind:hidden="mode !== @js($groupMode)" @endif
-                         @if($groupMode !== null && $groupMode !== $mode) hidden @endif>
-                        @foreach($group['keys'] as $k)
-                            <div class="st-row">
-                                <x-ui.credential
-                                    :name="'secrets[' . $k['key'] . ']'"
-                                    :label="$k['label']"
-                                    :account="$account"
-                                    :key="$k['key']"
-                                    :masked="$k['masked']"
-                                    :revealUrl="route('accounts.reveal', [$courier, $k['key']])"
-                                    :context="$groupMode === null ? null : ($modeWords[$groupMode] ?? ucfirst($groupMode))"
-                                    :id="'f-key-' . $k['key']" />
-                            </div>
-                        @endforeach
+        @foreach($environments as $e => $keys)
+            @continue($keys === [])
+            <div class="st-sec ac-keys" data-keys="{{ $e }}" x-bind:hidden="env !== @js($e)" @if($e !== $env) hidden @endif>
+                <h2 class="st-h">{{ $envWords[$e] }} keys</h2>
+                @foreach($keys as $k)
+                    <div class="st-row">
+                        @if($k['secret'])
+                            <x-ui.credential
+                                :name="'secrets[' . $k['key'] . ']'"
+                                :label="$k['label']"
+                                :account="$account"
+                                :key="$k['key']"
+                                :masked="$k['masked']"
+                                :revealUrl="route('accounts.reveal', [$courier, $k['key']])"
+                                :context="$envWords[$e]"
+                                :id="'f-key-' . $k['key']" />
+                        @else
+                            @php $in = $plainInput($k, 'f-key-' . $k['key']); @endphp
+                            <x-ui.field :label="$k['label']" :for="$in['id']" :errorKey="'settings.' . $k['key']">
+                                <x-ui.input :id="$in['id']" :name="$in['name']" class="st-ctl x-mono" :value="$in['value']" maxlength="2048" autocomplete="off" spellcheck="false" />
+                            </x-ui.field>
+                        @endif
                     </div>
                 @endforeach
             </div>
-        @endif
+        @endforeach
 
-        @if($fields !== [])
+        @foreach(['Account' => $accountFields, 'Booking defaults' => $fields] as $heading => $group)
+            @continue($group === [])
             <div class="st-sec">
-                <h2 class="st-h">Booking defaults</h2>
-                @foreach($fields as $f)
-                    @php $id = 'f-set-' . $f['key']; $val = old('settings.' . $f['key'], $f['value']); @endphp
+                <h2 class="st-h">{{ $heading }}</h2>
+                @foreach($group as $f)
+                    @php $in = $plainInput($f, 'f-set-' . $f['key']); @endphp
                     <div class="st-row">
-                        <x-ui.field :label="$f['label']" :for="$id" :errorKey="'settings.' . $f['key']">
+                        <x-ui.field :label="$f['label']" :for="$in['id']" :errorKey="'settings.' . $f['key']">
                             @if(($f['type'] ?? 'text') === 'select')
-                                <x-ui.select :id="$id" :name="'settings[' . $f['key'] . ']'" class="st-ctl" wrapClass="st-ctl">
+                                <x-ui.select :id="$in['id']" :name="$in['name']" class="st-ctl" wrapClass="st-ctl">
                                     <option value="">Not set</option>
                                     @foreach($f['options'] ?? [] as $opt)
-                                        <option value="{{ $opt['value'] }}" @selected($val === $opt['value'])>{{ $opt['label'] }}</option>
+                                        <option value="{{ $opt['value'] }}" @selected($in['value'] === $opt['value'])>{{ $opt['label'] }}</option>
                                     @endforeach
                                 </x-ui.select>
                             @else
-                                <x-ui.input :id="$id" :name="'settings[' . $f['key'] . ']'" class="st-ctl" value="{{ $val }}" placeholder="{{ $f['placeholder'] ?? '' }}" maxlength="2048" autocomplete="off" />
+                                <x-ui.input :id="$in['id']" :name="$in['name']" class="st-ctl" :value="$in['value']" :placeholder="$f['placeholder'] ?? ''" maxlength="2048" autocomplete="off" />
                             @endif
                         </x-ui.field>
                     </div>
                 @endforeach
             </div>
-        @endif
+        @endforeach
 
         @if($webhook)
             <div class="st-sec">
@@ -211,6 +195,7 @@
             <x-ui.button :href="route('accounts.show', $courier)">Discard</x-ui.button>
             <x-ui.button variant="primary" type="submit">Save</x-ui.button>
         </div>
+        <button type="submit" id="account-save-confirmed" hidden tabindex="-1" aria-hidden="true"></button>
     </form>
     @if($blocks !== null)
         <form id="series-form" method="POST" action="{{ route('accounts.series', $courier) }}" novalidate>@csrf</form>

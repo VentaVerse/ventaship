@@ -15,7 +15,7 @@ class CourierAccountFactory extends Factory
         return [
             'courier' => 'quadx',
             'label' => fake()->words(2, true),
-            'mode' => 'staging',
+            'mode' => 'sandbox',
             'status' => 'active',
             'is_default' => false,
             'default_slot' => null,

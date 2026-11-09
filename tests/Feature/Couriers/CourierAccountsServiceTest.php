@@ -35,7 +35,7 @@ class CourierAccountsServiceTest extends TestCase
 
     public function test_create_matches_command_rules_and_audits(): void
     {
-        $first = $this->service()->create('quadx', 'Main', 'staging', true, self::ACTOR);
+        $first = $this->service()->create('quadx', 'Main', 'sandbox', true, self::ACTOR);
         $second = $this->service()->create('quadx', 'Other', 'production', true);
 
         $this->assertSame('quadx', $first->courier);
@@ -83,55 +83,66 @@ class CourierAccountsServiceTest extends TestCase
     {
         $account = CourierAccount::factory()->create(['courier' => 'quadx']);
 
-        $this->service()->setSetting($account, 'quadx_staging_api_key', 'qx-hidden-key-WXYZ', self::ACTOR);
+        $this->service()->setSetting($account, 'quadx_sandbox_api_key', 'qx-hidden-key-WXYZ', self::ACTOR);
 
-        $raw = CourierAccountSetting::query()->where('key', 'quadx_staging_api_key')->value('value');
+        $raw = CourierAccountSetting::query()->where('key', 'quadx_sandbox_api_key')->value('value');
         $this->assertStringNotContainsString('qx-hidden-key', $raw);
-        $this->assertSame('qx-hidden-key-WXYZ', AccountSettings::for($account)->secret('quadx_staging_api_key'));
+        $this->assertSame('qx-hidden-key-WXYZ', AccountSettings::for($account)->secret('quadx_sandbox_api_key'));
 
         $audit = AuditEntry::query()->where('action', 'courier_account.setting_changed')->firstOrFail();
-        $this->assertSame('quadx_staging_api_key', $audit->changes['key']);
+        $this->assertSame('quadx_sandbox_api_key', $audit->changes['key']);
         $this->assertSame(['key', 'value'], array_keys($audit->changes));
         $this->assertSame(['admin', '7'], [$audit->actor_type, $audit->actor_id]);
         $this->assertStringNotContainsString('WXYZ', json_encode(AuditEntry::query()->get()->toArray()));
     }
 
-    public function test_set_mode_lbc_syncs_key_set_and_keeps_other_keys(): void
+    public function test_set_mode_switches_the_environment_and_keeps_both_key_sets(): void
     {
-        $account = CourierAccount::factory()->create(['courier' => 'lbc', 'mode' => 'staging']);
-        AccountSettings::for($account)->writeSecret('lbc_test_api_key', 'keep-me-1234');
+        $account = CourierAccount::factory()->create(['courier' => 'lbc', 'mode' => 'sandbox']);
+        AccountSettings::for($account)->writeSecret('lbc_sandbox_pickup_key', 'sandbox-key');
+        AccountSettings::for($account)->writeSecret('lbc_production_pickup_key', 'production-key');
 
-        $this->service()->setMode($account, 'production', self::ACTOR);
+        $this->assertSame('sandbox', $this->service()->setMode($account, 'production', self::ACTOR));
 
         $this->assertSame('production', $account->fresh()->mode);
-        $this->assertSame('live', AccountSettings::for($account)->read('lbc_mode'));
-        $this->assertSame('keep-me-1234', AccountSettings::for($account)->secret('lbc_test_api_key'));
-        $this->assertSame(1, AuditEntry::query()->where('action', 'courier_account.mode_changed')->where('actor_id', '7')->count());
+        $this->assertSame('production-key', CourierRegistry::for($account->fresh())->subscriptionKey('pickup'));
+        $this->assertSame('sandbox-key', AccountSettings::for($account)->secret('lbc_sandbox_pickup_key'));
+        $entry = AuditEntry::query()->where('action', 'courier_account.mode_changed')->sole();
+        $this->assertSame(['admin', '7'], [$entry->actor_type, $entry->actor_id]);
+        $this->assertSame(['mode' => ['from' => 'sandbox', 'to' => 'production']], $entry->changes);
 
-        $keyRow = AuditEntry::query()->where('action', 'courier_account.setting_changed')->where('changes->key', 'lbc_mode')->latest('id')->first();
-        $this->assertSame(['admin', '7', '10.0.0.9'], [$keyRow->actor_type, $keyRow->actor_id, $keyRow->ip]);
+        $this->assertNull($this->service()->setMode($account->fresh(), 'production'));
+        $this->assertSame(1, AuditEntry::query()->where('action', 'courier_account.mode_changed')->count());
 
-        $this->service()->setMode($account->fresh(), 'staging');
-        $this->assertSame('test', AccountSettings::for($account)->read('lbc_mode'));
-
-        $this->expectException(CourierAccountException::class);
-        $this->service()->setMode($account->fresh(), 'uat');
+        foreach (['staging', 'uat', 'live'] as $old) {
+            try {
+                $this->service()->setMode($account->fresh(), $old);
+                $this->fail("Expected {$old} to be refused");
+            } catch (CourierAccountException $e) {
+                $this->assertSame('The environment must be sandbox or production.', $e->getMessage());
+            }
+        }
     }
 
-    public function test_set_mode_unchanged_resyncs_drifted_lbc_key_set(): void
+    public function test_spx_external_ref_follows_the_app_id_of_the_current_environment(): void
     {
-        $account = CourierAccount::factory()->create(['courier' => 'lbc', 'mode' => 'production']);
-        AccountSettings::for($account)->write('lbc_mode', 'test');
+        $account = $this->service()->create('spx', 'SPX', 'sandbox', true);
+        $this->service()->setSetting($account, 'spx_sandbox_app_id', '111');
+        $this->service()->setSetting($account, 'spx_production_app_id', '222');
+        $this->assertSame('111', $account->fresh()->external_ref);
 
-        $this->assertNull($this->service()->setMode($account, 'production', self::ACTOR));
+        $this->service()->setMode($account, 'production');
+        $this->assertSame('222', $account->fresh()->external_ref);
 
-        $this->assertSame('live', AccountSettings::for($account)->read('lbc_mode'));
-        $this->assertSame(0, AuditEntry::query()->where('action', 'courier_account.mode_changed')->count());
+        $this->service()->clearSetting($account->fresh(), 'spx_sandbox_app_id');
+        $this->assertSame('222', $account->fresh()->external_ref);
+        $this->service()->clearSetting($account->fresh(), 'spx_production_app_id');
+        $this->assertNull($account->fresh()->external_ref);
     }
 
     public function test_deactivating_clears_the_default_slot_and_activating_does_not_restore_it(): void
     {
-        $account = $this->service()->create('quadx', 'Main', 'staging', true);
+        $account = $this->service()->create('quadx', 'Main', 'sandbox', true);
 
         $this->assertTrue($this->service()->setActive($account, false, self::ACTOR));
 
@@ -189,12 +200,12 @@ class CourierAccountsServiceTest extends TestCase
     public function test_reveal_returns_plaintext_and_audits(): void
     {
         $account = CourierAccount::factory()->create(['courier' => 'quadx']);
-        AccountSettings::for($account)->writeSecret('quadx_staging_api_key', 'qx-reveal-me-9876');
+        AccountSettings::for($account)->writeSecret('quadx_sandbox_api_key', 'qx-reveal-me-9876');
 
-        $this->assertSame('qx-reveal-me-9876', $this->service()->revealSecret($account, 'quadx_staging_api_key', self::ACTOR));
+        $this->assertSame('qx-reveal-me-9876', $this->service()->revealSecret($account, 'quadx_sandbox_api_key', self::ACTOR));
 
         $audit = AuditEntry::query()->where('action', 'courier_account.secret_viewed')->firstOrFail();
-        $this->assertSame(['key' => 'quadx_staging_api_key'], $audit->changes);
+        $this->assertSame(['key' => 'quadx_sandbox_api_key'], $audit->changes);
         $this->assertSame('10.0.0.9', $audit->ip);
         $this->assertStringNotContainsString('reveal-me', json_encode($audit->toArray()));
 
@@ -205,17 +216,17 @@ class CourierAccountsServiceTest extends TestCase
     public function test_masked_shows_length_and_last4_only(): void
     {
         $account = CourierAccount::factory()->create(['courier' => 'quadx']);
-        AccountSettings::for($account)->writeSecret('quadx_staging_api_key', 'qx-staging-key-0001');
+        AccountSettings::for($account)->writeSecret('quadx_sandbox_api_key', 'qx-staging-key-0001');
 
-        $this->assertSame(['length' => 19, 'last4' => '0001'], $this->service()->masked($account, 'quadx_staging_api_key'));
-        $this->assertNull($this->service()->masked($account, 'quadx_staging_secret_key'));
+        $this->assertSame(['length' => 19, 'last4' => '0001'], $this->service()->masked($account, 'quadx_sandbox_api_key'));
+        $this->assertNull($this->service()->masked($account, 'quadx_sandbox_secret_key'));
     }
 
     public function test_webhook_address_is_built_on_app_url(): void
     {
         config(['app.url' => 'https://ship.example.com/']);
-        $quadx = $this->service()->create('quadx', 'QuadX', 'staging', true);
-        $lbc = $this->service()->create('lbc', 'LBC', 'staging', true);
+        $quadx = $this->service()->create('quadx', 'QuadX', 'sandbox', true);
+        $lbc = $this->service()->create('lbc', 'LBC', 'sandbox', true);
 
         $this->assertSame('https://ship.example.com/webhooks/quadx?token='.$quadx->webhook_token, $this->service()->webhookAddress($quadx));
         $this->assertStringNotContainsString($quadx->webhook_token, (string) $this->service()->webhookAddress($quadx, true));

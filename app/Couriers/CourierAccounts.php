@@ -23,17 +23,10 @@ use Throwable;
 class CourierAccounts
 {
     /**
-     * The modes each courier knows. SPX's test system is its UAT: `staging` (what account-create stores) and `uat`
-     * both reach it; only `production` reaches SPX's live system.
+     * The environments every courier account can be in (stored in courier_accounts.mode). Each adapter maps sandbox
+     * to its courier's test system (QuadX staging, SPX UAT); credentials are stored per environment.
      */
-    public const MODES = [
-        'quadx' => ['staging', 'production'],
-        'lbc' => ['staging', 'production'],
-        'spx' => ['staging', 'uat', 'production'],
-    ];
-
-    /** The modes a new account can start in. */
-    public const CREATE_MODES = ['staging', 'production'];
+    public const ENVIRONMENTS = ['sandbox', 'production'];
 
     /** The longest setting value accepted. Providers issue keys and tokens of very different shapes. */
     public const MAX_VALUE_LENGTH = 2048;
@@ -53,8 +46,8 @@ class CourierAccounts
         if ($label === '' || mb_strlen($label) > 255) {
             throw new CourierAccountException('The label must be 1 to 255 characters.');
         }
-        if (! in_array($mode, self::CREATE_MODES, true)) {
-            throw new CourierAccountException('The mode must be staging or production.');
+        if (! in_array($mode, self::ENVIRONMENTS, true)) {
+            throw new CourierAccountException('The environment must be sandbox or production.');
         }
 
         $token = Str::random(40);
@@ -103,8 +96,8 @@ class CourierAccounts
         if (! CourierRegistry::has($courier)) {
             throw new CourierAccountException('Unknown courier. Available: '.implode(', ', CourierRegistry::keys()).'.');
         }
-        if (! in_array($mode, self::MODES[$courier] ?? [], true)) {
-            throw new CourierAccountException("The mode for {$courier} must be one of: ".implode(', ', self::MODES[$courier] ?? []).'.');
+        if (! in_array($mode, self::ENVIRONMENTS, true)) {
+            throw new CourierAccountException('The environment must be sandbox or production.');
         }
         $lock = Cache::lock('courier-setup:'.$courier, 10);
         try {
@@ -120,13 +113,7 @@ class CourierAccounts
                     throw new CourierAccountException('This courier already has an account.');
                 }
 
-                // create() starts in staging or production; SPX's UAT is set right after, in the same transaction.
-                $account = $this->create($courier, Couriers::name($courier), $mode === 'uat' ? 'staging' : $mode, true, $actor);
-                if ($mode === 'uat') {
-                    $this->setMode($account, 'uat', $actor);
-                }
-
-                return $account;
+                return $this->create($courier, Couriers::name($courier), $mode, true, $actor);
             });
         } finally {
             $lock->release();
@@ -146,7 +133,8 @@ class CourierAccounts
     }
 
     /**
-     * The booking-default fields: plain, not tied to a mode, and not the LBC key-set select (setMode owns that).
+     * The plain fields not tied to an environment: booking defaults, and fields marked `section: account` (LBC's
+     * gateway and account details).
      *
      * @return array<int, array<string, mixed>>
      */
@@ -154,8 +142,18 @@ class CourierAccounts
     {
         return array_values(array_filter(
             $this->schema($account),
-            fn (array $f) => ! self::isSecretField($f) && empty($f['mode_scoped']) && $f['key'] !== 'lbc_mode',
+            fn (array $f) => ! self::isSecretField($f) && empty($f['mode_scoped']),
         ));
+    }
+
+    /**
+     * One environment's credentials, secret and plain (SPX's App ID and User ID are plain).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function environmentFields(CourierAccount $account, string $environment): array
+    {
+        return array_values(array_filter($this->schema($account), fn (array $f) => ($f['mode_scoped'] ?? null) === $environment));
     }
 
     /** Clears a plain setting. @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor */
@@ -167,7 +165,7 @@ class CourierAccounts
 
         DB::transaction(function () use ($account, $key, $actor) {
             AccountSettings::for($account)->write($key, null);
-            if ($key === 'spx_app_id') {
+            if ($this->isCurrentSpxAppId($account, $key)) {
                 $account->forceFill(['external_ref' => null])->save();
             }
             $this->attribute($actor, AuditEntry::query()
@@ -199,7 +197,7 @@ class CourierAccounts
             $settings = AccountSettings::for($account);
             ! empty($field['encrypted']) ? $settings->writeSecret($key, $value) : $settings->write($key, $value);
 
-            if ($key === 'spx_app_id') {
+            if ($this->isCurrentSpxAppId($account, $key)) {
                 // SPX webhooks sent without a path token are routed by their app-id header to this account.
                 $account->forceFill(['external_ref' => $value])->save();
             }
@@ -216,45 +214,31 @@ class CourierAccounts
 
     /**
      * @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor
-     * @return ?string the mode it was in, or null when it was already in $mode
+     * @return ?string the environment it was in, or null when it was already in $mode
      */
     public function setMode(CourierAccount $account, string $mode, ?array $actor = null): ?string
     {
-        $modes = self::MODES[$account->courier] ?? null;
-        if ($modes === null || ! CourierRegistry::has($account->courier)) {
+        if (! CourierRegistry::has((string) $account->courier)) {
             throw new CourierAccountException('No such account.');
         }
-        if (! in_array($mode, $modes, true)) {
-            throw new CourierAccountException("The mode for {$account->courier} must be one of: ".implode(', ', $modes).'.');
+        if (! in_array($mode, self::ENVIRONMENTS, true)) {
+            throw new CourierAccountException('The environment must be sandbox or production.');
         }
 
         return DB::transaction(function () use ($account, $mode, $actor) {
             $row = CourierAccount::query()->whereKey($account->getKey())->lockForUpdate()->firstOrFail();
             $from = (string) $row->mode;
-            $changed = $from !== $mode;
-            if ($changed) {
-                $row->forceFill(['mode' => $mode])->save();
-                $account->setRawAttributes($row->getAttributes(), true);
-            }
-
-            if ($row->courier === 'lbc') {
-                // The key set follows the mode (also when the mode is unchanged but the key set drifted);
-                // the other mode's keys stay stored.
-                $keySet = $mode === 'production' ? 'live' : 'test';
-                $settings = AccountSettings::for($row);
-                if ($settings->read('lbc_mode') !== $keySet) {
-                    $settings->write('lbc_mode', $keySet);
-                    $this->attribute($actor, AuditEntry::query()
-                        ->where('action', 'courier_account.setting_changed')
-                        ->where('subject_id', $row->public_id)
-                        ->where('changes->key', 'lbc_mode')
-                        ->latest('id')->first());
-                }
-            }
-
-            if (! $changed) {
+            if ($from === $mode) {
                 return null;
             }
+
+            $changes = ['mode' => $mode];
+            if ($row->courier === 'spx') {
+                // Webhooks without a path token are routed by the app id of the environment the account is in.
+                $changes['external_ref'] = AccountSettings::for($row)->read("spx_{$mode}_app_id");
+            }
+            $row->forceFill($changes)->save();
+            $account->setRawAttributes($row->getAttributes(), true);
 
             $this->audit($actor, 'courier_account.mode_changed', $row, ['mode' => ['from' => $from, 'to' => $mode]]);
 
@@ -449,6 +433,11 @@ class CourierAccounts
         }
 
         return ['length' => mb_strlen($value), 'last4' => mb_substr($value, -4)];
+    }
+
+    private function isCurrentSpxAppId(CourierAccount $account, string $key): bool
+    {
+        return $account->courier === 'spx' && $key === "spx_{$account->mode}_app_id";
     }
 
     /** @return array<string, mixed> */

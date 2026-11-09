@@ -29,7 +29,8 @@ class CourierAccountsController extends Controller
 
     public function setup(Request $request, string $courier, CourierAccounts $accounts): RedirectResponse
     {
-        $data = $request->validate(['mode' => ['required', 'string', Rule::in(CourierAccounts::MODES[$courier] ?? [])]]);
+        abort_unless(CourierRegistry::has($courier), 404);
+        $data = $request->validate(['mode' => ['required', 'string', Rule::in(CourierAccounts::ENVIRONMENTS)]]);
 
         try {
             $accounts->setUp($courier, $data['mode'], ['type' => 'admin', 'id' => $request->user()->getAuthIdentifier(), 'ip' => $request->ip()]);
@@ -44,18 +45,19 @@ class CourierAccountsController extends Controller
     {
         $account = $accounts->forCourier($courier);
         if ($account === null) {
-            return view('accounts.show', ['courier' => $courier, 'account' => null, 'modes' => CourierAccounts::MODES[$courier] ?? []]);
+            return view('accounts.show', ['courier' => $courier, 'account' => null]);
         }
 
         $settings = AccountSettings::for($account);
-        $fields = array_map(fn (array $f) => $f + ['value' => $settings->read($f['key'])], $accounts->plainFields($account));
+        $withValue = fn (array $f) => $f + ['value' => $settings->read($f['key'])];
+        $plain = $accounts->plainFields($account);
 
         return view('accounts.show', [
             'courier' => $courier,
             'account' => $account,
-            'modes' => CourierAccounts::MODES[$account->courier] ?? [],
-            'fields' => $fields,
-            'keyGroups' => $this->keyGroups($account, $accounts),
+            'accountFields' => array_map($withValue, array_values(array_filter($plain, fn (array $f) => ($f['section'] ?? null) === 'account'))),
+            'fields' => array_map($withValue, array_values(array_filter($plain, fn (array $f) => ($f['section'] ?? null) !== 'account'))),
+            'environments' => $this->environments($account, $accounts, $settings),
             'webhook' => $accounts->webhookAddress($account, true),
             'blocks' => $account->courier === 'lbc' ? app(TrackingNumberSeriesService::class)->blockRows($account) : null,
         ]);
@@ -70,9 +72,7 @@ class CourierAccountsController extends Controller
     {
         $account = $this->account($courier, $accounts);
         $data = $request->validate([
-            'mode' => ['required', 'string', Rule::in(CourierAccounts::MODES[$account->courier] ?? [])],
-            'default' => ['nullable', 'boolean'],
-            'active' => ['nullable', 'boolean'],
+            'mode' => ['required', 'string', Rule::in(CourierAccounts::ENVIRONMENTS)],
             'settings' => ['nullable', 'array'],
             'settings.*' => ['nullable', 'string'],
             'secrets' => ['nullable', 'array'],
@@ -92,16 +92,11 @@ class CourierAccountsController extends Controller
         DB::beginTransaction();
         try {
             $attempt('mode', fn () => $accounts->setMode($account, $data['mode'], $actor));
-            if (array_key_exists('default', $data) && $data['default'] !== null) {
-                $attempt('default', fn () => $accounts->setDefault($account, (bool) $data['default'], $actor));
-            }
-            if (array_key_exists('active', $data) && $data['active'] !== null) {
-                $attempt('active', fn () => $accounts->setActive($account, (bool) $data['active'], $actor));
-            }
 
-            // Only plain booking-default fields are writable here; secrets and mode-scoped keys have their own controls.
+            // Plain fields only: booking defaults, account details and both environments' plain IDs. Secrets have
+            // their own masked controls below.
             $current = AccountSettings::for($account);
-            $plain = array_column($accounts->plainFields($account), 'key');
+            $plain = array_column(array_filter($accounts->schema($account), fn (array $f) => ! CourierAccounts::isSecretField($f)), 'key');
             foreach ($data['settings'] ?? [] as $key => $value) {
                 if (! in_array($key, $plain, true)) {
                     continue;
@@ -186,34 +181,19 @@ class CourierAccountsController extends Controller
             : $back->withErrors(['test' => 'Check failed: ' . $result['message']]);
     }
 
-    /** Which mode-scoped key set each account mode uses. A courier not listed has keys that ignore the mode. */
-    private const KEY_SETS = [
-        'quadx' => ['staging' => 'staging', 'production' => 'production'],
-        'lbc' => ['staging' => 'test', 'production' => 'live'],
-    ];
-
     /**
-     * The Keys section: one group per mode (or a single group, mode null, when the keys ignore the mode). Each key
-     * carries its length and last 4 characters only.
+     * Both environments' credentials, in schema order. A secret carries its length and last 4 characters only; a
+     * plain field (SPX's App ID and User ID) its value.
      *
-     * @return array<int, array{mode: ?string, scope?: string, keys: array<int, array{key: string, label: string, masked: ?array{length: int, last4: string}}>}>
+     * @return array<string, array<int, array{key: string, label: string, secret: bool, masked?: ?array{length: int, last4: string}, value?: ?string}>>
      */
-    private function keyGroups(CourierAccount $account, CourierAccounts $accounts): array
+    private function environments(CourierAccount $account, CourierAccounts $accounts, AccountSettings $settings): array
     {
-        $describe = fn (array $f) => ['key' => $f['key'], 'label' => (string) ($f['label'] ?? $f['key']), 'masked' => $accounts->masked($account, $f['key'])];
-        $fields = $this->secretFields($account, $accounts);
-        $sets = self::KEY_SETS[$account->courier] ?? null;
-
-        if ($sets === null) {
-            return $fields === [] ? [] : [['mode' => null, 'keys' => array_map($describe, $fields)]];
-        }
-
         $groups = [];
-        foreach ($sets as $mode => $scope) {
-            $keys = array_values(array_filter($fields, fn (array $f) => ($f['mode_scoped'] ?? null) === $scope));
-            if ($keys !== []) {
-                $groups[] = ['mode' => $mode, 'scope' => $scope, 'keys' => array_map($describe, $keys)];
-            }
+        foreach (CourierAccounts::ENVIRONMENTS as $env) {
+            $groups[$env] = array_map(fn (array $f) => ['key' => $f['key'], 'label' => (string) ($f['label'] ?? $f['key']), 'secret' => CourierAccounts::isSecretField($f)]
+                + (CourierAccounts::isSecretField($f) ? ['masked' => $accounts->masked($account, $f['key'])] : ['value' => $settings->read($f['key'])]),
+                $accounts->environmentFields($account, $env));
         }
 
         return $groups;

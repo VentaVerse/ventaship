@@ -617,7 +617,7 @@ The courier accounts of this install. Every client app sees all of them. Ordered
 | `id` | `acc_…` |
 | `courier` | courier key |
 | `label` | the owner's name for it |
-| `mode` | `staging` (courier test system) or `production` |
+| `mode` | `sandbox` (the courier's test system) or `production` |
 | `status` | `active` or `disabled` |
 | `is_default` | the account used when you send only `courier` |
 | `issues` | what is missing before it can book (empty when ready) |
@@ -631,7 +631,7 @@ The courier accounts of this install. Every client app sees all of them. Ordered
             "id": "acc_01m6ws8t06hsthfpfmv692k221",
             "courier": "quadx",
             "label": "QuadX main",
-            "mode": "staging",
+            "mode": "sandbox",
             "status": "active",
             "is_default": true,
             "issues": [],
@@ -666,7 +666,7 @@ One account, same fields. Unknown id: `404 not_found`.
         "id": "acc_01m6ws8t06hsthfpfmv692k221",
         "courier": "quadx",
         "label": "QuadX main",
-        "mode": "staging",
+        "mode": "sandbox",
         "status": "active",
         "is_default": true,
         "issues": [],

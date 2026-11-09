@@ -133,13 +133,6 @@
         }
     }
 
-    .ac-keys-h {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 8px;
-    }
-
     .ac-cred {
         display: flex;
         flex-wrap: wrap;
