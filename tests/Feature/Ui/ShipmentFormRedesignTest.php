@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Ui;
 
+use App\Addresses\PickupAddresses;
 use App\Couriers\CourierAccounts;
 use App\Couriers\CourierRegistry;
 use App\Couriers\FakeCourier;
@@ -9,7 +10,6 @@ use App\Models\Admin;
 use App\Models\CourierAccount;
 use App\Models\Shipment;
 use App\Support\PhAddress;
-use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsShipments;
@@ -180,7 +180,7 @@ class ShipmentFormRedesignTest extends TestCase
         $this->assertSame(0, Shipment::query()->count());
     }
 
-    public function test_settings_sender_books_end_to_end_with_the_default_quadx_account(): void
+    public function test_default_pickup_address_books_end_to_end_with_the_default_quadx_account(): void
     {
         // A legacy duplicate QuadX account (older, active) and a newer default: the default is the one booked on.
         $this->account->forceFill(['label' => 'Legacy', 'is_default' => false, 'default_slot' => null])->save();
@@ -191,12 +191,11 @@ class ShipmentFormRedesignTest extends TestCase
         $district = $ph->districts('133900000')[0];
         $brgy = $ph->barangays($district['code'])[0];
         $codes = ['state' => '130000000', 'city' => '133900000', 'barangay' => $brgy['code']];
-        $this->put('/settings', [
-            'tab' => 'general', 'shipments_reference_prefix' => 'VS',
-            'pickup_contact_name' => 'Venta Warehouse', 'pickup_contact_phone' => '0918 123 4567', 'pickup_address_1' => '5 Shaw Blvd',
-            'pickup_addr' => ['state' => 'Metro Manila', 'city' => 'Manila', 'district' => $district['name'], 'barangay' => $brgy['name'],
-                'postcode' => '1006', 'codes' => $codes],
-        ])->assertSessionHasNoErrors();
+        app(PickupAddresses::class)->create([
+            'label' => 'Main', 'contact_name' => 'Venta Warehouse', 'contact_phone' => '0918 123 4567', 'address_1' => '5 Shaw Blvd',
+            'state' => 'Metro Manila', 'city' => 'Manila', 'district' => $district['name'], 'barangay' => $brgy['name'],
+            'postcode' => '1006', 'codes' => $codes,
+        ]);
 
         // What the add form renders is what the browser posts back.
         $dom = new \DOMDocument;
@@ -277,15 +276,13 @@ class ShipmentFormRedesignTest extends TestCase
         $this->assertSame(1, substr_count($html, 'Not set up'));
     }
 
-    public function test_sender_collapsed_when_settings_sender_exists(): void
+    public function test_sender_collapsed_when_a_default_pickup_address_exists(): void
     {
         // No sender yet: expanded.
         $this->assertStringContainsString('x-data="{ open: true }"', $this->get('/shipments/new')->getContent());
 
-        $settings = app(Settings::class);
-        foreach (['contact_name' => 'Venta Warehouse', 'contact_phone' => '09181234567', 'address_1' => '5 Shaw Blvd', 'city' => 'Mandaluyong', 'state' => 'Metro Manila'] as $k => $v) {
-            $settings->set("pickup.{$k}", $v);
-        }
+        app(PickupAddresses::class)->create(['label' => 'Main', 'contact_name' => 'Venta Warehouse', 'contact_phone' => '09181234567',
+            'address_1' => '5 Shaw Blvd', 'city' => 'Mandaluyong', 'state' => 'Metro Manila']);
 
         $html = $this->get('/shipments/new')->assertOk()->getContent();
         $this->assertStringContainsString('x-data="{ open: false }"', $html);

@@ -874,7 +874,7 @@ Request fields:
 | `payment.declared_value` | optional money ≥ 0: the insured value when the parcel is insured (`insure: true`, or any LBC COD parcel). When omitted, `total` is used |
 | `payment.shipping_payment` | optional string ≤ 32: a `shipping_payment_options` value (who pays the courier's fee, and how) |
 | `pickup` | **required**: `contact_name` (required, ≤ 255), `contact_phone` (required, [PH mobile](#phone-numbers)) and an [address](#addresses) |
-| `recipient` | **required**: `first_name` (required, ≤ 255), `last_name` (≤ 255), `phone` (required, [PH mobile](#phone-numbers)), `email` (valid email, ≤ 255) and an [address](#addresses) |
+| `recipient` | **required**: `first_name` (required, ≤ 255), `last_name` (≤ 255), `phone` (required, [PH mobile](#phone-numbers)), `email` (valid email, ≤ 255) and an [address](#addresses). The recipient is also saved as a customer in the dashboard, one per phone number; this never changes the shipment or the answer |
 | `items` | **required** list, 1 to 100 |
 | `items[].name` | required string ≤ 255 |
 | `items[].quantity` | required integer, 1 to 100000 |

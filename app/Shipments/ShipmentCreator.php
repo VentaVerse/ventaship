@@ -2,6 +2,7 @@
 
 namespace App\Shipments;
 
+use App\Addresses\Customers;
 use App\Api\ApiError;
 use App\Couriers\AccountResolver;
 use App\Couriers\Support\PhPhone;
@@ -71,6 +72,7 @@ final class ShipmentCreator
         ];
 
         $shipment = $this->storeHoldingReference($app, $attributes);
+        $this->rememberCustomer($shipment, true);
 
         if ($state === 'queued' && $now) {
             return $this->bookNow($shipment->id);
@@ -103,7 +105,7 @@ final class ShipmentCreator
         $reference = ($data['client_reference'] ?? null) ?: $shipment->client_reference;
 
         try {
-            return $this->withManualReferenceLock(null, $reference, fn () => DB::transaction(function () use ($shipment, $data, $account) {
+            $updated = $this->withManualReferenceLock(null, $reference, fn () => DB::transaction(function () use ($shipment, $data, $account) {
                 $s = Shipment::query()->whereKey($shipment->getKey())->lockForUpdate()->firstOrFail();
                 if (! $s->isEditable()) {
                     throw new ApiError(409, 'not_editable', 'Only unbooked manual shipments can be changed.');
@@ -142,6 +144,25 @@ final class ShipmentCreator
 
             throw $holder !== null ? $this->duplicate($holder) : new ApiError(409, 'active_shipment_exists', 'A live shipment already uses this client_reference.');
         }
+
+        $this->rememberCustomer($updated, false);
+
+        return $updated;
+    }
+
+    /**
+     * Saves the recipient as a customer once the shipment is committed (at once when no transaction is open). A
+     * failure is logged and never reaches the booking. `$count`: false for an edited draft, already counted.
+     */
+    private function rememberCustomer(Shipment $shipment, bool $count): void
+    {
+        DB::afterCommit(function () use ($shipment, $count) {
+            try {
+                app(Customers::class)->upsertFromShipment($shipment, $count);
+            } catch (Throwable $e) {
+                Log::warning('Saving the customer failed', ['shipment_id' => $shipment->id, 'exception' => $e::class]);
+            }
+        });
     }
 
     /**

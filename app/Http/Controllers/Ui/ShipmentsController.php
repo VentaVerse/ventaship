@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Ui;
 
+use App\Addresses\PickupAddresses;
 use App\Api\ApiError;
 use App\Couriers\CourierAccounts;
 use App\Couriers\CourierRegistry;
@@ -13,7 +14,6 @@ use App\Models\CourierAccount;
 use App\Models\Shipment;
 use App\Shipments\CourierFormFields;
 use App\Shipments\ShipmentCreator;
-use App\Support\Settings;
 use Closure;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
@@ -39,18 +39,18 @@ class ShipmentsController extends Controller
     /** The courier tiles, in this order. */
     private const COURIERS = ['quadx', 'spx', 'lbc'];
 
-    public function create(Request $request, Settings $settings): View
+    public function create(Request $request, PickupAddresses $pickups): View
     {
-        return $this->form($request, $settings, null);
+        return $this->form($request, $pickups, null);
     }
 
-    public function edit(Request $request, Shipment $shipment, Settings $settings): View|RedirectResponse
+    public function edit(Request $request, Shipment $shipment, PickupAddresses $pickups): View|RedirectResponse
     {
         if (! $shipment->isEditable()) {
             return $this->refused($shipment);
         }
 
-        return $this->form($request, $settings, $shipment->loadMissing('courierAccount'));
+        return $this->form($request, $pickups, $shipment->loadMissing('courierAccount'));
     }
 
     public function update(ShipmentFormRequest $form, Shipment $shipment, ShipmentCreator $creator): RedirectResponse
@@ -361,7 +361,7 @@ class ShipmentsController extends Controller
      * The add form, or the edit form for $editing. One tile per courier: its account from forCourier(), bookable when
      * active. An edit keeps its own account on its courier's tile (marked inactive) even when it is not active.
      */
-    private function form(Request $request, Settings $settings, ?Shipment $editing): View
+    private function form(Request $request, PickupAddresses $pickups, ?Shipment $editing): View
     {
         $own = $editing?->courierAccount;
         $tiles = [];
@@ -390,7 +390,7 @@ class ShipmentsController extends Controller
             'services' => $this->servicesFor($usable),
             'fields' => $this->courierFieldsFor($usable),
             'lbcDates' => CourierFormFields::lbcDates(),
-            'sender' => $editing === null ? $settings->pickup() : ((array) $editing->pickup ?: null),
+            'sender' => $editing === null ? $pickups->default()?->toPickup() : ((array) $editing->pickup ?: null),
             'token' => $token,
             'editing' => $editing !== null,
             'shipment' => $editing,

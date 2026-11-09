@@ -25,32 +25,6 @@
                     </x-ui.field>
                 </div>
             </div>
-            <div class="st-sec">
-                <h2 class="st-h">Sender</h2>
-                <div class="st-row">
-                    <x-ui.field label="Name" name="pickup_contact_name">
-                        <x-ui.input id="f-pickup-contact-name" name="pickup_contact_name" class="st-ctl" value="{{ old('pickup_contact_name', $sender['pickup_contact_name'] ?? '') }}" maxlength="255" autocomplete="off" />
-                    </x-ui.field>
-                </div>
-                <div class="st-row">
-                    <x-ui.field label="Phone" name="pickup_contact_phone">
-                        <x-ui.input type="tel" id="f-pickup-contact-phone" name="pickup_contact_phone" class="st-ctl" value="{{ old('pickup_contact_phone', $sender['pickup_contact_phone'] ?? '') }}" maxlength="32" autocomplete="off" />
-                    </x-ui.field>
-                </div>
-                <div class="st-row">
-                    <x-ui.field label="Address" name="pickup_address_1">
-                        <x-ui.input id="f-pickup-address-1" name="pickup_address_1" class="st-ctl" value="{{ old('pickup_address_1', $sender['pickup_address_1'] ?? '') }}" maxlength="255" autocomplete="off" />
-                    </x-ui.field>
-                </div>
-                <div class="st-row">
-                    <x-ui.field label="Address line 2" name="pickup_address_2">
-                        <x-ui.input id="f-pickup-address-2" name="pickup_address_2" class="st-ctl" value="{{ old('pickup_address_2', $sender['pickup_address_2'] ?? '') }}" maxlength="255" autocomplete="off" />
-                    </x-ui.field>
-                </div>
-                <div class="st-row">
-                    <x-ph-address prefix="pickup_addr" :values="old('pickup_addr', $senderAddress)" />
-                </div>
-            </div>
             @include('settings._bar', ['tab' => 'general'])
         </form>
     @elseif($tab === 'couriers')

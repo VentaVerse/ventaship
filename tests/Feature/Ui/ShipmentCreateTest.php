@@ -2,13 +2,13 @@
 
 namespace Tests\Feature\Ui;
 
+use App\Addresses\PickupAddresses;
 use App\Couriers\CourierRegistry;
 use App\Couriers\FakeCourier;
 use App\Models\Admin;
 use App\Models\AuditEntry;
 use App\Models\CourierAccount;
 use App\Models\Shipment;
-use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
@@ -38,10 +38,8 @@ class ShipmentCreateTest extends TestCase
 
     private function sender(): void
     {
-        $settings = app(Settings::class);
-        foreach (['contact_name' => 'Venta Warehouse', 'contact_phone' => '09181234567', 'address_1' => '5 Shaw Blvd', 'city' => 'Mandaluyong', 'state' => 'Metro Manila', 'postcode' => '1550'] as $k => $v) {
-            $settings->set("pickup.{$k}", $v);
-        }
+        app(PickupAddresses::class)->create(['label' => 'Main', 'contact_name' => 'Venta Warehouse', 'contact_phone' => '09181234567',
+            'address_1' => '5 Shaw Blvd', 'city' => 'Mandaluyong', 'state' => 'Metro Manila', 'postcode' => '1550']);
     }
 
     /** The token a rendered form carries. */

@@ -5,8 +5,6 @@ namespace App\Http\Controllers\Ui;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\AuditEntry;
-use App\Rules\PhPhone;
-use App\Support\PhAddress;
 use App\Support\SchedulerCron;
 use App\Support\Settings;
 use Illuminate\Http\RedirectResponse;
@@ -17,7 +15,6 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class SettingsController extends Controller
@@ -31,26 +28,6 @@ class SettingsController extends Controller
     ];
 
     private const DEFAULTS = ['shipments.reference_prefix' => 'VS'];
-
-    /** Sender form field => settings key. The address block posts as pickup_addr[...] (see SENDER_ADDRESS). */
-    private const SENDER = [
-        'pickup_contact_name' => 'pickup.contact_name',
-        'pickup_contact_phone' => 'pickup.contact_phone',
-        'pickup_address_1' => 'pickup.address_1',
-        'pickup_address_2' => 'pickup.address_2',
-    ];
-
-    /** pickup_addr key => settings key. */
-    private const SENDER_ADDRESS = [
-        'barangay' => 'pickup.barangay',
-        'district' => 'pickup.district',
-        'city' => 'pickup.city',
-        'state' => 'pickup.state',
-        'postcode' => 'pickup.postcode',
-        'codes.state' => 'pickup.codes.state',
-        'codes.city' => 'pickup.codes.city',
-        'codes.barangay' => 'pickup.codes.barangay',
-    ];
 
     private const PASSWORD_ATTEMPTS = 5;
 
@@ -67,8 +44,6 @@ class SettingsController extends Controller
             'prefix' => $settings->get('shipments.reference_prefix', 'VS'),
             'switches' => collect(self::SWITCHES)->map(fn (string $key) => $settings->get($key) === true)->all(),
             'publicAddress' => $settings->publicBaseUrl(),
-            'sender' => collect(self::SENDER)->map(fn (string $key) => $settings->get($key))->all(),
-            'senderAddress' => $this->storedAddress($settings),
             'admin' => $request->user(),
             'cron' => $tab === 'jobs' ? $this->cron($settings) : null,
         ]);
@@ -91,49 +66,14 @@ class SettingsController extends Controller
         $back = redirect()->route('settings.edit', ['tab' => $tab]);
 
         if ($tab === 'general') {
-            $filled = collect(self::SENDER)->keys()->contains(fn (string $field) => trim((string) $request->input($field)) !== '')
-                || collect(self::SENDER_ADDRESS)->keys()->contains(fn (string $key) => trim((string) $request->input("pickup_addr.{$key}")) !== '');
-            $max = ['string', 'max:255'];
-            $senderRules = [
-                'pickup_contact_name' => [$filled ? 'required' : 'nullable', ...$max],
-                'pickup_contact_phone' => [$filled ? 'required' : 'nullable', 'string', 'max:32', new PhPhone('Not a valid PH mobile number.')],
-                'pickup_address_1' => [$filled ? 'required' : 'nullable', ...$max],
-                'pickup_address_2' => ['nullable', ...$max],
-                'pickup_addr' => ['nullable', 'array'],
-                'pickup_addr.barangay' => ['nullable', ...$max],
-                'pickup_addr.district' => ['nullable', ...$max],
-                'pickup_addr.city' => [$filled ? 'required' : 'nullable', ...$max],
-                'pickup_addr.state' => [$filled ? 'required' : 'nullable', ...$max],
-                'pickup_addr.postcode' => ['nullable', 'string', 'max:16'],
-                'pickup_addr.codes' => ['nullable', 'array'],
-                'pickup_addr.codes.*' => ['nullable', 'string', 'max:32'],
-            ];
             $data = $request->validate([
                 'shipments_reference_prefix' => ['required', 'regex:/^[A-Z0-9]{1,8}\z/'],
-            ] + $senderRules, [
+            ], [
                 'shipments_reference_prefix.*' => 'Use 1–8 capital letters or digits.',
-                'pickup_*.required' => 'Required.',
-                'pickup_addr.*.required' => 'Required.',
-                'pickup_addr.*.max' => 'Too long.',
-                'pickup_addr.*.string' => 'Not valid.',
-                'pickup_*.max' => 'Too long.',
-                'pickup_*.string' => 'Not valid.',
             ]);
-            $field = $filled ? app(PhAddress::class)->postedMismatch((array) ($data['pickup_addr'] ?? [])) : null;
-            if ($field !== null) {
-                throw ValidationException::withMessages(["pickup_addr.{$field}" => 'Choose from the list.']);
-            }
             $new = [
                 'shipments.reference_prefix' => $data['shipments_reference_prefix'],
             ];
-            foreach (self::SENDER as $field => $key) {
-                $value = trim((string) ($data[$field] ?? ''));
-                $new[$key] = $value === '' ? null : $value;
-            }
-            foreach (self::SENDER_ADDRESS as $field => $key) {
-                $value = trim((string) data_get($data, "pickup_addr.{$field}", ''));
-                $new[$key] = $value === '' ? null : $value;
-            }
         } else {
             // A switch is on only for an explicit "1"; an unchecked or absent field is a strict false.
             $data = $request->validate([
@@ -176,17 +116,6 @@ class SettingsController extends Controller
         });
 
         return $back->with('status', 'Saved');
-    }
-
-    /** @return array<string, mixed> The stored sender address in the shape <x-ph-address> takes. */
-    private function storedAddress(Settings $settings): array
-    {
-        $address = ['codes' => []];
-        foreach (self::SENDER_ADDRESS as $field => $key) {
-            data_set($address, $field, $settings->get($key));
-        }
-
-        return $address;
     }
 
     public function account(Request $request): RedirectResponse
