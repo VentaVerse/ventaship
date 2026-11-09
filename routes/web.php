@@ -33,6 +33,8 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::delete('shipments/{shipment:public_id}', [ShipmentsController::class, 'destroy'])->name('shipments.destroy');
     Route::post('shipments/book', [ShipmentActionsController::class, 'book'])->name('shipments.book');
     Route::post('shipments/cancel', [ShipmentActionsController::class, 'cancel'])->name('shipments.cancel');
+    Route::post('shipments/{shipment:public_id}/retry', [ShipmentActionsController::class, 'retry'])->name('shipments.retry');
+    Route::post('shipments/{shipment:public_id}/resolve', [ShipmentActionsController::class, 'resolve'])->name('shipments.resolve');
     Route::get('addresses', [AddressesController::class, 'index'])->name('addresses.index');
     Route::get('addresses/pickup/new', [AddressesController::class, 'createPickup'])->name('addresses.pickup.create');
     Route::post('addresses/pickup', [AddressesController::class, 'storePickup'])->name('addresses.pickup.store');

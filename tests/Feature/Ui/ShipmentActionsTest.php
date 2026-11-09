@@ -8,7 +8,9 @@ use App\Models\Admin;
 use App\Models\AuditEntry;
 use App\Models\ClientApp;
 use App\Models\CourierAccount;
+use App\Models\OutgoingEvent;
 use App\Models\Shipment;
+use App\Shipments\BookingOutcomes;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
@@ -298,5 +300,210 @@ class ShipmentActionsTest extends TestCase
             ->assertSessionHas('status', '1 cancelled · 1 not cancellable');
         $this->assertSame(['VS-BOOM: Something went wrong'], session('errors')->getBag('default')->all());
         $this->assertSame('cancelled', $other->fresh()->state);
+    }
+
+    private function failedShipment(array $over = []): Shipment
+    {
+        return $this->ship('failed', 'attention', $over + [
+            'courier_ref' => 'VS000042',
+            'client_reference' => 'ORD-42',
+            'active_reference' => null,
+            'error_code' => 'courier_refused',
+            'error_message' => 'Cutoff time passed.',
+        ]);
+    }
+
+    public function test_retry_rebooks_a_failed_shipment_through_the_normal_booking_path(): void
+    {
+        $this->courier->booksAs('QX-RETRY', 'pending');
+        $s = $this->failedShipment();
+
+        $this->post(route('shipments.retry', $s->public_id))
+            ->assertRedirect(route('shipments.show', $s->public_id))
+            ->assertSessionHas('status', 'VS000042 booked');
+
+        $s->refresh();
+        $this->assertSame('booked', $s->state);
+        $this->assertSame('QX-RETRY', $s->tracking_number);
+        $this->assertSame('ORD-42', $s->active_reference, 'it holds its reference again');
+        $this->assertNull($s->error_code);
+        $this->assertNull($s->error_message);
+        $this->assertNotNull($s->booking_started_at);
+        $this->assertNotNull($s->booked_at);
+
+        // The same stored details went to the courier, once, under the shipment's own reference.
+        $calls = $this->courier->callsTo('createShipment');
+        $this->assertCount(1, $calls);
+        $this->assertSame('VS000042', $calls[0]['args'][0]->reference);
+
+        // As any booking: the outbox tells the client app.
+        $this->assertTrue(OutgoingEvent::query()->where('shipment_id', $s->id)->where('type', 'shipment.booked')->exists());
+
+        $audit = AuditEntry::query()->where('action', 'shipment.retry_requested')->sole();
+        $this->assertSame($s->public_id, $audit->subject_id);
+        $this->assertSame((string) $this->admin->id, $audit->actor_id);
+    }
+
+    public function test_retry_that_the_courier_refuses_again_stays_failed_with_the_new_reason(): void
+    {
+        $this->courier->refusesWith('Barangay not serviceable');
+        $s = $this->failedShipment();
+
+        $this->post(route('shipments.retry', $s->public_id))->assertRedirect(route('shipments.show', $s->public_id));
+
+        $this->assertSame(['VS000042: Barangay not serviceable'], session('errors')->getBag('default')->all());
+        $s->refresh();
+        $this->assertSame('failed', $s->state);
+        $this->assertSame('Barangay not serviceable', $s->error_message);
+        $this->assertNull($s->active_reference, 'a refusal frees the reference again');
+        $this->assertTrue(OutgoingEvent::query()->where('shipment_id', $s->id)->where('type', 'shipment.booking_failed')->exists());
+        $this->assertSame(1, AuditEntry::query()->where('action', 'shipment.retry_requested')->count());
+    }
+
+    public function test_retry_refuses_anything_but_a_failed_shipment(): void
+    {
+        foreach ([['booked', 'to_handover'], ['unknown', 'attention'], ['queued', 'booking'], ['draft', 'draft'], ['cancelled', 'cancelled']] as [$state, $phase]) {
+            $s = $this->ship($state, $phase);
+            $before = $s->fresh()->only(['state', 'tracking_number', 'active_reference', 'error_message']);
+
+            $this->post(route('shipments.retry', $s->public_id))->assertRedirect(route('shipments.show', $s->public_id));
+
+            $this->assertSame([($s->courier_ref).' is no longer a failed booking.'], session('errors')->getBag('default')->all(), $state);
+            $this->assertSame($before, $s->fresh()->only(['state', 'tracking_number', 'active_reference', 'error_message']), $state);
+        }
+
+        $cancelledFailed = $this->failedShipment(['cancel_state' => 'cancelled']);
+        $this->post(route('shipments.retry', $cancelledFailed->public_id));
+        $this->assertSame('failed', $cancelledFailed->fresh()->state);
+
+        $this->assertSame([], $this->courier->callsTo('createShipment'));
+        $this->assertSame(0, AuditEntry::query()->where('action', 'shipment.retry_requested')->count());
+    }
+
+    public function test_retry_refuses_when_another_live_shipment_holds_the_reference(): void
+    {
+        $s = $this->failedShipment();
+        $resent = $this->ship('booked', 'to_handover', ['client_reference' => 'ORD-42', 'active_reference' => 'ORD-42', 'courier_ref' => 'VS000123']);
+        $this->client->forceFill(['name' => 'VentaCart'])->save();
+
+        $this->post(route('shipments.retry', $s->public_id))
+            ->assertRedirect(route('shipments.show', $s->public_id))
+            ->assertSessionHas('flash_link', [
+                'before' => 'VentaCart already sent this order again as ',
+                'label' => 'VS000123',
+                'href' => route('shipments.show', $resent->public_id),
+                'after' => '.',
+            ]);
+
+        $s->refresh();
+        $this->assertSame('failed', $s->state);
+        $this->assertNull($s->active_reference);
+        $this->assertSame('Cutoff time passed.', $s->error_message);
+        $this->assertSame('ORD-42', $resent->fresh()->active_reference);
+        $this->assertSame([], $this->courier->callsTo('createShipment'));
+        $this->assertSame(0, AuditEntry::query()->where('action', 'shipment.retry_requested')->count());
+
+        // The flash renders with the holder linked, escaped.
+        $this->get(route('shipments.show', $s->public_id))
+            ->assertSee('VentaCart already sent this order again as <a class="x-flash__link" href="'.route('shipments.show', $resent->public_id).'">VS000123</a>.', false);
+    }
+
+    public function test_retry_takes_the_reference_back_from_a_released_holder(): void
+    {
+        $s = $this->failedShipment();
+        $old = $this->ship('cancelled', 'cancelled', ['client_reference' => 'ORD-42', 'active_reference' => 'ORD-42']);
+
+        $this->post(route('shipments.retry', $s->public_id))->assertSessionHas('status', 'VS000042 booked');
+
+        $this->assertSame('ORD-42', $s->fresh()->active_reference);
+        $this->assertNull($old->fresh()->active_reference);
+    }
+
+    public function test_retry_needs_a_signed_in_admin_and_a_post(): void
+    {
+        $s = $this->failedShipment();
+        $this->get('/shipments/'.$s->public_id.'/retry')->assertStatus(405);
+        auth()->logout();
+        $this->post(route('shipments.retry', $s->public_id))->assertRedirect(route('login'));
+        $this->assertSame('failed', $s->fresh()->state);
+    }
+
+    /** The page's resolve and `ventaship:shipments-resolve` leave twin shipments identical. */
+    public function test_resolve_booked_matches_the_command(): void
+    {
+        $page = $this->ship('unknown', 'attention', ['needs_attention' => true, 'attention_reason' => BookingOutcomes::UNKNOWN_REASON, 'booking_started_at' => now()->subHour()]);
+        $cli = $this->ship('unknown', 'attention', ['needs_attention' => true, 'attention_reason' => BookingOutcomes::UNKNOWN_REASON, 'booking_started_at' => now()->subHour()]);
+
+        $this->post(route('shipments.resolve', $page->public_id), ['outcome' => 'booked', 'tracking' => '  QX-777_A  '])
+            ->assertRedirect(route('shipments.show', $page->public_id))
+            ->assertSessionHas('status', $page->courier_ref.' marked booked');
+        $this->artisan('ventaship:shipments-resolve', ['shipment' => $cli->public_id, '--tracking' => 'QX-777_A'])->assertSuccessful();
+
+        $cols = ['state', 'tracking_number', 'error_code', 'error_message', 'needs_attention', 'attention_reason', 'active_reference'];
+        $this->assertSame('booked', $page->fresh()->state);
+        $this->assertSame('QX-777_A', $page->fresh()->tracking_number);
+        $this->assertNotNull($page->fresh()->booked_at);
+        $this->assertSame(
+            collect($cli->fresh()->only($cols))->except('active_reference')->all(),
+            collect($page->fresh()->only($cols))->except('active_reference')->all(),
+        );
+        foreach ([$page, $cli] as $s) {
+            $this->assertSame(['shipment.resolved'], OutgoingEvent::query()->where('shipment_id', $s->id)->pluck('type')->all());
+        }
+
+        $audit = AuditEntry::query()->where('action', 'shipment.resolved_booked')->sole();
+        $this->assertSame($page->public_id, $audit->subject_id);
+        $this->assertSame(['tracking_number' => 'QX-777_A'], $audit->changes);
+    }
+
+    public function test_resolve_not_booked_matches_the_command(): void
+    {
+        $page = $this->ship('unknown', 'attention', ['needs_attention' => true]);
+        $cli = $this->ship('unknown', 'attention', ['needs_attention' => true]);
+
+        $this->post(route('shipments.resolve', $page->public_id), ['outcome' => 'not_booked'])
+            ->assertSessionHas('status', $page->courier_ref.' marked not booked');
+        $this->artisan('ventaship:shipments-resolve', ['shipment' => $cli->public_id, '--not-booked' => true])->assertSuccessful();
+
+        foreach ([$page, $cli] as $s) {
+            $s->refresh();
+            $this->assertSame('failed', $s->state);
+            $this->assertNull($s->active_reference);
+            $this->assertSame('not_booked', $s->error_code);
+            $this->assertFalse($s->needs_attention);
+            $this->assertSame(['shipment.resolved'], OutgoingEvent::query()->where('shipment_id', $s->id)->pluck('type')->all());
+        }
+        $this->assertSame(1, AuditEntry::query()->where('action', 'shipment.resolved_not_booked')->count());
+
+        // It is a failed booking now: Retry shows.
+        $this->assertStringContainsString('sd-retry', $this->get(route('shipments.show', $page->public_id))->getContent());
+    }
+
+    public function test_resolve_validates_the_tracking_number_like_the_command(): void
+    {
+        $s = $this->ship('unknown', 'attention');
+        foreach (['', 'ab', '-QX123', 'QX 123', 'QX<123>', str_repeat('A', 65)] as $bad) {
+            $this->post(route('shipments.resolve', $s->public_id), ['outcome' => 'booked', 'tracking' => $bad])
+                ->assertSessionHasErrors('tracking');
+            $this->artisan('ventaship:shipments-resolve', ['shipment' => $s->public_id, '--tracking' => $bad])->assertFailed();
+        }
+        $this->post(route('shipments.resolve', $s->public_id), ['outcome' => 'maybe'])->assertSessionHasErrors('outcome');
+
+        $this->assertSame('unknown', $s->fresh()->state);
+        $this->assertSame(0, OutgoingEvent::query()->where('shipment_id', $s->id)->count());
+        $this->assertSame(0, AuditEntry::query()->where('subject_id', $s->public_id)->count());
+    }
+
+    public function test_resolve_refuses_a_shipment_that_is_not_unknown(): void
+    {
+        $s = $this->ship('booked', 'to_handover');
+        $before = $s->fresh()->only(['state', 'tracking_number']);
+
+        $this->post(route('shipments.resolve', $s->public_id), ['outcome' => 'not_booked'])
+            ->assertRedirect(route('shipments.show', $s->public_id));
+
+        $this->assertSame([$s->courier_ref.' is no longer waiting for a booking result.'], session('errors')->getBag('default')->all());
+        $this->assertSame($before, $s->fresh()->only(['state', 'tracking_number']));
+        $this->assertSame(0, AuditEntry::query()->count());
     }
 }

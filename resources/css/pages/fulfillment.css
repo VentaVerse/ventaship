@@ -31,6 +31,12 @@
         color: var(--bl-bad);
     }
 
+    .x-flash__link {
+        color: inherit;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+    }
+
     /* Courier cards: one row each on wider screens; a strip of chips on phones */
     .fl-chips {
         display: none;

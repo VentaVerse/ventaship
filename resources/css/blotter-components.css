@@ -261,11 +261,22 @@
         color: var(--bl-ink-3);
     }
 
+    .x-page > div:first-child {
+        min-width: 0;
+    }
+
     .x-page__title {
         margin: 0;
         font-size: 24px;
         font-weight: 700;
         letter-spacing: -.02em;
+        overflow-wrap: anywhere;
+    }
+
+    .x-page__meta {
+        margin-top: 6px;
+        font-size: 12.5px;
+        color: var(--bl-ink-2);
     }
 
     .x-page__actions {
@@ -400,6 +411,17 @@
 
     .x-btn--primary:hover {
         background: var(--bl-brand-btn);
+        filter: brightness(1.08);
+    }
+
+    .x-btn--danger {
+        border-color: var(--bl-bad);
+        background: var(--bl-bad);
+        color: var(--bl-on-bad);
+    }
+
+    .x-btn--danger:hover {
+        background: var(--bl-bad);
         filter: brightness(1.08);
     }
 
@@ -708,8 +730,15 @@
 
     .modal__actions {
         display: flex;
+        flex-wrap: wrap;
         justify-content: flex-end;
         gap: 8px;
+    }
+
+    @media (max-width: 639px) {
+        .modal__actions .x-btn {
+            min-height: 44px;
+        }
     }
 }
 

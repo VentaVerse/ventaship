@@ -30,7 +30,7 @@ class ShipmentsResolve extends Command
             return self::FAILURE;
         }
 
-        if ($tracking !== null && ! preg_match('/^[A-Za-z0-9][A-Za-z0-9_-]{2,63}$/', $tracking)) {
+        if ($tracking !== null && ! preg_match(BookingOutcomes::TRACKING_PATTERN, $tracking)) {
             $this->error('That is not a tracking number (letters, digits, - and _, 3 to 64 characters).');
 
             return self::FAILURE;

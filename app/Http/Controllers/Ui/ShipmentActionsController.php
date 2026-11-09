@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Ui;
 use App\Api\ApiError;
 use App\Fulfillment\Couriers;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Ui\ResolveShipmentRequest;
 use App\Models\AuditEntry;
 use App\Models\Shipment;
+use App\Shipments\BookingOutcomes;
 use App\Shipments\Canceller;
 use App\Shipments\LabelBundle;
 use App\Shipments\ShipmentCreator;
@@ -72,6 +74,87 @@ class ShipmentActionsController extends Controller
             .($skipped > 0 ? " · {$skipped} skipped" : '');
 
         return back()->with('status', $status)->withErrors($errors);
+    }
+
+    /**
+     * The detail page's Retry: a refused booking sent to the courier again with the details it holds, through the same
+     * path as a first booking (ShipmentCreator::retry, then BookShipment in this request). Refused when the shipment is
+     * not `failed` or another live shipment of the same app holds its client reference; nothing changes then.
+     */
+    public function retry(Request $request, Shipment $shipment, ShipmentCreator $creator): RedirectResponse
+    {
+        $back = redirect()->route('shipments.show', $shipment->public_id);
+        $name = $shipment->courier_ref ?: $shipment->public_id;
+
+        try {
+            $row = $creator->retry($shipment, now: true);
+        } catch (ApiError $e) {
+            return match ($e->errorCode) {
+                'active_shipment_exists' => $this->heldBy($back, $shipment, $e),
+                'not_failed' => $back->withErrors(['shipment' => "{$name} is no longer a failed booking."]),
+                default => $back->withErrors(['shipment' => $e->getMessage()]),
+            };
+        } catch (Throwable $e) {
+            $this->logRowError('Retry', $shipment, $e);
+
+            return $back->withErrors(['shipment' => self::ROW_ERROR]);
+        }
+
+        $this->audit($request, 'shipment.retry_requested', $shipment);
+
+        return match ($row->state) {
+            'booked' => $back->with('status', "{$name} booked"),
+            'booking' => $back->with('status', "{$name} sent to ".Couriers::name((string) $row->courier)),
+            'failed' => $back->withErrors(['shipment' => "{$name}: ".($row->error_message ?: 'The courier refused the booking.')]),
+            'unknown' => $back->withErrors(['shipment' => "{$name}: Booking result unknown"]),
+            default => $back->withErrors(['shipment' => "{$name}: Booking did not start"]),
+        };
+    }
+
+    /**
+     * The detail page's resolution of an `unknown` booking, the same BookingOutcomes calls as
+     * `ventaship:shipments-resolve` (outbox `shipment.resolved`), audited.
+     */
+    public function resolve(ResolveShipmentRequest $form, Shipment $shipment, BookingOutcomes $outcomes): RedirectResponse
+    {
+        $back = redirect()->route('shipments.show', $shipment->public_id);
+        $name = $shipment->courier_ref ?: $shipment->public_id;
+        $data = $form->validated();
+        $notBooked = $data['outcome'] === 'not_booked';
+
+        $resolved = $notBooked
+            ? $outcomes->resolveNotBooked($shipment->id)
+            : $outcomes->resolveBooked($shipment->id, (string) $data['tracking']);
+
+        if ($resolved === null) {
+            return $back->withErrors(['shipment' => "{$name} is no longer waiting for a booking result."]);
+        }
+
+        $this->audit($form, $notBooked ? 'shipment.resolved_not_booked' : 'shipment.resolved_booked', $shipment,
+            $notBooked ? null : ['tracking_number' => $resolved->tracking_number]);
+
+        return $back->with('status', $notBooked ? "{$name} marked not booked" : "{$name} marked booked");
+    }
+
+    /** "VentaCart already sent this order again as VS000123.", the holder linked. */
+    private function heldBy(RedirectResponse $back, Shipment $shipment, ApiError $e): RedirectResponse
+    {
+        $holderId = $e->errors['shipment'] ?? null;
+        $holder = is_string($holderId) ? Shipment::query()->where('public_id', $holderId)->first() : null;
+        if ($holder === null) {
+            return $back->withErrors(['shipment' => 'Another live shipment already holds this order reference.']);
+        }
+
+        $app = $shipment->clientApp?->name;
+
+        return $back->with('flash_link', [
+            'before' => $app !== null && $app !== ''
+                ? "{$app} already sent this order again as "
+                : 'This order reference is already on ',
+            'label' => $holder->courier_ref ?: $holder->public_id,
+            'href' => route('shipments.show', $holder->public_id),
+            'after' => '.',
+        ]);
     }
 
     public function cancel(Request $request, Canceller $canceller): RedirectResponse
@@ -246,7 +329,8 @@ class ShipmentActionsController extends Controller
         ]);
     }
 
-    private function audit(Request $request, string $action, Shipment $s): void
+    /** @param  array<string, mixed>|null  $changes  never recipient or pickup data */
+    private function audit(Request $request, string $action, Shipment $s, ?array $changes = null): void
     {
         AuditEntry::query()->create([
             'actor_type' => 'admin',
@@ -255,6 +339,7 @@ class ShipmentActionsController extends Controller
             'action' => $action,
             'subject_type' => 'shipment',
             'subject_id' => $s->public_id,
+            'changes' => $changes,
             'created_at' => now(),
         ]);
     }

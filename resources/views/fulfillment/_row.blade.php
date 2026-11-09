@@ -11,7 +11,7 @@
     $r = is_array($shipment->recipient) ? $shipment->recipient : null;
     $name = $r ? trim(((string) ($r['first_name'] ?? '')).' '.((string) ($r['last_name'] ?? ''))) : '';
     $name = $name !== '' ? $name : null;
-    $isCod = str_starts_with((string) $shipment->payment_state, 'cod_');
+    $isCod = ShipmentBadges::isCod($shipment);
     $amount = $isCod ? $shipment->cod_amount : $shipment->total;
     $tracking = $shipment->tracking_number ? TrackingLink::for($shipment) : null;
     $courierName = $shipment->courier ? Couriers::name($shipment->courier) : null;

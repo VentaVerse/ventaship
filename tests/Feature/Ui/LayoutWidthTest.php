@@ -60,15 +60,15 @@ class LayoutWidthTest extends TestCase
         $urls = [
             '/settings',
             route('accounts.show', $account->courier),
-            route('shipments.show', $shipment),
         ];
         foreach ($urls as $url) {
             $html = $this->get($url)->assertOk()->getContent();
             $this->assertMatchesRegularExpression('/<main[^>]*class="x-content x-content--form"/', $html, $url);
         }
 
-        // Add shipment carries its own summary column, so it gets the wider wrapper.
+        // Add shipment carries its own summary column, and the shipment page has two columns, so both get the wider wrapper.
         $this->assertMatchesRegularExpression('/<main[^>]*class="x-content x-content--wide"/', $this->get(route('shipments.create'))->getContent());
+        $this->assertMatchesRegularExpression('/<main[^>]*class="x-content x-content--wide"/', $this->get(route('shipments.show', $shipment))->getContent());
         $this->assertMatchesRegularExpression('/\.x-content--wide\s*\{[^}]*max-width:\s*var\(--bl-wide-max\);/s', $this->css('blotter-components.css'));
     }
 }

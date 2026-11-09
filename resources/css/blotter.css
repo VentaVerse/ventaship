@@ -52,6 +52,7 @@
     --bl-good-w: #e3f5ed;
     --bl-bad: #cb3327;
     --bl-bad-w: #fdeceb;
+    --bl-on-bad: #ffffff;
     --bl-cool: #2563a5;
     --bl-cool-w: #e6effa;
     --bl-mute-w: #eef1f6;
@@ -103,6 +104,7 @@
     --bl-good-w: #10261d;
     --bl-bad: #f0705f;
     --bl-bad-w: #2e1715;
+    --bl-on-bad: #1a0806;
     --bl-cool: #79a9e0;
     --bl-cool-w: #12202f;
     --bl-mute-w: #1a2338;

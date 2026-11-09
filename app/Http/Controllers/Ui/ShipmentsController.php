@@ -9,6 +9,7 @@ use App\Api\ApiError;
 use App\Couriers\CourierAccounts;
 use App\Couriers\CourierRegistry;
 use App\Fulfillment\Couriers;
+use App\Fulfillment\ShipmentDetail;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Ui\ShipmentFormRequest;
 use App\Models\AuditEntry;
@@ -140,7 +141,7 @@ class ShipmentsController extends Controller
     {
         $shipment->load(['clientApp', 'courierAccount', 'events' => fn ($q) => $q->orderByDesc('occurred_at')->orderByDesc('id')]);
 
-        return view('shipments.show', ['shipment' => $shipment]);
+        return view('shipments.show', ['shipment' => $shipment, 'detail' => new ShipmentDetail($shipment)]);
     }
 
     /**

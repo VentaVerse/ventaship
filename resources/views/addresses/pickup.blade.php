@@ -41,7 +41,7 @@
         </div>
         <div class="st-bar">
             @if($pickup)
-                <x-ui.button class="addr-delete" x-on:click="$dispatch('confirm', {{ Js::from(['title' => 'Delete '.$pickup->label.'?', 'confirm' => 'Delete address', 'dismiss' => 'Keep address', 'form' => 'delete-address']) }})">Delete</x-ui.button>
+                <x-ui.button class="addr-delete" x-on:click="$dispatch('confirm', {{ Js::from(['title' => 'Delete '.$pickup->label.'?', 'confirm' => 'Delete address', 'dismiss' => 'Keep address', 'form' => 'delete-address', 'tone' => 'danger']) }})">Delete</x-ui.button>
             @endif
             <x-ui.button :href="route('addresses.index', ['tab' => 'pickup'])">Discard</x-ui.button>
             <x-ui.button variant="primary" type="submit">Save</x-ui.button>

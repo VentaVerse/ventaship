@@ -36,7 +36,7 @@
         </div>
         <div class="st-bar">
             @if($customer)
-                <x-ui.button class="addr-delete" x-on:click="$dispatch('confirm', {{ Js::from(['title' => 'Delete '.$customer->name.'?', 'confirm' => 'Delete customer', 'dismiss' => 'Keep customer', 'form' => 'delete-customer']) }})">Delete</x-ui.button>
+                <x-ui.button class="addr-delete" x-on:click="$dispatch('confirm', {{ Js::from(['title' => 'Delete '.$customer->name.'?', 'confirm' => 'Delete customer', 'dismiss' => 'Keep customer', 'form' => 'delete-customer', 'tone' => 'danger']) }})">Delete</x-ui.button>
             @endif
             <x-ui.button :href="route('addresses.index', ['tab' => 'customers'])">Discard</x-ui.button>
             <x-ui.button variant="primary" type="submit">Save</x-ui.button>

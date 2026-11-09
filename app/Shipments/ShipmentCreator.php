@@ -185,6 +185,80 @@ final class ShipmentCreator
     }
 
     /**
+     * Books a `failed` shipment again with the details it already holds, exactly as a first booking: the shipment holds
+     * its client reference again (a live holder of that reference is a 409 and nothing changes), its error and
+     * attention are cleared, it goes to `queued`, and BookShipment books it (in this request with $now, else after
+     * commit). Anything but a failed shipment with its data, and no cancel on it, is refused.
+     *
+     * @throws ApiError 409 not_failed / active_shipment_exists, 422 account_misconfigured / data_purged
+     * @throws LogicException `now: true` inside an open transaction
+     */
+    public function retry(Shipment $failed, bool $now = false): Shipment
+    {
+        if ($now) {
+            self::assertNoTransaction();
+        }
+
+        $reference = (string) $failed->client_reference;
+        $app = $failed->client_app_id === null ? null : ($failed->clientApp ?? $failed->clientApp()->first());
+
+        try {
+            $shipment = $this->withManualReferenceLock($app, $reference, fn () => DB::transaction(function () use ($failed, $reference) {
+                $s = Shipment::query()->whereKey($failed->getKey())->lockForUpdate()->firstOrFail();
+                if ($s->state !== 'failed' || $s->cancel_state !== null) {
+                    throw new ApiError(409, 'not_failed', 'Only a failed booking can be retried.', false, ['state' => [$s->state]]);
+                }
+                if ($s->pii_purged_at !== null || ! is_array($s->recipient)) {
+                    throw new ApiError(422, 'data_purged', 'This shipment no longer holds its customer details.');
+                }
+
+                $account = $s->courierAccount ?? throw new ApiError(422, 'account_misconfigured', 'This shipment has no courier account.');
+                AccountResolver::assertBookable($account);
+
+                $holder = Shipment::query()
+                    ->where('client_app_id', $s->client_app_id)
+                    ->where('active_reference', $reference)
+                    ->whereKeyNot($s->getKey())
+                    ->lockForUpdate()
+                    ->first();
+                if ($holder !== null) {
+                    if (! in_array($holder->state, self::RELEASED_STATES, true)) {
+                        throw $this->duplicate($holder);
+                    }
+                    $holder->forceFill(['active_reference' => null])->save();
+                }
+
+                $s->forceFill([
+                    'state' => 'queued',
+                    'active_reference' => $reference,
+                    'error_code' => null,
+                    'error_message' => null,
+                    'needs_attention' => false,
+                    'attention_reason' => null,
+                ])->save();
+
+                return $s;
+            }));
+        } catch (UniqueConstraintViolationException) {
+            $holder = Shipment::query()
+                ->where('client_app_id', $failed->client_app_id)
+                ->where('active_reference', $reference)
+                ->whereNotIn('state', self::RELEASED_STATES)
+                ->first();
+
+            throw $holder !== null ? $this->duplicate($holder) : new ApiError(409, 'active_shipment_exists', 'A live shipment already uses this client_reference.');
+        }
+
+        if ($now) {
+            return $this->bookNow($shipment->id);
+        }
+
+        BookShipment::dispatch($shipment->id)->afterCommit();
+
+        return $shipment;
+    }
+
+    /**
      * Runs BookShipment in this request, so its lock and state guards are the only double-booking protection. The
      * sync queue calls the job's failed() before rethrowing, exactly as a worker would, so an exception that escapes
      * the job has already ended in `unknown` (or left a never-started booking `queued`); it is logged here and never

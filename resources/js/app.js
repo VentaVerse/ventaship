@@ -3,6 +3,7 @@ import Alpine from 'alpinejs';
 import { copyFeedback } from './copyFeedback';
 import { copyText } from './copyText';
 import { bulkSelect } from './bulkSelect';
+import { confirmDialog } from './confirmDialog';
 import { customerSearch } from './customerSearch';
 import { focusFirstInvalid, watchInvalid } from './firstInvalid';
 import { phCascade } from './phCascade';
@@ -10,39 +11,7 @@ import { phoneInput } from './phoneInput';
 import { rowMenu } from './rowMenu';
 import { shipmentForm } from './shipmentForm';
 
-Alpine.data('confirmDialog', () => ({
-    open: false,
-    title: '',
-    confirm: 'Confirm',
-    dismiss: 'Back',
-    form: null,
-    submitter: null,
-
-    show(detail) {
-        this.title = detail.title ?? '';
-        this.confirm = detail.confirm ?? 'Confirm';
-        this.dismiss = detail.dismiss ?? 'Back';
-        this.form = detail.form ?? null;
-        this.submitter = detail.submitter ?? null;
-        this.open = true;
-        this.$nextTick(() => this.$refs.dialog.focus());
-    },
-
-    close() {
-        this.open = false;
-        this.form = null;
-        this.submitter = null;
-    },
-
-    submit() {
-        const form = this.form ? document.getElementById(this.form) : null;
-        const submitter = this.submitter ? document.getElementById(this.submitter) : null;
-        this.close();
-        if (form) {
-            form.requestSubmit(submitter ?? undefined);
-        }
-    },
-}));
+Alpine.data('confirmDialog', () => confirmDialog());
 
 Alpine.data('shipmentForm', (config) => shipmentForm(config));
 

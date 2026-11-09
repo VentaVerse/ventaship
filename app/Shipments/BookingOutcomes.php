@@ -21,6 +21,9 @@ final class BookingOutcomes
     /** Set by the sweep on an SPX booking still `creating` after 6 hours; cleared when SPX confirms it. */
     public const CREATING_STALE_REASON = 'SPX has not confirmed the booking after 6 hours — check the SPX portal';
 
+    /** A tracking number an operator may record: letters, digits, - and _, 3 to 64 characters, not starting with - or _. */
+    public const TRACKING_PATTERN = '/^[A-Za-z0-9][A-Za-z0-9_-]{2,63}$/';
+
     private const MESSAGE_MAX = 1000;
 
     public function __construct(private readonly StatusRecorder $recorder, private readonly Canceller $canceller) {}

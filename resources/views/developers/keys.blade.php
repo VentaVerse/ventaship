@@ -30,7 +30,7 @@
             $hookHere = $row['hook_card'];
             $renameUrl = route('developers.index', ['tab' => 'keys', 'rename' => $rid]);
             $urlValue = old('app') === $pid ? old('webhook_url') : ($hook['url'] ?? '');
-            $removeOnEmpty = $hook === null ? '' : "if (! \$refs.url.value.trim()) { \$event.preventDefault(); \$dispatch('confirm', " . Js::from(['title' => 'Remove the webhook for '.$row['name'].'?', 'confirm' => 'Remove', 'dismiss' => 'Cancel', 'form' => 'delete-'.$pid]) . ') }';
+            $removeOnEmpty = $hook === null ? '' : "if (! \$refs.url.value.trim()) { \$event.preventDefault(); \$dispatch('confirm', " . Js::from(['title' => 'Remove the webhook for '.$row['name'].'?', 'confirm' => 'Remove', 'dismiss' => 'Cancel', 'form' => 'delete-'.$pid, 'tone' => 'danger']) . ') }';
         @endphp
         <section class="x-panel api-card {{ $row['auto'] ? 'is-new' : '' }}" aria-label="{{ $row['name'] }}" x-data="{ renaming: {{ $row['renaming'] ? 'true' : 'false' }} }">
             <header class="api-card__head">
@@ -47,12 +47,12 @@
                     <span class="api-card__meta x-num">Last used {{ $row['last_used']?->diffForHumans() ?? 'never' }} · Created {{ $row['created']?->format('j M Y') }}</span>
                 </div>
                 <x-ui.row-menu :label="'Actions for ' . $row['name']">
-                    <x-ui.row-menu-item x-on:click="run(() => $dispatch('confirm', {{ Js::from(['title' => 'Roll '.$row['name'].'? The current key stops working.', 'confirm' => 'Roll key', 'dismiss' => 'Cancel', 'form' => 'roll-'.$rid]) }}))">Roll key</x-ui.row-menu-item>
+                    <x-ui.row-menu-item x-on:click="run(() => $dispatch('confirm', {{ Js::from(['title' => 'Roll '.$row['name'].'? The current key stops working.', 'confirm' => 'Roll key', 'dismiss' => 'Cancel', 'form' => 'roll-'.$rid, 'tone' => 'danger']) }}))">Roll key</x-ui.row-menu-item>
                     @if($hook)
-                        <x-ui.row-menu-item x-on:click="run(() => $dispatch('confirm', {{ Js::from(['title' => 'Roll the webhook secret for '.$row['name'].'? The current secret stops working.', 'confirm' => 'Roll secret', 'dismiss' => 'Cancel', 'form' => 'secret-'.$pid]) }}))">Roll webhook secret</x-ui.row-menu-item>
+                        <x-ui.row-menu-item x-on:click="run(() => $dispatch('confirm', {{ Js::from(['title' => 'Roll the webhook secret for '.$row['name'].'? The current secret stops working.', 'confirm' => 'Roll secret', 'dismiss' => 'Cancel', 'form' => 'secret-'.$pid, 'tone' => 'danger']) }}))">Roll webhook secret</x-ui.row-menu-item>
                     @endif
                     <x-ui.row-menu-item :href="$renameUrl" x-on:click.prevent="run(() => { renaming = true; $nextTick(() => document.getElementById('rename-{{ $rid }}').focus()) })">Rename</x-ui.row-menu-item>
-                    <x-ui.row-menu-item tone="bad" x-on:click="run(() => $dispatch('confirm', {{ Js::from(['title' => 'Revoke '.$row['name'].'? Apps using it stop working.', 'confirm' => 'Revoke', 'dismiss' => 'Cancel', 'form' => 'revoke-'.$rid]) }}))">Revoke</x-ui.row-menu-item>
+                    <x-ui.row-menu-item tone="bad" x-on:click="run(() => $dispatch('confirm', {{ Js::from(['title' => 'Revoke '.$row['name'].'? Apps using it stop working.', 'confirm' => 'Revoke', 'dismiss' => 'Cancel', 'form' => 'revoke-'.$rid, 'tone' => 'danger']) }}))">Revoke</x-ui.row-menu-item>
                 </x-ui.row-menu>
             </header>
 

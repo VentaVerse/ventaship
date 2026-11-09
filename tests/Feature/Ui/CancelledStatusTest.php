@@ -71,7 +71,7 @@ class CancelledStatusTest extends TestCase
         $this->getJson('/fulfillment/poll?ids='.$cancelled->public_id)->assertJsonPath('statuses.'.$cancelled->public_id, 'ventaship:cancelled');
 
         $html = $this->get(route('shipments.show', $cancelled->public_id))->assertOk()->getContent();
-        $this->assertMatchesRegularExpression('#sd-head__badges">\s*<span[^>]*>\s*<span class="x-badge__dot"[^>]*></span>\s*<span class="x-badge__label">Cancelled</span>#', $html);
+        $this->assertMatchesRegularExpression('#sd-title-badge"><span[^>]*>\s*<span class="x-badge__dot"[^>]*></span>\s*<span class="x-badge__label">Cancelled</span>#', $html);
     }
 
     public function test_courier_reported_cancel_keeps_the_courier_key(): void
