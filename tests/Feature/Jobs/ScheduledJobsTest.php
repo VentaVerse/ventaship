@@ -69,21 +69,22 @@ class ScheduledJobsTest extends TestCase
         }
     }
 
-    public function test_settings_shows_the_cron_command_with_copy_buttons(): void
+    public function test_settings_shows_only_the_cron_line_with_one_copy_button(): void
     {
+        $line = '* * * * * cd '.base_path().' && '.PHP_BINARY.' artisan schedule:run >> /dev/null 2>&1';
         $html = $this->admin()->get('/settings?tab=jobs')->assertOk()
             ->assertSee('Scheduled jobs')
-            ->assertSee('* * * * * cd '.base_path().' && '.PHP_BINARY.' artisan schedule:run >> /dev/null 2>&1')
-            ->assertSee('value="cd '.e(base_path()).' &amp;&amp; '.e(PHP_BINARY).' artisan schedule:run &gt;&gt; /dev/null 2&gt;&amp;1"', false)
+            ->assertSee('Last run')
+            ->assertSee($line)
+            ->assertDontSee('HestiaCP')
             ->getContent();
 
-        foreach (['Minute', 'Hour', 'Day', 'Month', 'Weekday'] as $field) {
-            $id = 'f-cron-'.strtolower($field);
-            $this->assertMatchesRegularExpression('~<label class="fm-label"\s+for="'.$id.'"\s*>\s*'.$field.'\s*</label>~', $html);
-            $this->assertMatchesRegularExpression('~id="'.$id.'"[^>]*value="\*"~', $html);
+        $this->assertMatchesRegularExpression('~<label class="fm-label"\s+for="f-cron-line"\s*>\s*Cron line\s*</label>~', $html);
+        $this->assertSame(1, substr_count($html, 'x-on:click="copy()"'), 'the cron line only');
+        $this->assertStringContainsString('aria-label="Copy Cron line"', $html);
+        foreach (['Minute', 'Hour', 'Day', 'Month', 'Weekday', 'Command'] as $field) {
+            $this->assertStringNotContainsString('id="f-cron-'.strtolower($field).'"', $html);
         }
-        $this->assertSame(7, substr_count($html, 'x-on:click="copy()"'), 'cron line, five fields, command');
-        $this->assertStringContainsString('aria-label="Copy Command"', $html);
         $this->assertStringNotContainsString('<style', $html);
         $this->assertStringNotContainsString('style="', $html);
     }

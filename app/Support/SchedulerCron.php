@@ -6,11 +6,11 @@ use App\Console\Commands\ScheduleHeartbeat;
 use Carbon\CarbonImmutable;
 use Throwable;
 
-/** The one cron line a host needs (HestiaCP: Cron Jobs), and when the scheduler last ran. */
+/** The one cron line a host needs, and when the scheduler last ran. */
 final class SchedulerCron
 {
-    /** HestiaCP's cron form: Minute, Hour, Day, Month, Weekday. */
-    public const FIELDS = ['Minute' => '*', 'Hour' => '*', 'Day' => '*', 'Month' => '*', 'Weekday' => '*'];
+    /** Every minute. */
+    public const SCHEDULE = '* * * * *';
 
     /** The scheduler is healthy while its last run is this recent. */
     public const FRESH_SECONDS = 180;
@@ -22,7 +22,7 @@ final class SchedulerCron
 
     public static function line(?string $binary = null): string
     {
-        return implode(' ', self::FIELDS).' '.self::command($binary);
+        return self::SCHEDULE.' '.self::command($binary);
     }
 
     /**

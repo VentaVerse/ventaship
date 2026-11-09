@@ -54,8 +54,6 @@ class SettingsController extends Controller
     {
         return [
             'line' => SchedulerCron::line(),
-            'command' => SchedulerCron::command(),
-            'fields' => SchedulerCron::FIELDS,
             'lastRun' => SchedulerCron::lastRunBadge(SchedulerCron::lastRun($settings)),
         ];
     }
