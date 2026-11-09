@@ -165,7 +165,8 @@
             "key": "spx",
             "name": "SPX",
             "methods": [
-                "pickup"
+                "pickup",
+                "dropoff"
             ],
             "cancel": true,
             "pickup_slots": true,
