@@ -40,7 +40,6 @@ class ApiPageTest extends TestCase
         $this->post(route('developers.keys.revoke', $app), ['key' => $key->id])->assertRedirect($login);
         $this->post(route('developers.reveal', [$app, 'token:'.$key->id]))->assertRedirect($login);
         $this->post(route('developers.reveal', [$app, 'webhook']))->assertRedirect($login);
-        $this->post(route('developers.endpoints.store'), ['app' => $app->public_id, 'webhook_url' => 'https://b.test/h'])->assertRedirect($login);
         $this->put(route('developers.endpoints.update', $app), ['webhook_url' => 'https://b.test/h'])->assertRedirect($login);
         $this->delete(route('developers.endpoints.destroy', $app))->assertRedirect($login);
         $this->post(route('developers.endpoints.test', $app))->assertRedirect($login);
@@ -61,13 +60,12 @@ class ApiPageTest extends TestCase
 
         $keys = $this->get(route('developers.index'))->assertOk()
             ->assertSee('<title>API · ', false)
-            ->assertSeeInOrder(['API keys', '2', 'Webhooks', '1', 'Logs'])
-            ->assertSee('Create key')->getContent();
+            ->assertSeeInOrder(['API keys', '2', 'Logs'])->assertDontSee('Webhooks')
+            ->assertSee('Create key')->assertSee('x-page__actions', false)->getContent();
         $this->assertMatchesRegularExpression('/<main[^>]*class="x-content"/', $keys);
         $this->assertMatchesRegularExpression('/class="x-tab is-on"[^>]*aria-current="page"[^>]*>\s*API keys/', $keys);
 
-        $this->get(route('developers.index', ['tab' => 'webhooks']))->assertOk()
-            ->assertSee('Endpoints')->assertSee('Add endpoint')->assertSee('https://a.test/h');
+        $this->get(route('developers.index', ['tab' => 'webhooks']))->assertRedirect(route('developers.index', ['tab' => 'keys']));
         $this->get(route('developers.index', ['tab' => 'logs']))->assertOk()
             ->assertSee('All')->assertSee('API calls')->assertSee('Webhook deliveries')->assertSee('No activity');
         // An unknown tab falls back to keys.
@@ -98,7 +96,7 @@ class ApiPageTest extends TestCase
         app(PlatformApps::class)->issueKey($app, 'K');
         $this->actingAs($this->admin());
 
-        foreach (['keys' => ['Roll key', 'Rename', 'Revoke'], 'webhooks' => ['Send test', 'Edit', 'Roll secret', 'Delete']] as $tab => $items) {
+        foreach (['keys' => ['Roll key', 'Roll webhook secret', 'Rename', 'Revoke']] as $tab => $items) {
             $html = $this->get(route('developers.index', ['tab' => $tab]))->assertOk()->assertSeeInOrder($items)->getContent();
             $this->assertMatchesRegularExpression('/<button[^>]*aria-haspopup="menu"[^>]*>/', $html, $tab);
             $this->assertStringContainsString('aria-label="Actions for Shop"', $html);

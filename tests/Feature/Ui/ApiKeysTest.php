@@ -128,13 +128,13 @@ class ApiKeysTest extends TestCase
         $issued['key']->forceFill(['last_used_at' => now()->subMinutes(2)])->save();
         $webhookSecret = app(PlatformApps::class)->revealWebhookSecret($app, self::ACTOR);
 
-        $html = $this->page()->assertSeeInOrder(['Name', 'Key', 'Last used', 'Created', 'Shop', substr($issued['plaintext_key'], -4), '2 minutes ago', '9 Nov 2026'])
+        $html = $this->page()->assertSeeInOrder(['Shop', 'Last used 2 minutes ago', 'Created 9 Nov 2026', 'API key', substr($issued['plaintext_key'], -4), 'Webhook URL', 'Webhook secret'])
             ->getContent();
         $this->assertStringNotContainsString($this->secretPart($issued['plaintext_key']), $html);
         $this->assertStringNotContainsString($webhookSecret, $html);
         $this->assertStringNotContainsString('autoView\u0022:true', $html);
-        $this->assertStringContainsString('data-label="Last used"', $html);
-        $this->assertStringContainsString('data-label="Created"', $html);
+        $this->assertStringContainsString('class="x-panel api-card', $html);
+        $this->assertStringNotContainsString('<table', $html);
         $this->assertStringContainsString('Roll Shop? The current key stops working.', html_entity_decode($html));
         $this->assertStringContainsString('Revoke Shop? Apps using it stop working.', html_entity_decode($html));
     }

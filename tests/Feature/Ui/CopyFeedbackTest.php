@@ -32,7 +32,6 @@ class CopyFeedbackTest extends TestCase
         app(PlatformApps::class)->issueKey($app, 'Shop');
 
         $this->assertCopyFeedback($this->get(route('developers.index', ['tab' => 'keys']))->assertOk()->getContent(), 'API keys');
-        $this->assertCopyFeedback($this->get(route('developers.index', ['tab' => 'webhooks']))->assertOk()->getContent(), 'Webhooks');
         $this->assertCopyFeedback($this->get('/settings?tab=jobs')->assertOk()->getContent(), 'Settings cron line');
 
         CourierAccount::factory()->create(['courier' => 'spx', 'mode' => 'sandbox', 'webhook_token' => str_repeat('t', 40)]);

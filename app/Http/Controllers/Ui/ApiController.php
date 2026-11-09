@@ -19,42 +19,34 @@ use Illuminate\View\View;
 use Throwable;
 
 /**
- * The API page: keys (one client app per key), webhook endpoints (an app's URL and signing secret) and logs. Keys
+ * The API page: keys (one client app per key, each card carrying its app's webhook URL and signing secret) and logs. Keys
  * and secrets reach the page masked; View and Copy fetch them through reveal (POST, throttled, audited, no-store).
  */
 class ApiController extends Controller
 {
-    private const TABS = ['keys', 'webhooks', 'logs'];
+    private const TABS = ['keys', 'logs'];
 
     private const LOG_TYPES = ['all', 'api', 'webhooks'];
 
     private const LOG_LIMIT = 100;
 
-    public function index(Request $request, PlatformApps $platforms): View
+    public function index(Request $request, PlatformApps $platforms): View|RedirectResponse
     {
+        if ($request->query('tab') === 'webhooks') {
+            return redirect(route('developers.index', ['tab' => 'keys']));
+        }
         $tab = in_array($request->query('tab'), self::TABS, true) ? $request->query('tab') : 'keys';
-        $apps = ClientApp::query()->where('status', 'active')
-            ->with(['tokens' => fn ($q) => $q->usable()->orderBy('id')])
-            ->orderBy('name')->orderBy('id')->get();
-        $keys = $this->keyRows($apps, $request, $platforms);
-        $hooked = $apps->filter(fn (ClientApp $app) => filled($app->webhook_url))->values();
-
-        $data = [
-            'tab' => $tab,
-            'keyCount' => $keys->count(),
-            'endpointCount' => $hooked->count(),
-        ];
+        $data = ['tab' => $tab];
 
         if ($tab === 'keys') {
+            $apps = ClientApp::query()->where('status', 'active')
+                ->with(['tokens' => fn ($q) => $q->usable()->orderBy('id')])
+                ->orderBy('name')->orderBy('id')->get();
+            $keys = $this->keyRows($apps, $request, $platforms);
             $data += [
                 'keys' => $keys,
+                'keyCount' => $keys->count(),
                 'creating' => $request->boolean('create') || $request->session()->hasOldInput('name'),
-            ];
-        } elseif ($tab === 'webhooks') {
-            $data += [
-                'endpoints' => $this->endpointRows($hooked, $request, $platforms),
-                'freeApps' => $apps->reject(fn (ClientApp $app) => filled($app->webhook_url))->values(),
-                'adding' => $request->boolean('add') || $request->session()->hasOldInput('app'),
             ];
         } else {
             $type = in_array($request->query('type'), self::LOG_TYPES, true) ? $request->query('type') : 'all';
@@ -166,34 +158,9 @@ class ApiController extends Controller
         return $this->noStore(response()->json(['value' => $value]));
     }
 
-    public function storeEndpoint(Request $request, PlatformApps $platforms): RedirectResponse
-    {
-        $back = route('developers.index', ['tab' => 'webhooks', 'add' => 1]);
-        $data = $this->checked($request, [
-            'app' => ['required', 'string'],
-            'webhook_url' => ['required', 'string', 'max:2048', 'url:http,https'],
-        ], $back);
-        if ($data instanceof RedirectResponse) {
-            return $data;
-        }
-
-        $app = ClientApp::query()->where('public_id', $data['app'])->where('status', 'active')->whereNull('webhook_url')->first();
-        if ($app === null) {
-            return redirect($back)->withInput()->withErrors(['app' => 'Choose a key without an endpoint.']);
-        }
-
-        try {
-            $platforms->update($app, ['webhook_url' => $data['webhook_url']], $this->actor($request));
-        } catch (PlatformAppException $e) {
-            return redirect($back)->withInput()->withErrors(['webhook_url' => $e->getMessage()]);
-        }
-
-        return $this->toWebhooks('Added');
-    }
-
     public function updateEndpoint(Request $request, ClientApp $app, PlatformApps $platforms): RedirectResponse
     {
-        $back = route('developers.index', ['tab' => 'webhooks', 'edit' => $app->public_id]);
+        $back = route('developers.index', ['tab' => 'keys']);
         $data = $this->checked($request, ['webhook_url' => ['required', 'string', 'max:2048', 'url:http,https']], $back);
         if ($data instanceof RedirectResponse) {
             return $data;
@@ -205,28 +172,28 @@ class ApiController extends Controller
             return redirect($back)->withInput()->withErrors(['webhook_url' => $e->getMessage()]);
         }
 
-        return $this->toWebhooks('Saved');
+        return $this->toKeys('Saved');
     }
 
     public function destroyEndpoint(Request $request, ClientApp $app, PlatformApps $platforms): RedirectResponse
     {
         $platforms->update($app, ['webhook_url' => null], $this->actor($request));
 
-        return $this->toWebhooks('Deleted');
+        return $this->toKeys('Deleted');
     }
 
     public function testEndpoint(ClientApp $app, PlatformApps $platforms): RedirectResponse
     {
         $result = $platforms->ping($app);
 
-        return $result['ok'] ? $this->toWebhooks($result['message']) : $this->toWebhooks()->withErrors(['ping' => $result['message']]);
+        return $result['ok'] ? $this->toKeys($result['message']) : $this->toKeys()->withErrors(['ping' => $result['message']]);
     }
 
     public function rollSecret(Request $request, ClientApp $app, PlatformApps $platforms): RedirectResponse
     {
         $platforms->regenerateWebhookSecret($app, $this->actor($request));
 
-        return $this->toWebhooks('Rolled');
+        return $this->toKeys('Rolled');
     }
 
     public function resendEvent(Request $request, OutgoingEvent $event, PlatformApps $platforms): RedirectResponse
@@ -248,18 +215,20 @@ class ApiController extends Controller
         // Set by store and roll for one request: the new key's id only. The page then reveals it through reveal.
         $issued = $request->session()->get('issued_key');
         $rename = (string) $request->query('rename', '');
+        $webhooks = $this->webhooks($apps, $platforms);
 
-        return $apps->flatMap(function (ClientApp $app) use ($issued, $rename, $platforms) {
+        return $apps->flatMap(function (ClientApp $app) use ($issued, $rename, $platforms, $webhooks) {
             if ($app->tokens->isEmpty()) {
                 return [[
                     'id' => 'app-'.$app->public_id, 'app' => $app, 'key' => null, 'name' => $app->name,
                     'created' => $app->created_at, 'last_used' => null, 'masked' => null, 'viewable' => false,
                     'auto' => false, 'renaming' => $rename === 'app-'.$app->public_id,
+                    'webhook' => $webhooks[$app->id] ?? null, 'hook_card' => true,
                 ]];
             }
             $several = $app->tokens->count() > 1;
 
-            return $app->tokens->map(fn (ApiToken $key) => [
+            return $app->tokens->values()->map(fn (ApiToken $key, int $i) => [
                 'id' => 'key-'.$key->id, 'app' => $app, 'key' => $key,
                 'name' => $several ? $app->name.' · '.$key->name : $app->name,
                 'rename_value' => $several ? $key->name : $app->name,
@@ -268,26 +237,30 @@ class ApiController extends Controller
                 'viewable' => $key->getRawOriginal('token_encrypted') !== null,
                 'auto' => $issued !== null && (int) $issued === (int) $key->id,
                 'renaming' => $rename === 'key-'.$key->id,
+                'webhook' => $webhooks[$app->id] ?? null, 'hook_card' => $i === 0,
             ]);
         })->map(fn (array $row) => $row + ['rename_value' => $row['name']])->values();
     }
 
-    /** @param  Collection<int, ClientApp>  $apps */
-    private function endpointRows(Collection $apps, Request $request, PlatformApps $platforms): Collection
+    /**
+     * The webhook shown on an app's card: URL, health and masked secret; null for an app without a URL.
+     *
+     * @param  Collection<int, ClientApp>  $apps
+     * @return Collection<int, array{url: string, health: array{0: string, 1: string}, secret: ?array{length: int, last4: string}}>
+     */
+    private function webhooks(Collection $apps, PlatformApps $platforms): Collection
     {
-        $ids = $apps->modelKeys();
+        $hooked = $apps->filter(fn (ClientApp $app) => filled($app->webhook_url));
         // The newest delivery that was actually tried: a skipped event says nothing about the receiver.
-        $latestIds = OutgoingEvent::query()->whereIn('client_app_id', $ids)->where('status', '!=', 'skipped')
+        $latestIds = OutgoingEvent::query()->whereIn('client_app_id', $hooked->modelKeys())->where('status', '!=', 'skipped')
             ->selectRaw('MAX(id) as id')->groupBy('client_app_id')->pluck('id');
         $latest = OutgoingEvent::query()->whereIn('id', $latestIds)->get(['id', 'client_app_id', 'status', 'last_error'])->keyBy('client_app_id');
-        $edit = (string) $request->query('edit', '');
 
-        return $apps->map(fn (ClientApp $app) => [
-            'app' => $app,
+        return $hooked->mapWithKeys(fn (ClientApp $app) => [$app->id => [
+            'url' => (string) $app->webhook_url,
             'health' => $this->health($latest[$app->id] ?? null),
             'secret' => $this->maskedOf($app, 'webhook_secret', $platforms),
-            'editing' => $edit === $app->public_id,
-        ]);
+        ]]);
     }
 
     /** The newest API calls and webhook deliveries together, newest first. No bodies or headers. */
@@ -328,13 +301,6 @@ class ApiController extends Controller
     private function toKeys(?string $status = null): RedirectResponse
     {
         $to = redirect(route('developers.index', ['tab' => 'keys']));
-
-        return $status === null ? $to : $to->with('status', $status);
-    }
-
-    private function toWebhooks(?string $status = null): RedirectResponse
-    {
-        $to = redirect(route('developers.index', ['tab' => 'webhooks']));
 
         return $status === null ? $to : $to->with('status', $status);
     }

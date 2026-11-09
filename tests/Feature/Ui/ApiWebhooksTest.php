@@ -33,12 +33,12 @@ class ApiWebhooksTest extends TestCase
 
     private function page(array $query = []): TestResponse
     {
-        return $this->actingAs($this->admin())->get(route('developers.index', ['tab' => 'webhooks'] + $query))->assertOk();
+        return $this->actingAs($this->admin())->get(route('developers.index', ['tab' => 'keys'] + $query))->assertOk();
     }
 
     private function back(): string
     {
-        return route('developers.index', ['tab' => 'webhooks']);
+        return route('developers.index', ['tab' => 'keys']);
     }
 
     private function event(ClientApp $app, string $status, ?string $error = null): void
@@ -49,18 +49,29 @@ class ApiWebhooksTest extends TestCase
         ]);
     }
 
-    public function test_empty_state(): void
+    private function keyed(string $name, ?string $url = null): ClientApp
     {
-        $this->page()->assertSee('No endpoints')->assertSee('Add endpoint');
+        $app = ClientApp::factory()->create(['name' => $name, 'webhook_url' => $url]);
+        app(PlatformApps::class)->issueKey($app, $name);
+
+        return $app;
     }
 
-    public function test_endpoints_list_status_and_masked_secret(): void
+    public function test_webhooks_tab_redirects_to_keys_and_is_gone_from_the_tabs(): void
     {
-        $ok = ClientApp::factory()->create(['name' => 'Shop One', 'webhook_url' => 'https://a.test/h']);
-        $bad = ClientApp::factory()->create(['name' => 'Shop Two', 'webhook_url' => 'https://b.test/h']);
-        $quiet = ClientApp::factory()->create(['name' => 'Shop Xen', 'webhook_url' => 'https://c.test/h']);
+        $this->keyed('Shop');
+        $this->actingAs($this->admin())->get(route('developers.index', ['tab' => 'webhooks']))->assertRedirect($this->back());
+        $this->page()->assertDontSee('Webhooks<', false)->assertDontSee('Add endpoint');
+    }
+
+    public function test_cards_show_webhook_rows_status_and_masked_secret(): void
+    {
+        $ok = $this->keyed('Shop One', 'https://a.test/h');
+        $bad = $this->keyed('Shop Two', 'https://b.test/h');
+        $quiet = $this->keyed('Shop Xen', 'https://c.test/h');
+        $none = $this->keyed('Shop None');
         $off = ClientApp::factory()->create(['name' => 'Shop Off', 'webhook_url' => 'https://off.test/h', 'status' => 'disabled']);
-        ClientApp::factory()->create(['name' => 'No Hook']);
+        app(PlatformApps::class)->issueKey($off, 'K');
         $this->event($ok, 'failed');
         $this->event($ok, 'delivered');
         $this->event($bad, 'delivered');
@@ -69,65 +80,68 @@ class ApiWebhooksTest extends TestCase
         $secret = app(PlatformApps::class)->revealWebhookSecret($ok, self::ACTOR);
 
         $html = $this->page()
-            ->assertSeeInOrder(['Endpoint', 'Key', 'Status', 'Signing secret'])
-            ->assertSeeInOrder(['https://a.test/h', 'Shop One', 'Delivering', substr($secret, -4), 'https://b.test/h', 'Shop Two', 'Failing', 'https://c.test/h', 'Shop Xen', 'No deliveries'])
-            ->assertDontSee('https://off.test/h')
+            ->assertSeeInOrder(['Shop None', 'API key', 'Webhook URL', 'No webhook', 'Shop One', 'Webhook URL', 'Delivering', 'Webhook secret', 'Send test', 'Shop Two', 'Failing', 'Shop Xen', 'No deliveries'])
+            ->assertDontSee('Shop Off')
             ->getContent();
+        $this->assertStringContainsString('value="https://a.test/h"', $html);
+        $this->assertStringNotContainsString('https://off.test/h', $html);
+        $this->assertSame(3, substr_count($html, 'Webhook secret</span>'));
         $this->assertStringNotContainsString($secret, $html);
         $this->assertStringNotContainsString('whsec_', $html);
-        $this->assertStringContainsString('Roll the signing secret for Shop One?', html_entity_decode($html));
-        $this->assertStringContainsString('Delete the endpoint for Shop One?', html_entity_decode($html));
+        $this->assertStringContainsString('action="'.route('developers.endpoints.update', $ok).'"', $html);
+        $this->assertStringContainsString('action="'.route('developers.endpoints.update', $none).'"', $html);
+        $decoded = html_entity_decode($html);
+        $this->assertStringContainsString('Roll the webhook secret for Shop One?', $decoded);
+        $this->assertStringContainsString('Remove the webhook for Shop One?', $decoded);
+        $this->assertStringNotContainsString('Roll the webhook secret for Shop None?', $decoded);
+        $this->assertSame(3, substr_count($html, 'Roll webhook secret</button>'));
+        $this->assertStringContainsString('id="delete-'.$ok->public_id.'"', $html);
+        $this->assertStringNotContainsString('id="delete-'.$none->public_id.'"', $html);
     }
 
-    public function test_add_endpoint_offers_only_keys_without_one(): void
+    public function test_an_app_with_several_keys_shows_the_webhook_on_its_first_card_only(): void
     {
-        ClientApp::factory()->create(['name' => 'Has Hook', 'webhook_url' => 'https://a.test/h']);
-        $free = ClientApp::factory()->create(['name' => 'Free App']);
-        ClientApp::factory()->create(['name' => 'Off App', 'status' => 'disabled']);
+        $app = ClientApp::factory()->create(['name' => 'Multi', 'webhook_url' => 'https://a.test/h']);
+        app(PlatformApps::class)->issueKey($app, 'A');
+        app(PlatformApps::class)->issueKey($app, 'B');
 
-        $html = $this->page(['add' => 1])->getContent();
-        $this->assertStringContainsString('x-data="{ adding: true }"', $html);
-        $this->assertStringContainsString('<option value="'.$free->public_id.'"', $html);
-        $this->assertStringNotContainsString('>Has Hook</option>', $html);
-        $this->assertStringNotContainsString('Off App', $html);
-
-        $this->post(route('developers.endpoints.store'), ['app' => $free->public_id, 'webhook_url' => 'https://free.test/h'])
-            ->assertRedirect($this->back())->assertSessionHas('status', 'Added');
-        $this->assertSame('https://free.test/h', $free->fresh()->webhook_url);
+        $html = $this->page()->assertSee('Multi · A')->assertSee('Multi · B')->getContent();
+        $this->assertSame(1, substr_count($html, 'Webhook URL</label>'));
+        $this->assertSame(1, substr_count($html, 'id="f-url-'.$app->public_id.'"'));
     }
 
-    public function test_add_endpoint_validation(): void
+    public function test_set_replace_and_remove_the_url(): void
     {
-        $free = ClientApp::factory()->create(['name' => 'Free']);
-        $hooked = ClientApp::factory()->create(['webhook_url' => 'https://a.test/h']);
+        $app = ClientApp::factory()->create(['name' => 'Shop']);
         $this->actingAs($this->admin());
 
-        $this->post(route('developers.endpoints.store'), ['app' => $free->public_id, 'webhook_url' => 'ftp://x.test'])
-            ->assertRedirect(route('developers.index', ['tab' => 'webhooks', 'add' => 1]))->assertSessionHasErrors('webhook_url');
-        $this->post(route('developers.endpoints.store'), ['app' => $free->public_id, 'webhook_url' => 'http://a_b.test/hook'])->assertSessionHasErrors('webhook_url');
-        $this->post(route('developers.endpoints.store'), ['app' => 'app_nope', 'webhook_url' => 'https://x.test'])->assertSessionHasErrors('app');
-        $this->post(route('developers.endpoints.store'), ['app' => $hooked->public_id, 'webhook_url' => 'https://x.test'])->assertSessionHasErrors('app');
-        $this->assertNull($free->fresh()->webhook_url);
-        $this->assertSame('https://a.test/h', $hooked->fresh()->webhook_url);
-    }
-
-    public function test_edit_and_delete_endpoint(): void
-    {
-        $app = ClientApp::factory()->create(['name' => 'Shop', 'webhook_url' => 'https://a.test/h']);
-
-        $html = $this->page(['edit' => $app->public_id])->getContent();
-        $this->assertStringContainsString('x-data="{ editing: true }"', $html);
-        $this->assertStringContainsString('action="'.route('developers.endpoints.update', $app).'"', $html);
-
-        $this->put(route('developers.endpoints.update', $app), ['webhook_url' => 'https://z.test/h'])
+        $this->put(route('developers.endpoints.update', $app), ['webhook_url' => 'https://free.test/h'])
             ->assertRedirect($this->back())->assertSessionHas('status', 'Saved');
+        $this->assertSame('https://free.test/h', $app->fresh()->webhook_url);
+        $this->put(route('developers.endpoints.update', $app), ['webhook_url' => 'https://z.test/h'])->assertSessionHas('status', 'Saved');
         $this->assertSame('https://z.test/h', $app->fresh()->webhook_url);
+
         $this->put(route('developers.endpoints.update', $app), ['webhook_url' => 'javascript:alert(1)'])->assertSessionHasErrors('webhook_url');
+        $this->put(route('developers.endpoints.update', $app), ['webhook_url' => 'http://a_b.test/hook'])->assertSessionHasErrors('webhook_url');
         $this->put(route('developers.endpoints.update', $app), ['webhook_url' => ''])->assertSessionHasErrors('webhook_url');
+        $this->assertSame('https://z.test/h', $app->fresh()->webhook_url);
 
         $this->delete(route('developers.endpoints.destroy', $app))->assertRedirect($this->back())->assertSessionHas('status', 'Deleted');
         $this->assertNull($app->fresh()->webhook_url);
         $this->assertSame('active', $app->fresh()->status);
+    }
+
+    public function test_a_rejected_url_comes_back_in_its_own_card_field(): void
+    {
+        $this->keyed('Other', 'https://o.test/h');
+        $app = $this->keyed('Shop', 'https://a.test/h');
+        $this->actingAs($this->admin());
+
+        $this->from($this->back())->put(route('developers.endpoints.update', $app), ['app' => $app->public_id, 'webhook_url' => 'ftp://bad'])
+            ->assertRedirect($this->back())->assertSessionHasErrors('webhook_url');
+        $html = $this->get($this->back())->assertOk()->getContent();
+        $this->assertStringContainsString('value="ftp://bad"', $html);
+        $this->assertStringContainsString('value="https://o.test/h"', $html);
     }
 
     public function test_roll_secret(): void
@@ -148,7 +162,7 @@ class ApiWebhooksTest extends TestCase
 
     public function test_unset_secret_shows_not_set_and_can_be_rolled(): void
     {
-        $app = ClientApp::factory()->create(['webhook_url' => 'https://a.test/h']);
+        $app = $this->keyed('Shop', 'https://a.test/h');
         DB::table('client_apps')->where('id', $app->id)->update(['webhook_secret' => null]);
 
         $this->page()->assertSee('Not set');

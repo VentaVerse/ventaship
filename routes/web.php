@@ -70,7 +70,6 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
             Route::post('reveal/{what}', [ApiController::class, 'reveal'])
                 ->where('what', 'token:\d{1,19}|webhook')->middleware('throttle:secret-reveals')->name('reveal');
         });
-        Route::post('endpoints', [ApiController::class, 'storeEndpoint'])->name('endpoints.store');
         Route::prefix('endpoints/{app:public_id}')->group(function () {
             Route::put('/', [ApiController::class, 'updateEndpoint'])->name('endpoints.update');
             Route::delete('/', [ApiController::class, 'destroyEndpoint'])->name('endpoints.destroy');
