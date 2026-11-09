@@ -260,6 +260,33 @@ class AddressesPageTest extends TestCase
         $this->assertSame(3, $c->shipments_count);
     }
 
+    public function test_the_customer_form_has_no_email_or_address_line_2_and_keeps_stored_ones(): void
+    {
+        $c = $this->customer();
+        $c->forceFill(['address' => ['email' => 'juan@example.com', 'address_2' => 'Unit 4'] + (array) $c->address])->save();
+
+        foreach ([route('addresses.customers.create'), route('addresses.customers.edit', $c)] as $url) {
+            $html = $this->actingAs($this->admin())->get($url)->assertOk()->getContent();
+            $this->assertStringNotContainsString('name="email"', $html);
+            $this->assertStringNotContainsString('name="address_2"', $html);
+            $this->assertStringNotContainsString('Address line 2', $html);
+            $this->assertStringNotContainsString('>Email<', $html);
+        }
+
+        $this->put(route('addresses.customers.update', $c), $this->customerInput(['email' => 'x@example.com', 'address_2' => 'Hijack']))
+            ->assertSessionHasNoErrors();
+        $c->refresh();
+        $this->assertSame('7 Luna St', $c->address['address_1']);
+        $this->assertSame('juan@example.com', $c->address['email']);
+        $this->assertSame('Unit 4', $c->address['address_2']);
+
+        $this->post(route('addresses.customers.store'), $this->customerInput(['phone' => '0917 222 3333', 'email' => 'x@example.com', 'address_2' => 'Unit 9']))
+            ->assertSessionHasNoErrors();
+        $new = Customer::query()->where('phone', '09172223333')->sole();
+        $this->assertNull($new->address['email']);
+        $this->assertNull($new->address['address_2']);
+    }
+
     public function test_customer_phone_errors_are_field_errors(): void
     {
         $c = $this->customer();

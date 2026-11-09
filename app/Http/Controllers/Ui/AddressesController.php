@@ -95,7 +95,9 @@ class AddressesController extends Controller
 
     public function updateCustomer(Request $request, Customer $customer, Customers $customers): RedirectResponse
     {
-        $customers->update($customer, $this->customerData($request));
+        // The form has no Email or Address line 2: a customer's stored ones (from its shipments) are kept.
+        $stored = array_intersect_key((array) $customer->address, array_flip(['email', 'address_2']));
+        $customers->update($customer, $this->customerData($request) + $stored);
 
         return redirect()->route('addresses.index', ['tab' => 'customers'])->with('status', 'Saved');
     }
@@ -116,9 +118,7 @@ class AddressesController extends Controller
             'first_name' => ['nullable', ...$max],
             'last_name' => ['nullable', ...$max],
             'phone' => ['required', 'string', 'max:32', new PhPhone('Enter a valid phone.')],
-            'email' => ['nullable', 'email', 'max:255'],
             'address_1' => ['required', ...$max],
-            'address_2' => ['nullable', ...$max],
             'address' => ['required', 'array'],
             ...$this->addressRules(),
         ]));

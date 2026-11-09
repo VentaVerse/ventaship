@@ -26,18 +26,8 @@
                 </x-ui.field>
             </div>
             <div class="st-row">
-                <x-ui.field label="Email" name="email">
-                    <x-ui.input type="email" id="f-email" name="email" class="st-ctl" value="{{ old('email', $values['email'] ?? '') }}" maxlength="255" autocomplete="off" />
-                </x-ui.field>
-            </div>
-            <div class="st-row">
                 <x-ui.field label="Street" name="address_1" required>
                     <x-ui.input id="f-address-1" name="address_1" class="st-ctl" value="{{ old('address_1', $values['address_1'] ?? '') }}" maxlength="255" autocomplete="off" />
-                </x-ui.field>
-            </div>
-            <div class="st-row">
-                <x-ui.field label="Address line 2" name="address_2">
-                    <x-ui.input id="f-address-2" name="address_2" class="st-ctl" value="{{ old('address_2', $values['address_2'] ?? '') }}" maxlength="255" autocomplete="off" />
                 </x-ui.field>
             </div>
             <div class="st-row">
