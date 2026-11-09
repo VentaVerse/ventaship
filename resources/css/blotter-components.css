@@ -382,7 +382,7 @@
         gap: 6px;
         height: var(--bl-control-h);
         padding: 0 14px;
-        border: 1px solid var(--bl-rule-2);
+        border: 1px solid var(--bl-field-edge);
         border-radius: var(--bl-r-ctrl);
         background: var(--bl-sheet);
         color: var(--bl-ink);
@@ -418,6 +418,15 @@
         border-color: var(--bl-bad);
         background: var(--bl-bad);
         color: var(--bl-on-bad);
+    }
+
+    .x-btn--danger-outline {
+        border-color: var(--bl-bad);
+        color: var(--bl-bad);
+    }
+
+    .x-btn--danger-outline:hover {
+        background: var(--bl-bad-w);
     }
 
     .x-btn--danger:hover {

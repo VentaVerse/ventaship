@@ -1,7 +1,18 @@
 @layer components {
+    .ac-list {
+        max-width: 720px;
+    }
+
+    .ac-rows {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
     .ac-row {
+        position: relative;
         display: grid;
-        grid-template-columns: 34px minmax(0, 1.4fr) minmax(0, 1fr) auto;
+        grid-template-columns: 40px minmax(0, 1fr) auto;
         gap: 14px;
         align-items: center;
         padding: 14px 18px;
@@ -12,19 +23,44 @@
         border-top: 0;
     }
 
+    .ac-row:hover {
+        background: var(--bl-chrome);
+    }
+
+    .ac-row__line {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 10px;
+    }
+
     .ac-row__name {
         font-weight: 600;
+        color: var(--bl-ink);
+        text-decoration: none;
         overflow-wrap: anywhere;
     }
 
+    /* The whole row opens the courier; the button stays on top for its own focus ring. */
+    .ac-row__name::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+    }
+
+    .ac-row__act {
+        position: relative;
+        z-index: 1;
+    }
+
     .ac-row__sub {
-        margin-top: 2px;
+        margin-top: 3px;
         font-size: 12.5px;
         color: var(--bl-ink-3);
     }
 
     .ac-row__badges {
-        display: flex;
+        display: inline-flex;
         flex-wrap: wrap;
         gap: 6px;
     }
@@ -33,14 +69,14 @@
         max-width: 720px;
     }
 
-    @media (max-width: 760px) {
+    @media (max-width: 640px) {
         .ac-row {
-            grid-template-columns: 34px minmax(0, 1fr);
+            padding: 12px;
         }
 
-        .ac-row__badges,
-        .ac-row__act {
-            grid-column: 2;
+        .ac-row__line {
+            flex-direction: column;
+            align-items: flex-start;
         }
     }
 

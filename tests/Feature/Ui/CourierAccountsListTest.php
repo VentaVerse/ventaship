@@ -32,7 +32,8 @@ class CourierAccountsListTest extends TestCase
             ->assertSee(route('accounts.show', 'lbc'), false)
             ->getContent();
 
-        $this->assertSame(3, substr_count($html, '<div class="ac-row '));
+        $this->assertSame(3, preg_match_all('/<li class="ac-row[" ]/', $html));
+        $this->assertStringContainsString('Not set up', $html);
         $this->assertSame(2, substr_count($html, '>Open</a>'));
         $this->assertSame(1, substr_count($html, '>Set up</a>'));
     }
@@ -41,8 +42,21 @@ class CourierAccountsListTest extends TestCase
     {
         CourierAccount::factory()->create(['courier' => 'quadx', 'label' => 'Main', 'mode' => 'production', 'last_check_ok' => false]);
 
+        $html = $this->actingAs($this->admin())->get(route('accounts.index'))
+            ->assertSee('Production')->assertSee('Check failed')->assertDontSee('Live')
+            ->assertSee('aria-label="Fix QuadX"', false)->getContent();
+
+        // Live is amber, never the green that means "the check passed".
+        $this->assertMatchesRegularExpression('/x-badge--attn[^>]*>\s*<span[^>]*><\/span>\s*<span class="x-badge__label">Production</', $html);
+        $this->assertStringContainsString('x-btn--danger-outline', $html);
+    }
+
+    public function test_list_shows_when_each_courier_was_checked(): void
+    {
+        CourierAccount::factory()->create(['courier' => 'quadx', 'label' => 'Main', 'mode' => 'sandbox', 'last_check_ok' => true, 'last_check_at' => '2026-11-09 14:14:00']);
+
         $this->actingAs($this->admin())->get(route('accounts.index'))
-            ->assertSee('Production')->assertSee('Check failed')->assertDontSee('Live');
+            ->assertSee('Checked')->assertSee('Nov 9, 2:14 PM');
     }
 
     public function test_show_without_account_offers_mode_and_set_up(): void
