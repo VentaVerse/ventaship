@@ -28,7 +28,8 @@ class SettingsScreenTest extends TestCase
         app(Settings::class)->set('safety.allow_live_spx', true);
 
         $this->actingAs($admin)->get('/settings')
-            ->assertOk()->assertSee('value="ZZ"', false)->assertSee('value="180"', false);
+            ->assertOk()->assertSee('value="ZZ"', false)
+            ->assertDontSee('privacy_retention_days', false)->assertDontSee('Keep recipient details');
 
         $this->actingAs($admin)->get('/settings?tab=bogus')->assertOk()->assertSee('value="ZZ"', false);
 
@@ -77,25 +78,11 @@ class SettingsScreenTest extends TestCase
     public function test_invalid_prefix_rejected_with_message(): void
     {
         $this->actingAs($this->admin())->from('/settings')
-            ->put('/settings', ['tab' => 'general', 'shipments_reference_prefix' => 'ab-1', 'privacy_retention_days' => 180])
+            ->put('/settings', ['tab' => 'general', 'shipments_reference_prefix' => 'ab-1'])
             ->assertRedirect('/settings')
             ->assertSessionHasErrors(['shipments_reference_prefix' => 'Use 1–8 capital letters or digits.']);
 
         $this->assertNull(app(Settings::class)->get('shipments.reference_prefix'));
-    }
-
-    public function test_retention_bounds(): void
-    {
-        $admin = $this->admin();
-        foreach ([29, 3651, 'abc'] as $bad) {
-            $this->actingAs($admin)->put('/settings', ['tab' => 'general', 'shipments_reference_prefix' => 'VS', 'privacy_retention_days' => $bad])
-                ->assertSessionHasErrors(['privacy_retention_days' => 'Between 30 and 3650 days.']);
-        }
-        foreach ([30, 3650] as $ok) {
-            $this->actingAs($admin)->put('/settings', ['tab' => 'general', 'shipments_reference_prefix' => 'VS', 'privacy_retention_days' => $ok])
-                ->assertSessionHasNoErrors();
-            $this->assertSame($ok, app(Settings::class)->get('privacy.retention_days'));
-        }
     }
 
     public function test_only_changed_keys_audited_with_admin_actor(): void
@@ -103,15 +90,15 @@ class SettingsScreenTest extends TestCase
         $admin = $this->admin();
         app(Settings::class)->set('shipments.reference_prefix', 'AB');
 
-        $this->actingAs($admin)->put('/settings', ['tab' => 'general', 'shipments_reference_prefix' => 'AB', 'privacy_retention_days' => 90]);
+        $this->actingAs($admin)->put('/settings', ['tab' => 'general', 'shipments_reference_prefix' => 'CD']);
 
         $rows = AuditEntry::query()->where('action', 'setting.changed')->get();
         $this->assertCount(1, $rows);
         $row = $rows->first();
-        $this->assertSame('privacy.retention_days', $row->subject_id);
+        $this->assertSame('shipments.reference_prefix', $row->subject_id);
         $this->assertSame('admin', $row->actor_type);
         $this->assertSame((string) $admin->id, $row->actor_id);
-        $this->assertSame(['value' => ['from' => 180, 'to' => 90]], $row->changes);
+        $this->assertSame(['value' => ['from' => 'AB', 'to' => 'CD']], $row->changes);
     }
 
     public function test_email_change_requires_current_password(): void
@@ -229,7 +216,7 @@ class SettingsScreenTest extends TestCase
     /** @return array<string, string> */
     private function general(array $extra = []): array
     {
-        return ['tab' => 'general', 'shipments_reference_prefix' => 'VS', 'privacy_retention_days' => '180'] + $extra;
+        return ['tab' => 'general', 'shipments_reference_prefix' => 'VS'] + $extra;
     }
 
     /** @return array<string, string> */

@@ -29,7 +29,7 @@ php artisan queue:work couriers --queue=couriers --timeout=300 --tries=1
 php artisan queue:work --queue=inbound,outgoing,default
 
 # The scheduler: outgoing delivery and the booking sweep every minute, courier polling every 10 minutes,
-# receipt reprocessing, log pruning, personal-data purge.
+# receipt reprocessing, log pruning. Customer details on shipments are kept; nothing purges them.
 php artisan schedule:work
 ```
 

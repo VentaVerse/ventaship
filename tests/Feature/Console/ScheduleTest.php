@@ -16,7 +16,6 @@ class ScheduleTest extends TestCase
             'ventaship:events-deliver' => ['* * * * *', true],
             'ventaship:receipts-reprocess' => ['* * * * *', true],
             'ventaship:logs-prune' => ['0 0 * * *', true],
-            'ventaship:pii-purge' => ['0 0 * * *', true],
         ];
 
         foreach ($expected as $command => [$expression, $withoutOverlapping]) {
@@ -25,6 +24,12 @@ class ScheduleTest extends TestCase
             $this->assertSame($expression, $event->expression, "{$command} runs at {$expression}");
             $this->assertSame($withoutOverlapping, $event->withoutOverlapping, "{$command} never overlaps itself");
         }
+    }
+
+    public function test_pii_purge_is_no_longer_scheduled_or_registered(): void
+    {
+        $this->assertNull($this->event('ventaship:pii-purge'));
+        $this->assertArrayNotHasKey('ventaship:pii-purge', \Illuminate\Support\Facades\Artisan::all());
     }
 
     public function test_poll_interval_follows_couriers_poll_minutes(): void

@@ -1531,7 +1531,7 @@ The same object in every answer and in every shipment webhook (`data.shipment`),
 
 Only with `GET /shipments/{id}?include=parties`: `pickup`, `recipient` (as stored: phones normalised to `09XXXXXXXXX`, `codes` always an object), `items` (`name`, `quantity`, `price` as a 2-decimal string or `null`, `weight_kg`), `note`, `parcel` (or `null`).
 
-Ventaship clears the personal data of finished shipments after a retention period (180 days by default): `pickup`, `recipient` and `note` of such shipments are then `null`, and so is each event's `remarks` in `GET /shipments/{id}/events`.
+Ventaship keeps customer details (`pickup`, `recipient`, `note` and each event's `remarks`) on shipments indefinitely; there is no retention purge. Shipments cleared by an earlier version keep `null` in those fields.
 
 ---
 

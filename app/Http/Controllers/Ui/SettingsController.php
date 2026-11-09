@@ -30,7 +30,7 @@ class SettingsController extends Controller
         'safety_allow_live_spx' => 'safety.allow_live_spx',
     ];
 
-    private const DEFAULTS = ['shipments.reference_prefix' => 'VS', 'privacy.retention_days' => 180];
+    private const DEFAULTS = ['shipments.reference_prefix' => 'VS'];
 
     /** Sender form field => settings key. The address block posts as pickup_addr[...] (see SENDER_ADDRESS). */
     private const SENDER = [
@@ -65,7 +65,6 @@ class SettingsController extends Controller
             'tab' => $tab,
             'tabs' => self::TABS,
             'prefix' => $settings->get('shipments.reference_prefix', 'VS'),
-            'retention' => $settings->get('privacy.retention_days', 180),
             'switches' => collect(self::SWITCHES)->map(fn (string $key) => $settings->get($key) === true)->all(),
             'publicAddress' => $settings->publicBaseUrl(),
             'sender' => collect(self::SENDER)->map(fn (string $key) => $settings->get($key))->all(),
@@ -111,10 +110,8 @@ class SettingsController extends Controller
             ];
             $data = $request->validate([
                 'shipments_reference_prefix' => ['required', 'regex:/^[A-Z0-9]{1,8}\z/'],
-                'privacy_retention_days' => ['required', 'integer', 'between:30,3650'],
             ] + $senderRules, [
                 'shipments_reference_prefix.*' => 'Use 1–8 capital letters or digits.',
-                'privacy_retention_days.*' => 'Between 30 and 3650 days.',
                 'pickup_*.required' => 'Required.',
                 'pickup_addr.*.required' => 'Required.',
                 'pickup_addr.*.max' => 'Too long.',
@@ -128,7 +125,6 @@ class SettingsController extends Controller
             }
             $new = [
                 'shipments.reference_prefix' => $data['shipments_reference_prefix'],
-                'privacy.retention_days' => (int) $data['privacy_retention_days'],
             ];
             foreach (self::SENDER as $field => $key) {
                 $value = trim((string) ($data[$field] ?? ''));

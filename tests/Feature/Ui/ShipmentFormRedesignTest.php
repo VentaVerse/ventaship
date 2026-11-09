@@ -192,7 +192,7 @@ class ShipmentFormRedesignTest extends TestCase
         $brgy = $ph->barangays($district['code'])[0];
         $codes = ['state' => '130000000', 'city' => '133900000', 'barangay' => $brgy['code']];
         $this->put('/settings', [
-            'tab' => 'general', 'shipments_reference_prefix' => 'VS', 'privacy_retention_days' => '180',
+            'tab' => 'general', 'shipments_reference_prefix' => 'VS',
             'pickup_contact_name' => 'Venta Warehouse', 'pickup_contact_phone' => '0918 123 4567', 'pickup_address_1' => '5 Shaw Blvd',
             'pickup_addr' => ['state' => 'Metro Manila', 'city' => 'Manila', 'district' => $district['name'], 'barangay' => $brgy['name'],
                 'postcode' => '1006', 'codes' => $codes],

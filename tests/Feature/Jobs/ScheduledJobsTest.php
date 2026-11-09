@@ -43,10 +43,10 @@ class ScheduledJobsTest extends TestCase
 
         $this->assertSame('* * * * *', $this->find('ventaship:schedule-heartbeat')->expression);
 
-        foreach (['couriers-poll', 'shipments-sweep', 'events-deliver', 'receipts-reprocess', 'logs-prune', 'pii-purge'] as $name) {
+        foreach (['couriers-poll', 'shipments-sweep', 'events-deliver', 'receipts-reprocess', 'logs-prune'] as $name) {
             $this->find("ventaship:{$name}");
         }
-        $this->assertCount(8, $this->scheduled());
+        $this->assertCount(7, $this->scheduled());
     }
 
     public function test_heartbeat_stores_now(): void

@@ -16,7 +16,6 @@ Schedule::command('ventaship:shipments-sweep')->everyMinute()->withoutOverlappin
 Schedule::command('ventaship:events-deliver')->everyMinute()->withoutOverlapping();
 Schedule::command('ventaship:receipts-reprocess')->everyMinute()->withoutOverlapping();
 Schedule::command('ventaship:logs-prune')->daily()->withoutOverlapping();
-Schedule::command('ventaship:pii-purge')->daily()->withoutOverlapping();
 
 // Hosts that run only cron (HestiaCP): jobs still queued (API bookings and cancels, retries) are worked here. In the
 // background, so this tick's other commands are not held up by it.

@@ -26,15 +26,6 @@
                 </div>
             </div>
             <div class="st-sec">
-                <h2 class="st-h">Privacy</h2>
-                <div class="st-row">
-                    <x-ui.field label="Keep recipient details for (days)" name="privacy_retention_days">
-                        <x-ui.input type="number" id="f-privacy-retention-days" name="privacy_retention_days" class="st-ctl st-narrow"
-                                    value="{{ old('privacy_retention_days', $retention) }}" min="30" max="3650" step="1" />
-                    </x-ui.field>
-                </div>
-            </div>
-            <div class="st-sec">
                 <h2 class="st-h">Sender</h2>
                 <div class="st-row">
                     <x-ui.field label="Name" name="pickup_contact_name">

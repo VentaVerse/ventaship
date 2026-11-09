@@ -253,7 +253,7 @@ The courier accent shows on the logo tile only, with no coloured card border.
 - **O3:** the LBC number block.
 - **O4:** the SPX app model.
 - **O5:** whether to show the courier fee to sellers. Default: no.
-- **O6:** personal-data retention. Default: 180 days.
+- **O6:** personal-data retention. Answered 2026-11-09: no retention purge (owner).
 - **O7:** "Mark remitted" by hand. Default: yes.
 
 **Before anyone else installs it:** check each courier's API terms for software used by third parties, and the PH Data Privacy Act.
