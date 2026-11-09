@@ -145,6 +145,43 @@ class CreateShipmentTest extends TestCase
         $this->assertSame([true, false], Shipment::query()->orderBy('id')->get()->map(fn (Shipment $s) => $s->options['insure'])->all());
     }
 
+    public function test_every_common_phone_spelling_is_stored_as_09(): void
+    {
+        $this->fakeDefaultAccount();
+        $spellings = ['09171234567', '+639171234567', '639171234567', '9171234567', '0917 123 4567', '+63 (917) 123-4567'];
+
+        foreach ($spellings as $i => $phone) {
+            $body = $this->shipmentBody(['client_reference' => 'P'.$i]);
+            $body['recipient']['phone'] = $phone;
+            $body['pickup']['contact_phone'] = $phone;
+            $this->create($body)->assertStatus(202);
+        }
+
+        $this->assertSame(count($spellings), Shipment::query()->count());
+        foreach (Shipment::query()->get() as $s) {
+            $this->assertSame('09171234567', $s->recipient['phone']);
+            $this->assertSame('09171234567', $s->pickup['contact_phone']);
+        }
+    }
+
+    public function test_non_mobile_phones_are_422_with_the_phone_message(): void
+    {
+        $this->fakeDefaultAccount();
+
+        foreach (['028123456', '0281234567', '09171234', '091712345678', '08171234567', '8171234567', '+63 28 8123 4567', 'abc'] as $i => $phone) {
+            $body = $this->shipmentBody(['client_reference' => 'B'.$i]);
+            $body['recipient']['phone'] = $phone;
+            $res = $this->create($body)->assertStatus(422);
+            $this->assertSame(['Enter a valid PH mobile number (e.g. 09171234567).'], $res->json('errors')['recipient.phone']);
+
+            $body = $this->shipmentBody(['client_reference' => 'C'.$i]);
+            $body['pickup']['contact_phone'] = $phone;
+            $res = $this->create($body)->assertStatus(422)->assertJsonPath('code', 'invalid_request');
+            $this->assertSame(['Enter a valid PH mobile number (e.g. 09171234567).'], $res->json('errors')['pickup.contact_phone']);
+        }
+        $this->assertSame(0, Shipment::query()->count());
+    }
+
     public function test_money_validation(): void
     {
         $this->fakeDefaultAccount();

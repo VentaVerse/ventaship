@@ -62,13 +62,13 @@ Public ids are lowercase, prefixed ULIDs: a prefix, an underscore and 26 charact
 
 ### Phone numbers
 
-Only Philippine **mobile** numbers are accepted, for both the pickup contact and the recipient. Everything but digits is ignored, then the number must be one of:
+Only Philippine **mobile** numbers are accepted, for both the pickup contact and the recipient: 10 digits after +63, starting with 9. Everything but digits is ignored (spaces, dashes and parentheses are fine), then the number must be one of:
 
 - 11 digits starting with `0` (`09171234567`)
 - 12 digits starting with `63` (`+63 917 123 4567`, `639171234567`)
 - 10 digits starting with `9` (`9171234567`)
 
-Anything else (a landline, a short number) is a 422. Ventaship stores and returns the number as `09XXXXXXXXX`.
+Anything else (a landline, a short or long number, a number not starting with 9) is a 422 with `Enter a valid PH mobile number (e.g. 09171234567).` on the field. Ventaship stores and returns the number as `09XXXXXXXXX`.
 
 ### Timestamps
 
@@ -261,7 +261,7 @@ Validation error example (`create-shipment-invalid.request` sent to `POST /shipm
             "The payment.cod amount field must be greater than 0."
         ],
         "recipient.phone": [
-            "The recipient.phone must be a Philippine mobile number, such as 09171234567."
+            "Enter a valid PH mobile number (e.g. 09171234567)."
         ]
     }
 }

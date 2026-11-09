@@ -3,7 +3,7 @@
 namespace App\Http\Requests\Api\V1\Concerns;
 
 use App\Couriers\Spx\SpxFulfillment;
-use App\Rules\PhPhone;
+use App\Rules\PhMobile;
 use Illuminate\Validation\Rule;
 
 /**
@@ -12,6 +12,8 @@ use Illuminate\Validation\Rule;
  */
 trait ValidatesShipmentParts
 {
+    public const PHONE_MESSAGE = 'Enter a valid PH mobile number (e.g. 09171234567).';
+
     /** The largest amount decimal(12,2) holds. */
     private const MONEY_MAX = '9999999999.99';
 
@@ -30,7 +32,7 @@ trait ValidatesShipmentParts
         return [
             $prefix => ['required', 'array'],
             "{$prefix}.contact_name" => ['required', 'string', 'max:255'],
-            "{$prefix}.contact_phone" => ['required', 'string', 'max:32', new PhPhone],
+            "{$prefix}.contact_phone" => ['required', 'string', new PhMobile(self::PHONE_MESSAGE)],
         ] + $this->addressRules($prefix);
     }
 
@@ -41,7 +43,7 @@ trait ValidatesShipmentParts
             $prefix => ['required', 'array'],
             "{$prefix}.first_name" => ['required', 'string', 'max:255'],
             "{$prefix}.last_name" => ['nullable', 'string', 'max:255'],
-            "{$prefix}.phone" => ['required', 'string', 'max:32', new PhPhone],
+            "{$prefix}.phone" => ['required', 'string', new PhMobile(self::PHONE_MESSAGE)],
             "{$prefix}.email" => ['nullable', 'string', 'email', 'max:255'],
         ] + $this->addressRules($prefix);
     }

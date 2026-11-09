@@ -9,7 +9,7 @@
             "The payment.cod amount field must be greater than 0."
         ],
         "recipient.phone": [
-            "The recipient.phone must be a Philippine mobile number, such as 09171234567."
+            "Enter a valid PH mobile number (e.g. 09171234567)."
         ]
     }
 }
