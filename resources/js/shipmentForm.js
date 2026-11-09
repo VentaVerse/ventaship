@@ -1,10 +1,11 @@
 // Money on the Add shipment form, in whole centavos (BigInt): never a float. The server recomputes all of it, after
-// the same normalisation and with the same patterns (ShipmentFormRequest::normaliseValue / QTY_PATTERN / VALUE_PATTERN).
-const QTY = /^\d{1,6}$/;
+// the same normalisation and with the same pattern (ShipmentFormRequest::normaliseValue / VALUE_PATTERN).
 const PRICE = /^\d{1,10}(\.\d{1,2})?$/;
 
-export function normaliseQuantity(quantity) {
-    return String(quantity ?? '').trim().replace(/^\+/, '');
+/** The one Item field as the summary shows it. */
+export function itemText(item) {
+    const s = String(item ?? '').trim();
+    return s === '' ? '—' : s;
 }
 
 export function normalisePrice(price) {
@@ -100,15 +101,13 @@ export function shipmentForm(config) {
         method: config.method,
         insure: config.insure,
         value: config.value,
-        rows: [],
-        seq: 0,
+        item: config.item ?? '',
         pickupId: config.pickupId ?? '',
         pickupOpen: false,
         ...config.courier,
         slotSeq: 0,
 
         init() {
-            this.rows = config.rows.map((row, n) => this.make(row, config.errors[n] ?? {}));
             this.$watch('account', () => {
                 if (!this.serviceOptions.some((o) => o.value === this.service)) {
                     this.service = '';
@@ -179,25 +178,8 @@ export function shipmentForm(config) {
             return peso(this.totalCents);
         },
 
-        get count() {
-            return this.rows.reduce((sum, row) => {
-                const q = normaliseQuantity(row.quantity);
-                return sum + (QTY.test(q) ? Number(q) : 0);
-            }, 0);
-        },
-
-        make(row, errors = {}) {
-            return { key: ++this.seq, name: row.name, quantity: row.quantity, errors };
-        },
-
-        add() {
-            this.rows.push(this.make({ name: '', quantity: '1' }));
-        },
-
-        remove(n) {
-            if (this.rows.length > 1) {
-                this.rows.splice(n, 1);
-            }
+        get itemText() {
+            return itemText(this.item);
         },
     };
 }

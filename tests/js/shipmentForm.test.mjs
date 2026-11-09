@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cents, normalisePrice, normaliseQuantity, peso } from '../../resources/js/shipmentForm.js';
+import { cents, itemText, normalisePrice, peso, shipmentForm } from '../../resources/js/shipmentForm.js';
 
 test('the value parses to centavos without floats', () => {
     assert.equal(cents('500.1'), 50010n);
@@ -25,7 +25,6 @@ test('normalisation matches the server', () => {
     assert.equal(normalisePrice('.'), '.');
     assert.equal(cents('.5'), 50n);
     assert.equal(cents('5.'), 500n);
-    assert.equal(normaliseQuantity(' +5 '), '5');
     assert.equal(cents('+2.5'), 250n);
 });
 
@@ -89,4 +88,22 @@ test('the SPX pickup-time query carries the chosen pickup address', async () => 
         ['pickup[codes][state]', 'NCR'], ['pickup[codes][city]', 'MNL'],
     ]);
     assert.deepEqual(pickupParams(undefined), []);
+});
+
+test('the summary shows the item text, or a dash when blank', () => {
+    assert.equal(itemText('  Assorted goods '), 'Assorted goods');
+    assert.equal(itemText('2 × Shirt, 1 × Cap'), '2 × Shirt, 1 × Cap');
+    assert.equal(itemText('   '), '—');
+    assert.equal(itemText(undefined), '—');
+});
+
+test('the form holds one item field, without rows', () => {
+    const form = shipmentForm({ account: 'acc_1', service: '', method: 'prepaid', insure: false, value: '', item: '2 × Shirt', courier: {} });
+    assert.equal(form.item, '2 × Shirt');
+    assert.equal(form.itemText, '2 × Shirt');
+    form.item = '';
+    assert.equal(form.itemText, '—');
+    assert.equal('rows' in form, false);
+    assert.equal(typeof form.add, 'undefined');
+    assert.equal(typeof form.remove, 'undefined');
 });

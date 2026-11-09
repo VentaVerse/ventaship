@@ -14,6 +14,7 @@
     use App\Fulfillment\ShipmentList;
     use App\Fulfillment\StatusFilter;
     use App\Shipments\Canceller;
+    use App\Shipments\ItemsText;
     use App\Shipments\TrackingLink;
     use App\Support\Money;
     use Illuminate\Support\Facades\Route;
@@ -96,13 +97,8 @@
 
     <div class="st-sec">
         <h2 class="st-h">Items and parcel</h2>
-        <dl class="sd-list sd-items">
-            @foreach((array) $shipment->items as $item)
-                <dt>{{ $item['name'] ?? '' }}</dt>
-                <dd class="x-num">×{{ $item['quantity'] ?? 1 }} · {{ isset($item['price']) ? Money::peso((string) $item['price']) : '—' }}</dd>
-            @endforeach
-        </dl>
         <dl class="sd-list">
+            <dt>Item</dt><dd>{{ ItemsText::join($shipment->items) ?: '—' }}</dd>
             <dt>Weight</dt><dd class="x-num">{{ $dim('weight_kg', 'kg') ?? '—' }}</dd>
             <dt>Size</dt><dd class="x-num">{{ $size !== '' ? $size.' cm' : '—' }}</dd>
         </dl>

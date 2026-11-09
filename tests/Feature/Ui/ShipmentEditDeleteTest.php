@@ -39,7 +39,7 @@ class ShipmentEditDeleteTest extends TestCase
             'client_reference' => '',
             'recipient' => ['first_name' => 'Juan', 'last_name' => 'Dela Cruz', 'phone' => '0917 123 4567', 'email' => '',
                 'address_1' => '1 Rizal St', 'address_2' => '', 'barangay' => 'Poblacion', 'city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1210'],
-            'items' => [['name' => 'Blue Tee', 'quantity' => '2']],
+            'item' => 'Blue Tee',
             'value' => '1000.00',
             'parcel' => ['weight_kg' => '1.2', 'type' => 'box', 'length_cm' => '', 'width_cm' => '', 'height_cm' => ''],
             'payment' => ['method' => 'prepaid', 'cod_amount' => '', 'declared_value' => '1000'],

@@ -49,7 +49,7 @@ class ShipmentFormRedesignTest extends TestCase
             'account_id' => $this->account->public_id,
             'recipient' => ['first_name' => 'Juan', 'last_name' => 'Dela Cruz', 'phone' => '0917 123 4567',
                 'address_1' => '1 Rizal St', 'city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1210'],
-            'items' => [['name' => 'Blue Tee', 'quantity' => '2'], ['name' => 'Cap', 'quantity' => '3']],
+            'item' => 'Blue Tee and Cap',
             'value' => '1300.17',
             'parcel' => ['type' => 'box'],
             'payment' => ['method' => 'prepaid'],
@@ -91,20 +91,65 @@ class ShipmentFormRedesignTest extends TestCase
         $this->assertSame('5.00', Shipment::query()->sole()->total);
     }
 
-    public function test_items_have_no_price_in_ui_posts(): void
+    public function test_the_one_item_field_posts_as_a_single_item_and_posted_items_are_ignored(): void
     {
-        $this->post('/shipments', $this->form(['items' => [['price' => '999'], ['price' => 'abc']]]))->assertSessionHasNoErrors();
+        $this->post('/shipments', $this->form(['item' => '  Assorted goods ', 'items' => [['name' => 'Tampered', 'quantity' => '9', 'price' => '999']]]))
+            ->assertSessionHasNoErrors();
 
         $s = Shipment::query()->sole();
-        $this->assertSame([null, null], array_column($s->items, 'price'));
-        $this->assertSame([2, 3], array_column($s->items, 'quantity'));
+        $this->assertSame(['Assorted goods'], array_column($s->items, 'name'));
+        $this->assertSame([1], array_column($s->items, 'quantity'));
+        $this->assertSame([null], array_column($s->items, 'price'));
 
         $html = $this->get('/shipments/new')->assertOk()->getContent();
-        $this->assertStringNotContainsString('items[\' + n + \'][price]', $html);
+        $this->assertMatchesRegularExpression('~<label class="fm-label"\s+for="f-item"\s*>\s*Item~', $html);
+        $this->assertMatchesRegularExpression('~<input[^>]*name="item"[^>]*maxlength="255"~', $html);
+        $this->assertStringNotContainsString('items[', $html);
+        $this->assertStringNotContainsString('Add item', $html);
+        $this->assertStringNotContainsString('Remove item', $html);
         $this->assertStringNotContainsString('Unit price', $html);
-        $this->assertStringNotContainsString('Line total', $html);
         $this->assertStringContainsString('name="value"', $html);
         $this->assertMatchesRegularExpression('/sec-payment.*Value \(₱\).*COD.*Prepaid/s', $html);
+    }
+
+    public function test_the_item_is_required_and_at_most_255_characters(): void
+    {
+        foreach (['', '   ', str_repeat('a', 256)] as $item) {
+            $this->post('/shipments', $this->form(['item' => $item]))->assertSessionHasErrors('item');
+        }
+        $this->post('/shipments', $this->form(['item' => ['x']]))->assertSessionHasErrors('item');
+        $form = $this->form();
+        unset($form['item']);
+        $this->post('/shipments', $form + ['items' => [['name' => 'Tee', 'quantity' => '1']]])->assertSessionHasErrors(['item' => 'Required.']);
+        $this->assertSame(0, Shipment::query()->count());
+
+        $this->post('/shipments', $this->form(['item' => str_repeat('a', 255)]))->assertSessionHasNoErrors();
+        $this->assertSame(1, Shipment::query()->count());
+    }
+
+    public function test_edit_prefills_the_item_from_the_stored_items(): void
+    {
+        $base = ['source' => 'manual', 'state' => 'failed', 'client_app_id' => null, 'courier_account_id' => $this->account->id];
+
+        $many = Shipment::factory()->create($base + ['items' => [['name' => 'Shirt', 'quantity' => 2], ['name' => 'Cap', 'quantity' => 1]]]);
+        $html = $this->get(route('shipments.edit', $many->public_id))->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('~name="item"[^>]*value="2 × Shirt, 1 × Cap"~u', $html);
+
+        $one = Shipment::factory()->create($base + ['items' => [['name' => 'Assorted goods', 'quantity' => 1]]]);
+        $this->assertMatchesRegularExpression('~name="item"[^>]*value="Assorted goods"~', $this->get(route('shipments.edit', $one->public_id))->getContent());
+
+        $three = Shipment::factory()->create($base + ['items' => [['name' => 'Mug', 'quantity' => 3]]]);
+        $this->assertMatchesRegularExpression('~name="item"[^>]*value="3 × Mug"~u', $this->get(route('shipments.edit', $three->public_id))->getContent());
+    }
+
+    public function test_the_summary_shows_the_item_text(): void
+    {
+        $base = ['source' => 'manual', 'state' => 'failed', 'client_app_id' => null, 'courier_account_id' => $this->account->id];
+        $s = Shipment::factory()->create($base + ['items' => [['name' => 'Shirt', 'quantity' => 2], ['name' => 'Cap', 'quantity' => 1]]]);
+
+        $html = $this->get(route('shipments.edit', $s->public_id))->getContent();
+        $this->assertMatchesRegularExpression('~<aside class="sh-summary".*<dt>Item</dt>\s*<dd[^>]*x-text="itemText"[^>]*>2 × Shirt, 1 × Cap</dd>~su', $html);
+        $this->assertStringNotContainsString('<dt>Items</dt>', $html);
     }
 
     public function test_edit_prefills_value_from_legacy_total(): void
@@ -218,7 +263,7 @@ class ShipmentFormRedesignTest extends TestCase
             'account_id' => $tile->getAttribute('value'),
             'recipient' => ['first_name' => 'Juan', 'last_name' => 'Dela Cruz', 'phone' => '0917 123 4567',
                 'address_1' => '1 Rizal St', 'city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1210'],
-            'items' => [['name' => 'Blue Tee', 'quantity' => '2'], ['name' => 'Cap', 'quantity' => '3']],
+            'item' => 'Blue Tee and Cap',
             'value' => '1300.17',
             'parcel' => ['type' => 'box'],
             'payment' => ['method' => 'cod'],
@@ -296,15 +341,6 @@ class ShipmentFormRedesignTest extends TestCase
         $this->from('/shipments/new')->post('/shipments', $this->form(['value' => ['x']]))
             ->assertSessionHasErrors(['value' => 'Enter the parcel value.']);
         $this->get('/shipments/new')->assertOk();
-        $this->assertSame(0, Shipment::query()->count());
-    }
-
-    public function test_odd_quantities_are_refused(): void
-    {
-        foreach (['2.0', '1e1'] as $qty) {
-            $this->post('/shipments', $this->form(['items' => [['quantity' => $qty]]]))
-                ->assertSessionHasErrors('items.0.quantity');
-        }
         $this->assertSame(0, Shipment::query()->count());
     }
 }

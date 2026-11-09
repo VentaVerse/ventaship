@@ -66,6 +66,17 @@ class ShipmentShowTest extends TestCase
         $res->assertSee('Nov 8, 2026 · 1:00 PM', false);
     }
 
+    public function test_show_lists_the_items_joined_on_one_line(): void
+    {
+        $s = $this->ship('booked', ['items' => [['name' => 'Shirt', 'quantity' => 2, 'price' => '10.00'], ['name' => 'Cap', 'quantity' => 1]]]);
+        $this->get(route('shipments.show', $s->public_id))->assertOk()
+            ->assertSeeInOrder(['Items and parcel', 'Item', '2 × Shirt, 1 × Cap', 'Weight'], false);
+
+        $one = $this->ship('booked', ['items' => [['name' => 'Assorted goods', 'quantity' => 1]]]);
+        $html = $this->get(route('shipments.show', $one->public_id))->getContent();
+        $this->assertMatchesRegularExpression('~<dt>Item</dt>\s*<dd>Assorted goods</dd>~', $html);
+    }
+
     public function test_status_flash_renders(): void
     {
         $s = $this->ship('booked');

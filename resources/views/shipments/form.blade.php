@@ -22,21 +22,11 @@
         'address_1' => ['label' => 'Street', 'required' => true, 'class' => 'sh-span'],
     ];
     $v = fn (string $key, mixed $default = '') => old($key, data_get($prefill, $key, $default));
-    $oldItems = $v('items');
-    $rows = is_array($oldItems) && $oldItems !== []
-        ? array_map(fn ($i) => ['name' => (string) ($i['name'] ?? ''), 'quantity' => (string) ($i['quantity'] ?? '1')], array_values($oldItems))
-        : [['name' => '', 'quantity' => '1']];
-    $itemErrors = [];
-    foreach (array_keys($rows) as $n) {
-        foreach (['name', 'quantity'] as $f) {
-            $itemErrors[$n][$f] = $errors->first("items.{$n}.{$f}");
-        }
-    }
+    $item = is_string($v('item')) ? $v('item') : '';
     $valueRaw = is_string($v('value')) ? $v('value') : '';
     $value = ShipmentFormRequest::normaliseValue($valueRaw);
     $valueOk = preg_match('/^\d{1,10}(\.\d{1,2})?$/', $value) === 1;
     $total = Money::peso($valueOk ? $value : '0');
-    $count = array_sum(array_map(fn ($r) => ctype_digit($r['quantity']) ? (int) $r['quantity'] : 0, $rows));
     $method = $v('payment.method', 'prepaid');
     $insure = filter_var($v('insure'), FILTER_VALIDATE_BOOLEAN);
     $usable = array_values(array_filter($tiles, fn ($t) => $t['id'] !== null));
@@ -92,7 +82,7 @@
     ];
     $config = [
         'services' => $services, 'account' => $accountId, 'service' => (string) $v('service'), 'names' => $names,
-        'rows' => $rows, 'errors' => $itemErrors, 'value' => $valueRaw, 'method' => $method, 'insure' => $insure,
+        'item' => $item, 'value' => $valueRaw, 'method' => $method, 'insure' => $insure,
         'couriers' => $fields['couriers'], 'defaultParcels' => $fields['defaultParcels'], 'firstDate' => $dateValues[0] ?? '',
         'slotsUrl' => route('shipments.options.spx-slots'), 'courier' => $courierState,
         'pickupId' => $pickupId, 'pickups' => collect($pickups)->mapWithKeys(fn ($o) => [$o['id'] => $o['pickup']])->all(),
@@ -226,34 +216,10 @@
             </fieldset>
         </section>
 
-        <section class="x-panel sh-sec" aria-labelledby="sec-items">
-            <h2 class="st-h" id="sec-items">Items</h2>
-            @error('items')<div class="fm-error">{{ $message }}</div>@enderror
-            <div class="sh-items">
-                <div class="sh-items__head" aria-hidden="true">
-                    <span>Name</span><span>Qty</span><span></span>
-                </div>
-                <template x-for="(row, n) in rows" :key="row.key">
-                    <div class="sh-item">
-                        <div class="fm-field sh-item__name">
-                            <label class="x-sr" :for="'f-items-' + n + '-name'">Item name</label>
-                            <input class="x-input" type="text" :id="'f-items-' + n + '-name'" :name="'items[' + n + '][name]'" x-model="row.name" maxlength="255" required autocomplete="off">
-                            <div class="fm-error" x-show="row.errors.name" x-text="row.errors.name"></div>
-                        </div>
-                        <div class="fm-field">
-                            <label class="x-sr" :for="'f-items-' + n + '-quantity'">Quantity</label>
-                            <input class="x-input" type="number" min="1" step="1" :id="'f-items-' + n + '-quantity'" :name="'items[' + n + '][quantity]'" x-model="row.quantity" required>
-                            <div class="fm-error" x-show="row.errors.quantity" x-text="row.errors.quantity"></div>
-                        </div>
-                        <x-ui.button size="sm" class="sh-item__remove" ::disabled="rows.length === 1" @click="remove(n)" aria-label="Remove item">
-                            <x-ui.icon name="trash" size="14" />
-                        </x-ui.button>
-                    </div>
-                </template>
-            </div>
-            <div class="sh-items__foot">
-                <x-ui.button size="sm" @click="add()"><x-ui.icon name="plus" size="14" /> Add item</x-ui.button>
-            </div>
+        <section class="x-panel sh-sec">
+            <x-ui.field label="Item" name="item" :required="true">
+                <x-ui.input type="text" id="f-item" name="item" value="{{ $item }}" x-model="item" maxlength="255" required autocomplete="off" />
+            </x-ui.field>
         </section>
 
         <section class="x-panel sh-sec" aria-labelledby="sec-payment">
@@ -429,7 +395,7 @@
             <h2 class="st-h" id="sec-summary">Summary</h2>
             <dl class="sh-sum">
                 <div><dt>Courier</dt><dd x-text="courierName">{{ $names[$accountId] ?? '—' }}</dd></div>
-                <div><dt>Items</dt><dd class="sh-num" x-text="count">{{ $count }}</dd></div>
+                <div><dt>Item</dt><dd class="sh-sum__item" x-text="itemText">{{ trim($item) !== '' ? trim($item) : '—' }}</dd></div>
                 <div><dt>Total</dt><dd class="sh-num" x-text="total">{{ $total }}</dd></div>
                 <div><dt>Payment</dt><dd x-text="method === 'cod' ? 'COD · ' + total : 'Prepaid'">{{ $method === 'cod' ? 'COD · '.$total : 'Prepaid' }}</dd></div>
                 <div><dt>Insured</dt><dd x-text="insure ? 'Yes' : 'No'">{{ $insure ? 'Yes' : 'No' }}</dd></div>

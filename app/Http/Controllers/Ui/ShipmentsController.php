@@ -15,6 +15,7 @@ use App\Models\CourierAccount;
 use App\Models\PickupAddress;
 use App\Models\Shipment;
 use App\Shipments\CourierFormFields;
+use App\Shipments\ItemsText;
 use App\Shipments\ShipmentCreator;
 use Closure;
 use Illuminate\Database\Eloquent\Collection;
@@ -284,10 +285,7 @@ class ShipmentsController extends Controller
             'insure' => (bool) ($options['insure'] ?? false),
             'recipient' => $recipient,
             'value' => $this->valueOf($s),
-            'items' => array_map(fn ($i) => [
-                'name' => (string) ($i['name'] ?? ''),
-                'quantity' => (string) ($i['quantity'] ?? '1'),
-            ], array_values((array) $s->items)),
+            'item' => ItemsText::join($s->items, 255),
             'parcel' => (array) ($options['parcel'] ?? []),
             'payment' => [
                 'method' => $s->payment_method === 'cod' ? 'cod' : 'prepaid',

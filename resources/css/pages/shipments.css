@@ -122,42 +122,6 @@
         opacity: .6;
     }
 
-    /* Items */
-    .sh-items {
-        display: grid;
-        gap: 8px;
-    }
-
-    .sh-items__head,
-    .sh-item {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 80px 34px;
-        align-items: start;
-        gap: 8px;
-    }
-
-    .sh-items__head {
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--bl-ink-2);
-    }
-
-    .sh-item__remove {
-        width: var(--bl-control-h);
-        height: var(--bl-control-h);
-        padding: 0;
-        justify-content: center;
-    }
-
-    .sh-items__foot {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        padding-top: 12px;
-        border-top: 1px solid var(--bl-rule);
-    }
-
     /* Payment */
     .sh-seg {
         display: inline-flex;
@@ -647,6 +611,11 @@
         text-align: right;
     }
 
+    .sh-sum__item {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
     .sh-summary__actions {
         display: grid;
         gap: 8px;
@@ -706,25 +675,6 @@
 
         .sh-pack {
             grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-
-        .sh-items__head {
-            display: none;
-        }
-
-        .sh-item {
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid var(--bl-rule);
-        }
-
-        .sh-item > .sh-item__name {
-            grid-column: 1 / -1;
-        }
-
-        .sh-item__remove {
-            grid-column: 3;
-            grid-row: 2;
         }
     }
 
@@ -788,10 +738,6 @@
         color: var(--bl-brand-link);
         text-decoration: underline;
         text-underline-offset: 2px;
-    }
-
-    .sd-items {
-        margin-bottom: 12px;
     }
 
     .sd-timeline {

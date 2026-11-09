@@ -17,7 +17,8 @@ use Illuminate\Validation\Validator;
  * The Add shipment form. It accepts the API's input shape (so ShipmentCreator takes it unchanged) with the form's
  * differences: the order reference is optional and generated when blank, the shipment is always submitted, and the
  * money fields are derived from the Value. The pickup is never posted: `pickup_address_id` names a saved pickup address
- * (or, on an edit, `current`: the shipment's own snapshot), and that address is copied into `pickup` here.
+ * (or, on an edit, `current`: the shipment's own snapshot), and that address is copied into `pickup` here. The items
+ * are one text field, `item`, stored as a single item of quantity 1; posted `items` are ignored.
  */
 class ShipmentFormRequest extends FormRequest
 {
@@ -25,9 +26,7 @@ class ShipmentFormRequest extends FormRequest
 
     private const REFERENCE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
-    /** What an item quantity and the Value may look like; resources/js/shipmentForm.js uses the same patterns. */
-    private const QTY_PATTERN = '/^\d{1,6}$/';
-
+    /** What the Value may look like; resources/js/shipmentForm.js uses the same pattern. */
     private const VALUE_PATTERN = '/^\d{1,10}(\.\d{1,2})?$/';
 
     private const SIZE_KEYS = ['length_cm', 'width_cm', 'height_cm'];
@@ -45,15 +44,15 @@ class ShipmentFormRequest extends FormRequest
 
     /**
      * The Value is the one amount the admin types: it is the shipment total, what COD collects and, with Insure, the
-     * declared value (else an explicit 0, since QuadX insures at the total when the value is missing). Items carry no
-     * price. Posted totals, COD, declared values and item prices are overwritten.
+     * declared value (else an explicit 0, since QuadX insures at the total when the value is missing). The item carries
+     * no price. Posted totals, COD, declared values and items are overwritten.
      */
     protected function prepareForValidation(): void
     {
         $payment = (array) $this->input('payment', []);
         $isCod = ($payment['method'] ?? null) === 'cod';
         $insure = $this->boolean('insure');
-        $items = self::normaliseItems($this->input('items'));
+        $item = $this->input('item');
         $value = self::normaliseValue($this->input('value'));
         $valid = is_string($value) && preg_match(self::VALUE_PATTERN, $value) === 1 && bccomp($value, '0', 2) > 0;
 
@@ -68,13 +67,13 @@ class ShipmentFormRequest extends FormRequest
         $this->chosenPickup = $this->resolvePickup($this->input('pickup_address_id'));
 
         $input = $this->all();
-        unset($input['pickup']);
+        unset($input['pickup'], $input['items']);
         if ($this->chosenPickup !== null) {
             $input['pickup'] = $this->chosenPickup;
         }
 
         $this->replace($this->courierInput(array_merge($input, [
-            'items' => $items,
+            'item' => is_string($item) ? trim($item) : $item,
             'value' => $value,
             'total' => $valid ? $value : null,
             'payment' => $payment,
@@ -230,26 +229,6 @@ class ShipmentFormRequest extends FormRequest
         return $rules;
     }
 
-    /** Quantities in the one shape the rules read, and every item price dropped. */
-    public static function normaliseItems(mixed $items): mixed
-    {
-        if (! is_array($items)) {
-            return $items;
-        }
-        foreach ($items as $n => $item) {
-            if (! is_array($item)) {
-                continue;
-            }
-            if (is_string($item['quantity'] ?? null)) {
-                $item['quantity'] = (string) preg_replace('/^\+/', '', trim($item['quantity']));
-            }
-            $item['price'] = null;
-            $items[$n] = $item;
-        }
-
-        return $items;
-    }
-
     /** The Value trimmed, without a leading "+", and ".5" / "5." written out as "0.50" / "5.00". Anything else is left for the rules. */
     public static function normaliseValue(mixed $value): mixed
     {
@@ -293,10 +272,7 @@ class ShipmentFormRequest extends FormRequest
             'service' => ['nullable', 'string', 'max:64'],
             'insure' => ['boolean'],
             'payment.insure' => ['boolean'],
-            'items' => ['required', 'array', 'min:1', 'max:100'],
-            'items.*' => ['required', 'array'],
-            'items.*.name' => ['required', 'string', 'max:255'],
-            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:100000', 'regex:'.self::QTY_PATTERN],
+            'item' => ['required', 'string', 'max:255'],
             'customer_id' => ['nullable', 'string', 'max:64', Rule::exists('customers', 'public_id')],
             'save_customer' => ['boolean'],
             'pickup_address_id' => ['bail', 'required', 'string', 'max:64', function (string $attribute, mixed $value, \Closure $fail) {
@@ -342,11 +318,17 @@ class ShipmentFormRequest extends FormRequest
         return $rules;
     }
 
-    /** The validated input, with the order reference generated when it was left blank (unless an edit keeps its own). @return array<string, mixed> */
+    /**
+     * The validated input in the API's shape: the item as the one item, and the order reference generated when it was
+     * left blank (unless an edit keeps its own).
+     *
+     * @return array<string, mixed>
+     */
     public function shipmentData(bool $generateReference = true): array
     {
         $data = $this->validated();
-        unset($data['pickup_address_id'], $data['customer_id'], $data['save_customer']);
+        $data['items'] = [['name' => $data['item'], 'quantity' => 1, 'price' => null]];
+        unset($data['item'], $data['pickup_address_id'], $data['customer_id'], $data['save_customer']);
         if ($generateReference) {
             $data['client_reference'] ??= self::generateReference();
         }
@@ -376,7 +358,6 @@ class ShipmentFormRequest extends FormRequest
             'pickup_address_id.required' => 'Choose a pickup address.',
             'pickup_address_id.string' => 'Choose a pickup address.',
             'pickup_address_id.max' => 'Choose a pickup address.',
-            'items.*.quantity.regex' => 'Whole number.',
             'parcel.type.required' => 'Choose the packaging.',
             'parcel.type.in' => 'Choose the packaging.',
             'pickup_slot.required_if' => 'Choose a time.',

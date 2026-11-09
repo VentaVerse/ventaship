@@ -61,7 +61,7 @@ class ShipmentCreateTest extends TestCase
             'client_reference' => '',
             'recipient' => ['first_name' => 'Juan', 'last_name' => 'Dela Cruz', 'phone' => '0917 123 4567', 'email' => '',
                 'address_1' => '1 Rizal St', 'address_2' => '', 'barangay' => 'Poblacion', 'city' => 'Makati', 'state' => 'Metro Manila', 'postcode' => '1210'],
-            'items' => [['name' => 'Blue Tee', 'quantity' => '2']],
+            'item' => 'Blue Tee',
             'value' => '1000.00',
             'parcel' => ['weight_kg' => '1.2', 'type' => 'box', 'length_cm' => '', 'width_cm' => '', 'height_cm' => ''],
             'payment' => ['method' => 'prepaid', 'cod_amount' => '', 'declared_value' => '1000'],
@@ -75,7 +75,7 @@ class ShipmentCreateTest extends TestCase
         CourierAccount::factory()->create(['courier' => 'spx', 'label' => 'Second', 'status' => 'disabled']);
 
         $this->get('/shipments/new')->assertOk()
-            ->assertSeeText(['Add shipment', 'Courier', 'Pickup', 'Customer', 'Items', 'Parcel', 'Payment', 'Order reference', 'QuadX', 'Add item', 'Book shipment'])
+            ->assertSeeText(['Add shipment', 'Courier', 'Pickup', 'Customer', 'Item', 'Parcel', 'Payment', 'Order reference', 'QuadX', 'Item', 'Book shipment'])
             ->assertSeeText(['Venta Warehouse', '5 Shaw Blvd'])
             ->assertSee('role="radiogroup"', false)
             ->assertDontSeeText('Second');
@@ -136,7 +136,7 @@ class ShipmentCreateTest extends TestCase
     public function test_validation_errors_keep_input(): void
     {
         $token = $this->token();
-        $this->from('/shipments/new')->post('/shipments', $this->form(['recipient' => ['first_name' => '', 'city' => 'Taguig'], 'items' => [['name' => 'Kept Cap']]], $token))
+        $this->from('/shipments/new')->post('/shipments', $this->form(['recipient' => ['first_name' => '', 'city' => 'Taguig'], 'item' => 'Kept Cap'], $token))
             ->assertRedirect('/shipments/new')
             ->assertSessionHasErrors(['recipient.first_name']);
         $this->assertSame(0, Shipment::query()->count());
