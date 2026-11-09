@@ -60,7 +60,7 @@ class SpxFulfillmentTest extends TestCase
         $settings->writeSecret('spx_user_secret', 'fake-user-secret-not-real');
     }
 
-    /** The pickup origin the client sends with the shipment. No district: sender_district falls back to the city. */
+    /** The pickup origin the client sends with the shipment. */
     private function pickup(): PickupPoint
     {
         return PickupPoint::fromArray([
@@ -88,7 +88,7 @@ class SpxFulfillmentTest extends TestCase
                 'last_name' => 'Doe',
                 'phone' => '+639171234567',
                 'address_1' => '123 Mango St',
-                'barangay' => 'Lahug',
+                'barangay' => 'Lahug (Pob.)',
                 'city' => 'Cebu City',
                 'state' => 'Cebu',
                 'postcode' => '6000',
@@ -164,28 +164,24 @@ class SpxFulfillmentTest extends TestCase
                 && $body['user_secret'] === 'fake-user-secret-not-real'
                 && $o['order_id'] === 'VS000042'
                 && $o['base_info']['service_type'] === 1
-                // sender_info from the shared pickup-address record. Address
-                // hierarchy per api.md's own worked examples (T2 review,
-                // IMPORTANT 5): *_street <- barangay, *_district <- city
-                // (this record carries no district, so it falls back to city),
-                // *_detail_address <- the actual address text, never
-                // duplicated with street.
+                // sender_info from the pickup point, placed on SPX's location
+                // list: state = island group, city = province, district =
+                // city, street = barangay, each as SPX spells it;
+                // *_detail_address <- the actual address text.
                 && $o['sender_info']['sender_state'] === 'Metro Manila'
-                && $o['sender_info']['sender_city'] === 'Makati'
-                && $o['sender_info']['sender_district'] === 'Makati'
-                && $o['sender_info']['sender_street'] === 'Bel-Air'
+                && $o['sender_info']['sender_city'] === 'Metro Manila'
+                && $o['sender_info']['sender_district'] === 'Makati City'
+                && $o['sender_info']['sender_street'] === 'Bel-air'
                 && $o['sender_info']['sender_detail_address'] === '456 Warehouse Ave'
                 && $o['sender_info']['sender_post_code'] === '1200'
                 // Already valid PH format (11 digits, starts with 0) -> passes through unchanged.
                 && $o['sender_info']['sender_phone'] === '09171112222'
-                // deliver_info from the order's own shipping address — same
-                // hierarchy fix: street <- barangay, district <- Venta's own
-                // (blank) shipping_district falling back to city,
-                // detail_address <- address_1.
-                && $o['deliver_info']['deliver_state'] === 'Cebu'
-                && $o['deliver_info']['deliver_city'] === 'Cebu City'
+                // deliver_info from the order's own shipping address, placed
+                // the same way; detail_address <- address_1.
+                && $o['deliver_info']['deliver_state'] === 'Visayas'
+                && $o['deliver_info']['deliver_city'] === 'Cebu'
                 && $o['deliver_info']['deliver_district'] === 'Cebu City'
-                && $o['deliver_info']['deliver_street'] === 'Lahug'
+                && $o['deliver_info']['deliver_street'] === 'Lahug (Pob.)'
                 && $o['deliver_info']['deliver_detail_address'] === '123 Mango St'
                 && $o['deliver_info']['deliver_post_code'] === '6000'
                 && $o['deliver_info']['deliver_name'] === 'Jane Doe'
@@ -359,7 +355,7 @@ class SpxFulfillmentTest extends TestCase
         $result = $this->courier()->createShipment($order, $this->opts(['parcel' => 'small', 'shipping_payment' => 'sender_pay']));
 
         $this->assertFalse($result['success']);
-        $this->assertStringContainsString('shipping province/city/postal code', $result['error']);
+        $this->assertStringContainsString('shipping province/city/barangay/postal code', $result['error']);
         Http::assertNothingSent();
     }
 

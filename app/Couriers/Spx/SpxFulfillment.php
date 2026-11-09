@@ -42,13 +42,12 @@ use Illuminate\Support\Str;
  *    row in courier_fulfillment_pickup_addresses (a store may keep several
  *    and choose one per booking); it used to be the eight flat
  *    `settings(group=shipping, key=pickup_*)` rows, which are retired.
- *  - Deliver address is resolved by DIRECT best-effort field mapping (order's
- *    shipping_state/city/district/barangay/postcode), not by parsing SPX's
- *    5.1 Address API (which only returns an Excel download link — no JSON
- *    tree, and no spreadsheet-parsing dependency exists in this codebase).
- *    refreshAddressTree() still caches that download link settings-style for
- *    admin visibility; parsing it into a real lookup table is flagged as
- *    follow-up work.
+ *  - Sender and deliver addresses are placed on SPX's own location list
+ *    (SpxLocations, compiled from SPX's xlsx by ventaship:spx-locations-compile):
+ *    SPX's state/city/district/street are island group/province/city/barangay,
+ *    not PSGC's levels, and an address SPX does not list is refused before
+ *    anything is sent. refreshAddressTree() still caches SPX's 5.1 download
+ *    link for an admin to fetch a newer list.
  *  - collect_type defaults to 2 (drop-off) because the current booking form
  *    doesn't collect a pickup-slot choice yet; getPickupSlots() is fully
  *    implemented and createShipment() already switches to collect_type=1
@@ -689,6 +688,11 @@ class SpxFulfillment implements Courier
         // preset, which is the smallest and therefore the cheapest, making
         // the quoted fee a genuine from-price.
         $built = $this->buildOrderPayload($order, ['pickup' => $from]);
+        if (!$built['ok'] && isset($built['kind'])) {
+            // SPX's own location list rules the address out: a refusal we
+            // can state without asking SPX.
+            return ServiceabilityVerdict::notServiceable($built['kind']);
+        }
         if (!$built['ok']) {
             // Our own missing data (an incomplete pickup origin, an address
             // we cannot map), so nothing was asked and nothing was refused.
@@ -1308,8 +1312,9 @@ class SpxFulfillment implements Courier
      * address library is only exposed as an Excel export (no JSON tree), and
      * this codebase has no spreadsheet-parsing dependency, so this caches
      * the download link + fetch time for admin visibility/follow-up — it is
-     * NOT consulted by deliverInfo()'s address resolution, which is direct
-     * best-effort field mapping instead (see this class's docblock).
+     * NOT consulted at booking: addresses are placed on the committed list
+     * in database/data/spx (SpxLocations), recompiled from a newer xlsx with
+     * ventaship:spx-locations-compile.
      *
      * @return array{ok:bool, url?:string, fetched_at?:string, error?:string}
      */
@@ -1509,18 +1514,27 @@ class SpxFulfillment implements Courier
     }
 
     /**
-     * @return array{ok:bool, payload?:array, error?:string}
+     * `kind` (a ServiceabilityVerdict kind) is set when SPX's location list
+     * itself rules the address out, so checkServiceability() can say so
+     * without asking SPX.
+     *
+     * @return array{ok:bool, payload?:array, error?:string, kind?:string}
      */
     private function buildOrderPayload(CourierOrder $order, array $opts): array
     {
         $sender = $this->senderInfo($opts);
         if (!$sender['ok']) {
-            return ['ok' => false, 'error' => $sender['error']];
+            return ['ok' => false, 'error' => $sender['error']] + (isset($sender['kind']) ? ['kind' => $sender['kind']] : []);
         }
 
         $deliver = $this->deliverInfo($order);
         if (!$deliver['ok']) {
-            return ['ok' => false, 'error' => $deliver['error']];
+            return ['ok' => false, 'error' => $deliver['error']] + (isset($deliver['kind']) ? ['kind' => $deliver['kind']] : []);
+        }
+
+        $fulfillment = $this->fulfillmentInfo($order, $opts);
+        if (($refusal = self::supportRefusal($sender['flags'], $deliver['flags'], (bool) $order->cod, $fulfillment['collect_type'] === 1)) !== null) {
+            return ['ok' => false] + $refusal;
         }
 
         $dims = $this->resolveParcelDims($opts);
@@ -1541,7 +1555,7 @@ class SpxFulfillment implements Courier
             'order_id'         => (string) $order->reference,
             'base_info'        => ['service_type' => 1],
             'sender_info'      => $sender['info'],
-            'fulfillment_info' => $this->fulfillmentInfo($order, $opts),
+            'fulfillment_info' => $fulfillment,
             'deliver_info'     => $deliver['info'],
             'parcel_info'      => $this->parcelInfo($order, $dims['dims'], $opts),
         ]];
@@ -1552,20 +1566,14 @@ class SpxFulfillment implements Courier
      * ($opts['pickup'], see PickupOrigin::from()), the same origin QuadX and
      * LBC read.
      *
-     * Address hierarchy fix (T2 review, IMPORTANT 5): every worked example in
-     * api.md puts the BARANGAY in `*_street` (e.g. "Barangay 294") and a
-     * city-level administrative district in `*_district` (e.g. "Binondo",
-     * "Intramuros") — the reverse of what this method originally sent.
-     * sender_district now uses the pickup point's own district when it has one (PH
-     * districts exist for Manila only) and falls back to the city otherwise —
-     * the same fallback deliverInfo() uses when an order has no
-     * shipping_district on file, and the exact value the retired settings
-     * block produced, which had no district field at all.
-     * sender_street and sender_detail_address are not the same value
-     * duplicated — street is the barangay, detail_address is the actual
-     * unit/building text.
+     * SPX's address levels are not PSGC's (docs/couriers/spx/index.md):
+     * state = island group, city = province, district = city/municipality
+     * (Manila: its sub-district), street = barangay. The stored PSGC address
+     * is placed on a row of SPX's own location list (SpxLocations) and sent
+     * exactly as SPX spells it; an address SPX does not list is refused here,
+     * never sent as a guess. detail_address is the unit/building text.
      *
-     * @return array{ok:bool, info?:array, error?:string}
+     * @return array{ok:bool, info?:array, flags?:string, error?:string, kind?:string}
      */
     private function senderInfo(array $opts = []): array
     {
@@ -1584,15 +1592,20 @@ class SpxFulfillment implements Courier
             return ['ok' => false, 'error' => 'The pickup address is incomplete: SPX needs its province, city, barangay, address, postal code and a valid PH mobile number.'];
         }
 
-        if ($district === '') {
-            $district = $city;
+        $spx = $this->locations()->resolve([
+            'state' => $state, 'city' => $city, 'district' => $district, 'barangay' => $barangay,
+            'codes' => ['barangay' => (string) ($pickup->barangay_code ?? '')],
+        ]);
+        if (!$spx['ok']) {
+            return ['ok' => false, 'error' => self::unlistedMessage($spx['missing'], 'sender'), 'kind' => ServiceabilityVerdict::KIND_ORIGIN];
         }
+        $at = $spx['location'];
 
-        return ['ok' => true, 'info' => [
-            'sender_state'          => $state,
-            'sender_city'           => $city,
-            'sender_district'       => $district,
-            'sender_street'         => $barangay,
+        return ['ok' => true, 'flags' => $spx['flags'], 'info' => [
+            'sender_state'          => $at['state'],
+            'sender_city'           => $at['city'],
+            'sender_district'       => $at['district'],
+            'sender_street'         => $at['street'],
             'sender_post_code'      => $postCode,
             'sender_name'           => $name,
             'sender_phone'          => $phone,
@@ -1601,18 +1614,12 @@ class SpxFulfillment implements Courier
     }
 
     /**
-     * Deliver = the order's own shipping address, mapped best-effort onto
-     * SPX's state/city/district/street hierarchy (see this class's docblock
-     * for why this is direct mapping rather than a parsed address tree).
+     * Deliver = the order's own shipping address, placed on SPX's location
+     * list exactly as senderInfo() places the pickup point. An order with no
+     * barangay, or one SPX does not list, is refused rather than sent with a
+     * stand-in value.
      *
-     * Address hierarchy fix (T2 review, IMPORTANT 5) — see senderInfo()'s
-     * docblock for the underlying evidence from api.md's worked examples:
-     * deliver_street now maps from the order's barangay (not address_1),
-     * deliver_detail_address maps from address_1 (not duplicated from
-     * street), and deliver_district uses Venta's own optional 'district'
-     * field, falling back to city (not barangay, which street now owns).
-     *
-     * @return array{ok:bool, info?:array, error?:string}
+     * @return array{ok:bool, info?:array, flags?:string, error?:string, kind?:string}
      */
     private function deliverInfo(CourierOrder $order): array
     {
@@ -1624,21 +1631,18 @@ class SpxFulfillment implements Courier
         $address  = trim((string) $order->shipping_address_1);
         $phone    = $this->normalizePhPhone($order->shipping_phone ?: $order->phone);
 
-        if ($state === '' || $city === '' || $postCode === '' || $phone === null) {
-            return ['ok' => false, 'error' => 'This order is missing a shipping province/city/postal code/valid PH mobile number. Cannot book with SPX until the shipping address is complete.'];
+        if ($state === '' || $city === '' || $barangay === '' || $postCode === '' || $phone === null) {
+            return ['ok' => false, 'error' => 'This order is missing a shipping province/city/barangay/postal code/valid PH mobile number. Cannot book with SPX until the shipping address is complete.'];
         }
-        if ($district === '') {
-            // SPX marks district mandatory for PH; fall back to the city
-            // name rather than failing bookings for orders with no
-            // district on file.
-            $district = $city;
+
+        $spx = $this->locations()->resolve([
+            'state' => $state, 'city' => $city, 'district' => $district, 'barangay' => $barangay,
+            'codes' => ['barangay' => (string) ($order->shipping_barangay_code ?? '')],
+        ]);
+        if (!$spx['ok']) {
+            return ['ok' => false, 'error' => self::unlistedMessage($spx['missing'], 'customer'), 'kind' => ServiceabilityVerdict::KIND_DESTINATION];
         }
-        if ($barangay === '') {
-            // SPX marks street mandatory for PH; fall back to the city name
-            // rather than failing bookings for orders with no barangay on
-            // file (pre-dates the PH barangay rollout).
-            $barangay = $city;
-        }
+        $at = $spx['location'];
         if ($address === '') {
             // detail_address mandatory; fall back to whatever granular text
             // we do have rather than sending an empty string.
@@ -1646,10 +1650,10 @@ class SpxFulfillment implements Courier
         }
 
         $info = [
-            'deliver_state'          => $state,
-            'deliver_city'           => $city,
-            'deliver_district'       => $district,
-            'deliver_street'         => $barangay,
+            'deliver_state'          => $at['state'],
+            'deliver_city'           => $at['city'],
+            'deliver_district'       => $at['district'],
+            'deliver_street'         => $at['street'],
             'deliver_post_code'      => $postCode,
             'deliver_name'           => trim($order->shipping_first_name . ' ' . $order->shipping_last_name) ?: 'Customer',
             'deliver_phone'          => $phone,
@@ -1664,7 +1668,42 @@ class SpxFulfillment implements Courier
             $info['deliver_instruction'] = mb_substr($instruction, 0, 256);
         }
 
-        return ['ok' => true, 'info' => $info];
+        return ['ok' => true, 'info' => $info, 'flags' => $spx['flags']];
+    }
+
+    private function locations(): SpxLocations
+    {
+        return app(SpxLocations::class);
+    }
+
+    /** "SPX doesn't list the customer's barangay." — the level SpxLocations could not place, and whose address. */
+    private static function unlistedMessage(string $level, string $whose): string
+    {
+        return "SPX doesn't list the {$whose}'s {$level}.";
+    }
+
+    /**
+     * The SPX location flags this booking needs: delivery (and COD delivery
+     * when COD) at the customer's barangay, pickup (and COD pickup when COD)
+     * at the sender's when the parcel is collected rather than dropped off.
+     *
+     * @return array{error:string, kind:string}|null
+     */
+    private static function supportRefusal(string $senderFlags, string $deliverFlags, bool $cod, bool $pickup): ?array
+    {
+        $checks = [
+            [$deliverFlags, SpxLocations::DELIVER, true, "SPX doesn't deliver to this barangay.", ServiceabilityVerdict::KIND_DESTINATION],
+            [$deliverFlags, SpxLocations::COD_DELIVER, $cod, "SPX doesn't collect COD in this barangay.", ServiceabilityVerdict::KIND_COD],
+            [$senderFlags, SpxLocations::PICKUP, $pickup, "SPX doesn't pick up from the sender's barangay.", ServiceabilityVerdict::KIND_ORIGIN],
+            [$senderFlags, SpxLocations::COD_PICKUP, $pickup && $cod, "SPX doesn't pick up COD parcels from the sender's barangay.", ServiceabilityVerdict::KIND_ORIGIN],
+        ];
+        foreach ($checks as [$flags, $flag, $needed, $error, $kind]) {
+            if ($needed && !SpxLocations::supports($flags, $flag)) {
+                return ['error' => $error, 'kind' => $kind];
+            }
+        }
+
+        return null;
     }
 
     /**

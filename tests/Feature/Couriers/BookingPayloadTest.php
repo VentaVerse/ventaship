@@ -5,7 +5,10 @@ namespace Tests\Feature\Couriers;
 use App\Couriers\AccountSettings;
 use App\Couriers\CourierOrder;
 use App\Couriers\CourierRegistry;
+use App\Couriers\PickupPoint;
 use App\Couriers\Spx\SpxFulfillment;
+use App\Couriers\Spx\SpxLocations;
+use App\Couriers\Support\ServiceabilityVerdict;
 use App\Models\CourierAccount;
 use App\Models\Shipment;
 use App\Shipments\CourierOptions;
@@ -219,6 +222,104 @@ class BookingPayloadTest extends TestCase
         );
     }
 
+    public function test_spx_sends_addresses_in_spx_location_hierarchy(): void
+    {
+        $this->fakeSpx();
+        $account = $this->spxAccount();
+
+        $shipment = $this->spxShipment($account, ['parcel' => ['type' => 'small', 'weight_kg' => 1]], [
+            'recipient' => ['district' => 'Ermita', 'barangay' => 'Barangay 659', 'city' => 'Manila', 'state' => 'Metro Manila', 'postcode' => '1000'] + $this->recipient(),
+            'pickup' => ['barangay' => 'Pinagbuhatan', 'city' => 'Pasig', 'postcode' => '1602'] + $this->pickupArray(),
+        ]);
+        $this->assertTrue($this->bookSpx($account, $shipment)['success']);
+
+        $order = Http::recorded(fn (Request $r) => str_contains($r->url(), 'batch_create_order'))->first()[0]->data()['orders'][0];
+        $this->assertSame(
+            ['Metro Manila', 'Metro Manila', 'Ermita', 'Barangay 659', '12 Mabini St'],
+            array_values(array_intersect_key($order['deliver_info'], array_flip(['deliver_state', 'deliver_city', 'deliver_district', 'deliver_street', 'deliver_detail_address']))),
+        );
+        $this->assertSame(
+            ['Metro Manila', 'Metro Manila', 'Pasig City', 'Pinagbuhatan'],
+            array_values(array_intersect_key($order['sender_info'], array_flip(['sender_state', 'sender_city', 'sender_district', 'sender_street']))),
+        );
+    }
+
+    public function test_spx_refuses_an_address_it_does_not_list_before_sending(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake();
+        $account = $this->spxAccount();
+        $parcel = ['parcel' => ['type' => 'small', 'weight_kg' => 1]];
+
+        $cases = [
+            "SPX doesn't list the customer's barangay." => [['barangay' => 'Barangay 99999'], []],
+            "SPX doesn't list the customer's city." => [['city' => "T'Boli", 'state' => 'South Cotabato', 'barangay' => 'Aflek'], []],
+            "SPX doesn't list the customer's province." => [['state' => 'Atlantis'], []],
+            "SPX doesn't list the sender's barangay." => [[], ['barangay' => 'Nowhere']],
+            "SPX doesn't deliver to this barangay." => [['state' => 'Antique', 'city' => 'Pandan', 'barangay' => 'Aracay'], []],
+        ];
+        $n = 0;
+        foreach ($cases as $message => [$to, $from]) {
+            $shipment = $this->spxShipment($account, $parcel, [
+                'courier_ref' => 'VS00050'.++$n,
+                'recipient' => $to + $this->recipient(),
+                'pickup' => $from + $this->pickupArray(),
+            ]);
+            $result = $this->bookSpx($account, $shipment);
+            $this->assertFalse($result['success'], $message);
+            $this->assertSame($message, $result['error']);
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_spx_refuses_cod_and_pickup_where_spx_does_not_offer_them(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake();
+        $dir = sys_get_temp_dir().'/spx-flags-'.bin2hex(random_bytes(4));
+        mkdir($dir);
+        file_put_contents("$dir/l.json", json_encode([
+            ['Visayas', 'Cebu', 'Cebu City', 'Lahug (Pob.)', '111000'],       // delivers, no COD delivery
+            ['Metro Manila', 'Metro Manila', 'Mandaluyong City', 'Wack-wack Greenhills', '011100'], // no pickup
+        ]));
+        $this->app->instance(SpxLocations::class, new SpxLocations("$dir/l.json", "$dir/c"));
+        $account = $this->spxAccount();
+        $slot = json_encode(['pickup_time' => 1767225600, 'pickup_time_range_id' => 1, 'pickup_time_range' => '09:00-12:00']);
+
+        $cod = $this->spxShipment($account, ['parcel' => ['type' => 'small', 'weight_kg' => 1]], [
+            'payment_method' => 'cod', 'total' => '500.00', 'cod_amount' => '500.00',
+        ]);
+        $this->assertSame("SPX doesn't collect COD in this barangay.", $this->bookSpx($account, $cod)['error']);
+
+        $pickup = $this->spxShipment($account, ['parcel' => ['type' => 'small', 'weight_kg' => 1], 'pickup_slot' => $slot], ['courier_ref' => 'VS000601']);
+        $this->assertSame("SPX doesn't pick up from the sender's barangay.", $this->bookSpx($account, $pickup)['error']);
+
+        // The same sender is fine for a drop-off.
+        $courier = new SpxFulfillment($account->fresh(), AccountSettings::for($account));
+        $verdict = $courier->checkServiceability(CourierOrder::fromApi($cod), PickupPoint::fromArray($this->pickupArray()));
+        $this->assertSame(ServiceabilityVerdict::KIND_COD, $verdict->toArray()['kind']);
+        Http::assertNothingSent();
+
+        array_map('unlink', [...glob("$dir/c/*"), "$dir/l.json"]);
+        rmdir("$dir/c");
+        rmdir($dir);
+    }
+
+    public function test_spx_serviceability_refuses_an_unlisted_destination_without_asking(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake();
+        $account = $this->spxAccount();
+        $shipment = $this->spxShipment($account, [], ['recipient' => ['barangay' => 'Barangay 99999'] + $this->recipient()]);
+
+        $courier = new SpxFulfillment($account->fresh(), AccountSettings::for($account));
+        $verdict = $courier->checkServiceability(CourierOrder::fromApi($shipment), PickupPoint::fromArray($this->pickupArray()));
+
+        $this->assertSame(ServiceabilityVerdict::KIND_DESTINATION, $verdict->toArray()['kind']);
+        $this->assertTrue($verdict->isRefusal());
+        Http::assertNothingSent();
+    }
+
     // --- LBC -------------------------------------------------------------------
 
     public function test_lbc_cod_declared_at_least_cod_amount(): void
@@ -366,7 +467,7 @@ class BookingPayloadTest extends TestCase
     {
         return [
             'first_name' => 'Juan', 'last_name' => 'Dela Cruz', 'phone' => '09171234567',
-            'address_1' => '12 Mabini St', 'barangay' => 'Lahug', 'city' => 'Cebu City', 'state' => 'Cebu',
+            'address_1' => '12 Mabini St', 'barangay' => 'Lahug (Pob.)', 'city' => 'Cebu City', 'state' => 'Cebu',
             'postcode' => '6000', 'country' => 'PH',
         ];
     }
@@ -375,7 +476,7 @@ class BookingPayloadTest extends TestCase
     {
         return [
             'contact_name' => 'Juan Shop', 'contact_phone' => '09181234567', 'address_1' => '5 Shaw Blvd',
-            'barangay' => 'Wack-Wack', 'city' => 'Mandaluyong', 'state' => 'Metro Manila', 'postcode' => '1550', 'country' => 'PH',
+            'barangay' => 'Wack-wack Greenhills', 'city' => 'Mandaluyong', 'state' => 'Metro Manila', 'postcode' => '1550', 'country' => 'PH',
         ];
     }
 }

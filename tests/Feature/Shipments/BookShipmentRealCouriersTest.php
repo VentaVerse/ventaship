@@ -203,12 +203,12 @@ class BookShipmentRealCouriersTest extends TestCase
             'payment_method' => 'prepaid',
             'pickup' => [
                 'contact_name' => 'Juan Shop', 'contact_phone' => '09181234567', 'address_1' => '5 Shaw Blvd',
-                'barangay' => 'Wack-Wack', 'city' => 'Mandaluyong', 'state' => 'Metro Manila', 'postcode' => '1550',
+                'barangay' => 'Wack-wack Greenhills', 'city' => 'Mandaluyong', 'state' => 'Metro Manila', 'postcode' => '1550',
                 'country' => 'PH', 'codes' => [],
             ],
             'recipient' => [
                 'first_name' => 'Jane', 'last_name' => 'Doe', 'phone' => '09171234567', 'address_1' => '123 Mango St',
-                'barangay' => 'Lahug', 'city' => 'Cebu City', 'state' => 'Cebu', 'postcode' => '6000', 'country' => 'PH',
+                'barangay' => 'Lahug (Pob.)', 'city' => 'Cebu City', 'state' => 'Cebu', 'postcode' => '6000', 'country' => 'PH',
                 'codes' => [],
             ],
             'items' => [['name' => 'Blue Tee', 'quantity' => 1, 'price' => '500.00']],

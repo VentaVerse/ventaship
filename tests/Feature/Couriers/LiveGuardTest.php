@@ -227,7 +227,7 @@ class LiveGuardTest extends TestCase
             'courier_ref' => 'VS000777',
             'recipient' => [
                 'first_name' => 'Jane', 'last_name' => 'Doe', 'phone' => '09171234567', 'address_1' => '123 Mango St',
-                'barangay' => 'Lahug', 'city' => 'Cebu City', 'state' => 'Cebu', 'postcode' => '6000', 'country' => 'PH',
+                'barangay' => 'Lahug (Pob.)', 'city' => 'Cebu City', 'state' => 'Cebu', 'postcode' => '6000', 'country' => 'PH',
             ],
         ]);
 

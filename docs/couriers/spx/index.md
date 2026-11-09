@@ -65,3 +65,20 @@ Note: the nav also has an "Announcement" tab alongside "Guide" and "API" — it 
 - `guide.md` — all 12 Guide sections, verbatim
 - `api.md` — all 15 API endpoints, verbatim (method, URL, headers, request/response params, types, enums, example JSON)
 - `integration-brief.md` — short technical brief distilled from the above, for consumption by the integration plan
+
+## Address hierarchy (verified live against UAT, 2026-11-09)
+
+SPX's four address levels are **not** the PSGC levels Ventaship stores. A booking sent with PSGC levels in SPX's fields failed with `NotSupportDeliverAddressErrorCode`.
+
+| SPX field | What it holds | Example |
+|---|---|---|
+| `*_state` | Island group / region bucket: `Metro Manila`, `North Luzon`, `South Luzon`, `Visayas`, `Mindanao` | `Visayas` |
+| `*_city` | Province (`Metro Manila` for NCR) | `Antique` |
+| `*_district` | City / municipality; for the City of Manila, its sub-district | `Pandan`, `Pasig City`, `Las Pinas City`, `Ermita`, `Tondo I / Ii` |
+| `*_street` | Barangay | `Barangay 659` |
+
+VentaCart's successful UAT order: Metro Manila / Metro Manila / Ermita / Barangay 659. The UAT guide (`NSS OpenAPI UAT Order Creation Guide.pdf`) lists its lanes the same way.
+
+SPX's list is `SPX-basic_location-0805.xlsx` (42,217 rows, with Support Pickup / COD Pickup / Deliver / COD Deliver flags per barangay). `php artisan ventaship:spx-locations-compile [xlsx]` turns it into the committed `database/data/spx/locations.json` (`[state, city, district, street, flags]`, flags = six 0/1 digits in the sheet's column order). `App\Couriers\Spx\SpxLocations` places a stored PSGC address on a row of that list by normalized name (accents, "City of"/"City", punctuation, trailing parentheticals, a few province and municipality spelling aliases) and `SpxFulfillment` sends SPX's own spelling. An address SPX does not list, or a barangay whose flag says SPX does not deliver / collect COD / pick up there, is refused before anything is sent.
+
+Coverage against PSGC (41,954 barangays): 41,718 placed; 25 not placed because SPX has no T'Boli (South Cotabato); 211 barangays SPX does not list (including Cebu's San Fernando/San Francisco, whose barangays SPX appears to file under each other, and some Baguio/Laoag/Caloocan names). Of the placed ones, 4,795 have SPX's Deliver flag off. To refresh: save SPX's newer xlsx here (5.1 Get Address file download link), run the command, commit the JSON.
