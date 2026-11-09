@@ -69,6 +69,15 @@ class AuthenticationTest extends TestCase
         $this->bearerOnly($token)->assertOk()->assertJsonPath('app.id', $app->public_id);
     }
 
+    public function test_a_refused_call_logs_the_reason_the_client_was_given(): void
+    {
+        $this->apiJson('GET', '/api/v1/shipments/shp_missing')->assertStatus(404);
+        $this->assertSame('Not found', ApiRequest::query()->latest('id')->value('error'));
+
+        $this->apiJson('POST', '/api/v1/shipments', ['recipient' => []])->assertStatus(422);
+        $this->assertStringStartsWith('The request is invalid. ', (string) ApiRequest::query()->latest('id')->value('error'));
+    }
+
     public function test_missing_bearer_is_401_unauthorized(): void
     {
         $this->assertUnauthorized($this->getJson('/api/v1/ping'));

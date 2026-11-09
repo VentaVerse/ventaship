@@ -37,9 +37,28 @@ class LogApiRequest
             'status' => $response->getStatusCode(),
             'duration_ms' => $started === null ? null : (int) ((hrtime(true) - $started) / 1_000_000),
             'idempotency_key' => Str::limit((string) $request->header('Idempotency-Key'), 128, '') ?: null,
-            'error' => $request->attributes->get('api_error'),
+            'error' => $request->attributes->get('api_error') ?? $this->reason($response),
             'request_id' => $request->attributes->get('request_id'),
             'created_at' => now(),
         ]);
+    }
+
+    /**
+     * Why a refused or failed call failed, for the Logs tab: the API's own error body (what the client was told),
+     * plus the first field message on a 422. Never the request, never a stack trace.
+     */
+    private function reason(Response $response): ?string
+    {
+        if ($response->getStatusCode() < 400) {
+            return null;
+        }
+        $body = json_decode((string) $response->getContent(), true);
+        if (! is_array($body) || ! is_string($body['error'] ?? null)) {
+            return null;
+        }
+        $first = collect($body['errors'] ?? [])->flatten()->first(fn ($m) => is_string($m) && $m !== '');
+        $reason = $first !== null && $first !== $body['error'] ? $body['error'].' '.$first : $body['error'];
+
+        return Str::limit($reason, 255, '');
     }
 }
