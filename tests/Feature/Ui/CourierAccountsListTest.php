@@ -59,19 +59,26 @@ class CourierAccountsListTest extends TestCase
             ->assertSee('Checked')->assertSee('Nov 9, 2:14 PM');
     }
 
-    public function test_show_without_account_offers_mode_and_set_up(): void
+    public function test_show_without_account_offers_the_form_straight_away(): void
     {
-        $this->actingAs($this->admin())->get(route('accounts.show', 'spx'))->assertOk()
-            ->assertSee('SPX')->assertSee('Sandbox')->assertSee('Production')->assertSee('Set up')
-            ->assertDontSee('UAT')->assertDontSee('Staging')->assertDontSee('Test connection')->assertDontSee('keys');
+        $html = $this->actingAs($this->admin())->get(route('accounts.show', 'spx'))->assertOk()
+            ->assertSee('SPX')->assertSee('Sandbox')->assertSee('Production')->assertSee('Sandbox keys')->assertSee('App Secret')
+            ->assertSee('Booking defaults')->assertSee('Save and test')
+            ->assertDontSee('UAT')->assertDontSee('Staging')->assertDontSee('Test connection')->assertDontSee('>Set up<', false)
+            ->assertDontSee('Webhook')
+            ->getContent();
+        $this->assertStringContainsString('action="'.route('accounts.update', 'spx').'"', $html);
+        $this->assertMatchesRegularExpression('/value="sandbox"[^>]*checked/', $html);
+        $this->assertStringContainsString('name="secrets[spx_sandbox_secret_key]"', $html);
+        $this->assertFalse(Route::has('accounts.setup'));
     }
 
-    public function test_setup_creates_default_account_named_after_courier(): void
+    public function test_first_save_creates_default_account_named_after_courier(): void
     {
         $admin = $this->admin();
 
-        $this->actingAs($admin)->post(route('accounts.setup', 'quadx'), ['mode' => 'sandbox'])
-            ->assertRedirect(route('accounts.show', 'quadx'))->assertSessionHas('status', 'Ready');
+        $this->actingAs($admin)->put(route('accounts.update', 'quadx'), ['mode' => 'sandbox'])
+            ->assertRedirect(route('accounts.show', 'quadx'))->assertSessionHas('status', 'Saved');
 
         $account = CourierAccount::query()->firstOrFail();
         $this->assertSame('QuadX', $account->label);
@@ -80,38 +87,41 @@ class CourierAccountsListTest extends TestCase
         $audit = AuditEntry::query()->where('action', 'courier_account.created')->firstOrFail();
         $this->assertSame((string) $admin->id, $audit->actor_id);
 
-        // A second set up is refused.
-        $this->post(route('accounts.setup', 'quadx'), ['mode' => 'production'])->assertSessionHasErrors('mode');
+        // A second save updates the one account.
+        $this->put(route('accounts.update', 'quadx'), ['mode' => 'production'])->assertSessionHas('status', 'Saved');
         $this->assertSame(1, CourierAccount::query()->count());
+        $this->assertSame('production', $account->fresh()->mode);
 
-        $this->post(route('accounts.setup', 'spx'), ['mode' => 'sandbox'])->assertRedirect();
+        $this->put(route('accounts.update', 'spx'), ['mode' => 'sandbox'])->assertRedirect();
         $this->assertSame('sandbox', CourierAccount::query()->where('courier', 'spx')->value('mode'));
         foreach (['uat', 'staging'] as $old) {
-            $this->post(route('accounts.setup', 'lbc'), ['mode' => $old])->assertSessionHasErrors('mode');
+            $this->put(route('accounts.update', 'lbc'), ['mode' => $old])->assertSessionHasErrors('mode');
         }
         $this->assertNull(CourierAccount::query()->where('courier', 'lbc')->first());
     }
 
-    public function test_setup_refuses_cleanly_while_locked_and_keeps_mode(): void
+    public function test_first_save_refuses_cleanly_while_locked_and_keeps_mode(): void
     {
         $lock = Cache::lock('courier-setup:spx', 10);
         $this->assertTrue($lock->get());
 
         $this->actingAs($this->admin())->from(route('accounts.show', 'spx'))
-            ->post(route('accounts.setup', 'spx'), ['mode' => 'sandbox'])
+            ->put(route('accounts.update', 'spx'), ['mode' => 'sandbox', 'secrets' => ['spx_sandbox_secret_key' => 'typed-secret-0001']])
             ->assertRedirect(route('accounts.show', 'spx'))->assertSessionHasErrors('mode')
             ->assertSessionHasInput('mode', 'sandbox');
         $this->assertSame(0, CourierAccount::query()->count());
+        $this->assertFalse(session()->hasOldInput('secrets'));
+        $this->assertStringNotContainsString('typed-secret-0001', json_encode(session()->all()));
         $lock->release();
     }
 
-    public function test_setup_failure_leaves_no_account(): void
+    public function test_first_save_failure_leaves_no_account(): void
     {
         $this->partialMock(CourierAccounts::class, function ($m) {
             $m->shouldReceive('create')->andThrow(new CourierAccountException('nope'));
         });
 
-        $this->actingAs($this->admin())->post(route('accounts.setup', 'spx'), ['mode' => 'sandbox'])->assertSessionHasErrors('mode');
+        $this->actingAs($this->admin())->put(route('accounts.update', 'spx'), ['mode' => 'sandbox'])->assertSessionHasErrors('mode');
         $this->assertSame(0, CourierAccount::query()->withTrashed()->count());
         $this->assertTrue(Cache::lock('courier-setup:spx', 5)->get());
     }

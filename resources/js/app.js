@@ -1,5 +1,6 @@
 import './bootstrap';
 import Alpine from 'alpinejs';
+import { accountForm, accountHeader } from './accountForm';
 import { copyFeedback } from './copyFeedback';
 import { copyText } from './copyText';
 import { bulkSelect } from './bulkSelect';
@@ -12,6 +13,10 @@ import { rowMenu } from './rowMenu';
 import { shipmentForm } from './shipmentForm';
 
 Alpine.data('confirmDialog', () => confirmDialog());
+
+Alpine.data('accountForm', (config) => accountForm(config));
+
+Alpine.data('accountHeader', (config) => accountHeader(config));
 
 Alpine.data('shipmentForm', (config) => shipmentForm(config));
 
@@ -192,12 +197,17 @@ Alpine.data('credentialField', (config) => ({
         }
     },
 
-    hide() {
+    // `restore` (the Hide button): focus goes to View, which takes the hidden button's place. The 30 s timer passes
+    // nothing, so it never moves the focus.
+    hide(restore = false) {
         if (this.state !== 'viewing') {
             return;
         }
         this.rest();
         this.announce('Hidden');
+        if (restore) {
+            this.$nextTick(() => this.$refs.viewButton?.focus());
+        }
     },
 
     edit() {
@@ -212,8 +222,11 @@ Alpine.data('credentialField', (config) => ({
         this.$nextTick(() => this.$refs.input.focus());
     },
 
+    // Back to masked; focus goes to Edit, which takes Cancel's place. The form re-checks what is unsaved.
     cancel() {
         this.rest();
+        this.$dispatch('credential-reset');
+        this.$nextTick(() => this.$refs.editButton?.focus());
     },
 }));
 

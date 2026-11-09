@@ -112,10 +112,15 @@
         letter-spacing: 0;
     }
 
+    .ac-unsaved {
+        color: var(--bl-attn);
+        font: 600 12px/1 var(--font-sans);
+    }
+
     .ac-seg {
         display: inline-flex;
         justify-self: start;
-        border: 1px solid var(--bl-rule-2);
+        border: 1px solid var(--bl-field-edge);
         border-radius: 11px;
         overflow: hidden;
     }
@@ -139,7 +144,7 @@
     }
 
     .ac-seg__opt + .ac-seg__opt {
-        border-left: 1px solid var(--bl-rule-2);
+        border-left: 1px solid var(--bl-field-edge);
     }
 
     .ac-seg__input {
@@ -158,14 +163,19 @@
         display: inline-flex;
     }
 
+    /* The selected option is a solid fill (≥3:1 against the unselected one), not a tint. */
     .ac-seg__opt:has(.ac-seg__input:checked) {
-        background: var(--bl-brand-w);
-        color: var(--bl-brand-link);
+        background: var(--bl-brand-btn);
+        color: #fff;
     }
 
     .ac-seg__opt:has(.ac-seg__input:focus-visible) {
         outline: 2px solid var(--bl-brand);
-        outline-offset: -2px;
+        outline-offset: -4px;
+    }
+
+    .ac-seg__opt:has(.ac-seg__input:checked:focus-visible) {
+        outline-color: #fff;
     }
 
     @media (max-width: 640px) {
@@ -220,6 +230,43 @@
     .ac-cred__input--url {
         flex-basis: 320px;
         max-width: 520px;
+    }
+
+    /* View, Hide and Copy at one width (Copy is as wide as "Couldn't copy"). */
+    .ac-cred__acts--even {
+        display: inline-grid;
+        grid-auto-columns: minmax(0, 1fr);
+        grid-auto-flow: column;
+    }
+
+    .ac-cred__acts--even .x-btn {
+        justify-content: center;
+    }
+
+    .ac-page .ac-json {
+        max-width: 520px;
+        min-height: 0;
+        height: auto;
+        padding-top: 9px;
+        padding-bottom: 9px;
+        font: 500 12px/1.5 var(--font-mono);
+        white-space: pre;
+        overflow-x: auto;
+        resize: vertical;
+    }
+
+    /* Phones: every control on the page is a 44px target. */
+    @media (max-width: 640px) {
+        .ac-page .st-ctl,
+        .ac-page .x-input,
+        .ac-page .x-select-wrap,
+        .ac-page .x-select-wrap select {
+            min-height: 44px;
+        }
+
+        .ac-page .ac-json {
+            max-width: none;
+        }
     }
 
     .ac-blocks-wrap {

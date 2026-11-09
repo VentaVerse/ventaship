@@ -8,12 +8,13 @@ use App\Couriers\CourierAccounts;
 use App\Couriers\CourierRegistry;
 use App\Couriers\TrackingNumbers\TrackingNumberSeriesService;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Ui\SaveCourierAccountRequest;
 use App\Models\CourierAccount;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class CourierAccountsController extends Controller
@@ -27,39 +28,26 @@ class CourierAccountsController extends Controller
         ]);
     }
 
-    public function setup(Request $request, string $courier, CourierAccounts $accounts): RedirectResponse
-    {
-        abort_unless(CourierRegistry::has($courier), 404);
-        $data = $request->validate(['mode' => ['required', 'string', Rule::in(CourierAccounts::ENVIRONMENTS)]]);
-
-        try {
-            $accounts->setUp($courier, $data['mode'], ['type' => 'admin', 'id' => $request->user()->getAuthIdentifier(), 'ip' => $request->ip()]);
-        } catch (CourierAccountException $e) {
-            return back()->withInput()->withErrors(['mode' => $e->getMessage()]);
-        }
-
-        return redirect(route('accounts.show', $courier))->with('status', 'Ready');
-    }
-
+    /**
+     * The account page. A courier without an account shows the same form (the toggle on Sandbox, that environment's
+     * keys, booking defaults); its first Save creates the account. The webhook address and LBC number blocks need the
+     * account, so they appear after that.
+     */
     public function show(string $courier, CourierAccounts $accounts): View
     {
         $account = $accounts->forCourier($courier);
-        if ($account === null) {
-            return view('accounts.show', ['courier' => $courier, 'account' => null]);
-        }
-
-        $settings = AccountSettings::for($account);
-        $withValue = fn (array $f) => $f + ['value' => $settings->read($f['key'])];
-        $plain = $accounts->plainFields($account);
+        $settings = $account ? AccountSettings::for($account) : null;
+        $withValue = fn (array $f) => $f + ['value' => $settings?->read($f['key'])];
+        $plain = $accounts->plainFields($account ?? $courier);
 
         return view('accounts.show', [
             'courier' => $courier,
             'account' => $account,
             'accountFields' => array_map($withValue, array_values(array_filter($plain, fn (array $f) => ($f['section'] ?? null) === 'account'))),
             'fields' => array_map($withValue, array_values(array_filter($plain, fn (array $f) => ($f['section'] ?? null) !== 'account'))),
-            'environments' => $this->environments($account, $accounts, $settings),
-            'webhook' => $accounts->webhookAddress($account, true),
-            'blocks' => $account->courier === 'lbc' ? app(TrackingNumberSeriesService::class)->blockRows($account) : null,
+            'environments' => $this->environments($courier, $account, $accounts, $settings),
+            'webhook' => $account ? $accounts->webhookAddress($account, true) : null,
+            'blocks' => $account?->courier === 'lbc' ? app(TrackingNumberSeriesService::class)->blockRows($account) : null,
         ]);
     }
 
@@ -68,18 +56,46 @@ class CourierAccountsController extends Controller
         return $accounts->forCourier($courier) ?? abort(404);
     }
 
-    public function update(Request $request, string $courier, CourierAccounts $accounts): RedirectResponse
+    /**
+     * Save, and Save and test (`after=test`). With no account yet, the first save creates it (CourierAccounts::setUp:
+     * one default account named after the courier, under the set-up lock) and stores the keys in the same
+     * transaction, so a refused value leaves no account behind.
+     */
+    public function update(SaveCourierAccountRequest $request, string $courier, CourierAccounts $accounts): RedirectResponse
     {
-        $account = $this->account($courier, $accounts);
-        $data = $request->validate([
-            'mode' => ['required', 'string', Rule::in(CourierAccounts::ENVIRONMENTS)],
-            'settings' => ['nullable', 'array'],
-            'settings.*' => ['nullable', 'string'],
-            'secrets' => ['nullable', 'array'],
-            'secrets.*' => ['nullable', 'string', 'max:' . CourierAccounts::MAX_VALUE_LENGTH],
-        ]);
-
+        abort_unless(CourierRegistry::has($courier), 404);
+        $data = $request->validated();
         $actor = ['type' => 'admin', 'id' => $request->user()->getAuthIdentifier(), 'ip' => $request->ip()];
+        $save = fn (CourierAccount $account) => $this->save($account, $data, $accounts, $actor);
+
+        try {
+            $account = $accounts->forCourier($courier);
+            if ($account === null) {
+                $account = $accounts->setUp($courier, $data['mode'], $actor, $save);
+            } else {
+                DB::transaction(fn () => $save($account));
+            }
+        } catch (ValidationException $e) {
+            return back()->withInput($request->except('secrets'))->withErrors($e->errors());
+        } catch (CourierAccountException $e) {
+            // Set up refused (another set up running, or the account appeared meanwhile).
+            return back()->withInput($request->except('secrets'))->withErrors(['mode' => $e->getMessage()]);
+        }
+
+        return $request->wantsTest()
+            ? $this->testResult($courier, $accounts->test($account), 'Saved')
+            : redirect(route('accounts.show', $courier))->with('status', 'Saved');
+    }
+
+    /**
+     * Writes the environment, the changed plain settings and the typed secrets. Every refusal is collected and thrown
+     * together as a ValidationException, which rolls the caller's transaction back.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array{type: string, id: mixed, ip: ?string}  $actor
+     */
+    private function save(CourierAccount $account, array $data, CourierAccounts $accounts, array $actor): void
+    {
         $errors = [];
         $attempt = function (string $field, callable $do) use (&$errors): void {
             try {
@@ -89,53 +105,59 @@ class CourierAccountsController extends Controller
             }
         };
 
-        DB::beginTransaction();
-        try {
-            $attempt('mode', fn () => $accounts->setMode($account, $data['mode'], $actor));
+        $attempt('mode', fn () => $accounts->setMode($account, $data['mode'], $actor));
 
-            // Plain fields only: booking defaults, account details and both environments' plain IDs. Secrets have
-            // their own masked controls below.
-            $current = AccountSettings::for($account);
-            $plain = array_column(array_filter($accounts->schema($account), fn (array $f) => ! CourierAccounts::isSecretField($f)), 'key');
-            foreach ($data['settings'] ?? [] as $key => $value) {
-                if (! in_array($key, $plain, true)) {
-                    continue;
-                }
-                $value = trim((string) $value);
-                $stored = (string) $current->read($key, '');
-                if ($value === $stored) {
-                    continue;
-                }
-                $attempt("settings.{$key}", fn () => $value === ''
-                    ? $accounts->clearSetting($account, $key, $actor)
-                    : $accounts->setSetting($account, $key, $value, $actor));
+        // Plain fields only: booking defaults, account details and both environments' plain IDs. Secrets have their own
+        // masked controls below.
+        $current = AccountSettings::for($account);
+        $plain = collect($accounts->schema($account))->reject(fn (array $f) => CourierAccounts::isSecretField($f))->keyBy('key');
+        foreach ($data['settings'] ?? [] as $key => $value) {
+            $field = $plain->get($key);
+            if ($field === null) {
+                continue;
             }
-
-            // Only an edited key arrives (an untouched masked field has no name); blanks and anything that is not one of
-            // this courier's encrypted keys are ignored.
-            $secretKeys = array_column($this->secretFields($account, $accounts), 'key');
-            foreach ($data['secrets'] ?? [] as $key => $value) {
-                $value = trim((string) $value);
-                if ($value === '' || ! in_array($key, $secretKeys, true) || $value === $current->secret($key)) {
-                    continue;
-                }
-                $attempt("secrets.{$key}", fn () => $accounts->setSetting($account, $key, $value, $actor));
+            $value = trim((string) $value);
+            if ($this->unchanged($field, $value, (string) $current->read($key, ''))) {
+                continue;
             }
-        } catch (\Throwable $e) {
-            DB::rollBack();
+            $attempt("settings.{$key}", fn () => $value === ''
+                ? $accounts->clearSetting($account, $key, $actor)
+                : $accounts->setSetting($account, $key, $value, $actor));
+        }
 
-            throw $e;
+        // A saved secret's input has a name only while it is being edited; an unset secret is an empty input that is
+        // always posted. Blanks and anything that is not one of this courier's encrypted keys are ignored.
+        $secretKeys = array_column($this->secretFields($account, $accounts), 'key');
+        foreach ($data['secrets'] ?? [] as $key => $value) {
+            $value = trim((string) $value);
+            if ($value === '' || ! in_array($key, $secretKeys, true) || $value === $current->secret($key)) {
+                continue;
+            }
+            $attempt("secrets.{$key}", fn () => $accounts->setSetting($account, $key, $value, $actor));
         }
 
         if ($errors !== []) {
-            DB::rollBack();
-
-            return back()->withInput($request->except('secrets'))->withErrors($errors);
+            throw ValidationException::withMessages($errors);
         }
+    }
 
-        DB::commit();
+    /**
+     * Whether a posted plain value is what is stored. A JSON setting is compared in its compact form, so the
+     * pretty-printed code box posted back unchanged writes nothing.
+     *
+     * @param  array<string, mixed>  $field
+     */
+    private function unchanged(array $field, string $value, string $stored): bool
+    {
+        if ($value === $stored) {
+            return true;
+        }
+        if (($field['type'] ?? null) !== 'json' || $value === '' || $stored === '') {
+            return false;
+        }
+        $posted = CourierAccounts::canonicalJson($value);
 
-        return redirect(route('accounts.show', $courier))->with('status', 'Saved');
+        return $posted !== null && $posted === CourierAccounts::canonicalJson($stored);
     }
 
     /** One stored secret, for the View button. Throttled per admin by the route; audited with the key name only. */
@@ -172,28 +194,42 @@ class CourierAccountsController extends Controller
 
     public function test(string $courier, CourierAccounts $accounts): RedirectResponse
     {
-        $account = $this->account($courier, $accounts);
-        $result = $accounts->test($account);
-        $back = redirect(route('accounts.show', $courier));
+        return $this->testResult($courier, $accounts->test($this->account($courier, $accounts)));
+    }
 
-        return $result['ok']
-            ? $back->with('status', 'Connected')
-            : $back->withErrors(['test' => 'Check failed: ' . $result['message']]);
+    /**
+     * A connection check's answer, as Test connection shows it. After a save the status says so too.
+     *
+     * @param  array{ok: bool, message: string}  $result
+     */
+    private function testResult(string $courier, array $result, ?string $saved = null): RedirectResponse
+    {
+        $back = redirect(route('accounts.show', $courier));
+        if ($result['ok']) {
+            return $back->with('status', $saved ? $saved . ' · Connected' : 'Connected');
+        }
+        if ($saved) {
+            $back->with('status', $saved);
+        }
+
+        return $back->withErrors(['test' => 'Check failed: ' . $result['message']]);
     }
 
     /**
      * Both environments' credentials, in schema order. A secret carries its length and last 4 characters only; a
-     * plain field (SPX's App ID and User ID) its value.
+     * plain field (SPX's App ID and User ID) its value. Without an account every value is empty.
      *
      * @return array<string, array<int, array{key: string, label: string, secret: bool, masked?: ?array{length: int, last4: string}, value?: ?string}>>
      */
-    private function environments(CourierAccount $account, CourierAccounts $accounts, AccountSettings $settings): array
+    private function environments(string $courier, ?CourierAccount $account, CourierAccounts $accounts, ?AccountSettings $settings): array
     {
         $groups = [];
         foreach (CourierAccounts::ENVIRONMENTS as $env) {
             $groups[$env] = array_map(fn (array $f) => ['key' => $f['key'], 'label' => (string) ($f['label'] ?? $f['key']), 'secret' => CourierAccounts::isSecretField($f)]
-                + (CourierAccounts::isSecretField($f) ? ['masked' => $accounts->masked($account, $f['key'])] : ['value' => $settings->read($f['key'])]),
-                $accounts->environmentFields($account, $env));
+                + (CourierAccounts::isSecretField($f)
+                    ? ['masked' => $account ? $accounts->masked($account, $f['key']) : null]
+                    : ['value' => $settings?->read($f['key'])]),
+                $accounts->environmentFields($account ?? $courier, $env));
         }
 
         return $groups;

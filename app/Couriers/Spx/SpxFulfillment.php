@@ -1349,10 +1349,10 @@ class SpxFulfillment implements Courier
      * its live one); the account's environment picks the set. On/off is the
      * account's status, so it is not a setting.
      *
-     * spx_pouch_presets has no first-class JSON/structured field type in
-     * this interface yet, so it's declared as `type: 'text'` holding a raw
-     * JSON string of `{label,length_cm,width_cm,height_cm,max_weight_kg}`
-     * objects (see DEFAULT_POUCH_PRESETS above for the shape and defaults).
+     * spx_pouch_presets is `type: 'json'`: a JSON string of
+     * `{label,length_cm,width_cm,height_cm,max_weight_kg}` objects (see
+     * DEFAULT_POUCH_PRESETS above for the shape and defaults). It is checked
+     * as JSON and stored compact; the admin screen shows it in a code box.
      */
     public function settingsSchema(): array
     {
@@ -1368,8 +1368,8 @@ class SpxFulfillment implements Courier
             ...$credentials,
             [
                 'key'   => 'spx_pouch_presets',
-                'label' => 'Pouch presets (JSON)',
-                'type'  => 'text',
+                'label' => 'Pouch presets',
+                'type'  => 'json',
                 'help'  => 'JSON array of {label, length_cm, width_cm, height_cm, max_weight_kg}. '
                     . 'Defaults: Small 25×20×10cm/3kg, Medium 35×25×15cm/5kg, Large 45×35×20cm/10kg.',
             ],

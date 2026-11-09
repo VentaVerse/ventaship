@@ -87,11 +87,12 @@ class CourierAccounts
     }
 
     /**
-     * The one account for a courier, named after it and default. Refuses when the courier already has one.
+     * The one account for a courier, named after it and default. Refuses when the courier already has one. $then
+     * runs inside the same lock and transaction with the new account (the admin screen's first save).
      *
      * @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor
      */
-    public function setUp(string $courier, string $mode, ?array $actor = null): CourierAccount
+    public function setUp(string $courier, string $mode, ?array $actor = null, ?callable $then = null): CourierAccount
     {
         if (! CourierRegistry::has($courier)) {
             throw new CourierAccountException('Unknown courier. Available: '.implode(', ', CourierRegistry::keys()).'.');
@@ -107,13 +108,19 @@ class CourierAccounts
         }
 
         try {
-            return DB::transaction(function () use ($courier, $mode, $actor) {
+            return DB::transaction(function () use ($courier, $mode, $actor, $then) {
                 // Trashed accounts do not count, as in forCourier().
                 if (CourierAccount::query()->where('courier', $courier)->lockForUpdate()->exists()) {
                     throw new CourierAccountException('This courier already has an account.');
                 }
 
-                return $this->create($courier, Couriers::name($courier), $mode, true, $actor);
+                $account = $this->create($courier, Couriers::name($courier), $mode, true, $actor);
+                // The first save's keys and settings: anything thrown here rolls the new account back too.
+                if ($then !== null) {
+                    $then($account);
+                }
+
+                return $account;
             });
         } finally {
             $lock->release();
@@ -138,7 +145,7 @@ class CourierAccounts
      *
      * @return array<int, array<string, mixed>>
      */
-    public function plainFields(CourierAccount $account): array
+    public function plainFields(CourierAccount|string $account): array
     {
         return array_values(array_filter(
             $this->schema($account),
@@ -151,7 +158,7 @@ class CourierAccounts
      *
      * @return array<int, array<string, mixed>>
      */
-    public function environmentFields(CourierAccount $account, string $environment): array
+    public function environmentFields(CourierAccount|string $account, string $environment): array
     {
         return array_values(array_filter($this->schema($account), fn (array $f) => ($f['mode_scoped'] ?? null) === $environment));
     }
@@ -184,6 +191,10 @@ class CourierAccounts
 
         if ($value === '') {
             throw new CourierAccountException('A value is required.');
+        }
+        // JSON is stored compact, so its length is checked after it is reformatted.
+        if (($field['type'] ?? null) === 'json') {
+            $value = self::canonicalJson($value) ?? throw new CourierAccountException('Enter valid JSON.');
         }
         if (mb_strlen($value) > self::MAX_VALUE_LENGTH) {
             throw new CourierAccountException('The value is too long.');
@@ -307,13 +318,29 @@ class CourierAccounts
     }
 
     /** The settings schema for this account's courier. @return array<int, array<string, mixed>> */
-    public function schema(CourierAccount $account): array
+    public function schema(CourierAccount|string $courier): array
     {
-        if (! CourierRegistry::has((string) $account->courier)) {
+        $courier = $courier instanceof CourierAccount ? (string) $courier->courier : $courier;
+        if (! CourierRegistry::has($courier)) {
             throw new CourierAccountException('No such account.');
         }
 
-        return $this->schemas[$account->courier] ??= CourierRegistry::describe($account->courier)->settingsSchema();
+        return $this->schemas[$courier] ??= CourierRegistry::describe($courier)->settingsSchema();
+    }
+
+    /**
+     * A JSON setting's value in one canonical compact form, or null when it is not valid JSON. Objects stay objects
+     * (`{}` is not turned into `[]`).
+     */
+    public static function canonicalJson(string $value): ?string
+    {
+        try {
+            $decoded = json_decode($value, false, 64, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
+        }
+
+        return json_encode($decoded, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION) ?: null;
     }
 
     /** @return array{ok: bool, message: string} A `transport` flag in the courier's result means no answer arrived. */

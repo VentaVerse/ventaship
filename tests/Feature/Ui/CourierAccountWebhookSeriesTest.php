@@ -41,11 +41,12 @@ class CourierAccountWebhookSeriesTest extends TestCase
         $s = $this->account('spx');
 
         $this->actingAs($this->admin())->get(route('accounts.show', $q->courier))->assertOk()
-            ->assertSee('Address for QuadX')
+            ->assertSee('for="f-webhook-url"', false)->assertDontSee('Address for')
+            ->assertSee('aria-label="Copy Webhook Address"', false)
             ->assertSee(self::BASE.'/webhooks/quadx?token=••••••••••••••••', false)
             ->assertDontSee('Public address');
         $this->get(route('accounts.show', $s->courier))->assertOk()
-            ->assertSee('Address for SPX')
+            ->assertSee('for="f-webhook-url"', false)->assertDontSee('Address for SPX')
             ->assertSee(self::BASE.'/webhooks/spx/••••••••••••••••', false);
     }
 
@@ -55,7 +56,7 @@ class CourierAccountWebhookSeriesTest extends TestCase
         $a = $this->account();
 
         $this->actingAs($this->admin())->get(route('accounts.show', $a->courier))->assertOk()
-            ->assertDontSee('Address for QuadX')->assertDontSee('Set address')->assertDontSee('token=');
+            ->assertDontSee('Webhook')->assertDontSee('Set address')->assertDontSee('token=');
         $this->postJson(route('accounts.reveal', [$a->courier, 'webhook_url']))->assertNotFound();
     }
 

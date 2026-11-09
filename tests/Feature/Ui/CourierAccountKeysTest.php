@@ -232,20 +232,27 @@ class CourierAccountKeysTest extends TestCase
 
         $qx = $this->withKeys($this->account());
         $html = $this->actingAs($admin)->get(route('accounts.show', $qx->courier))->assertOk()
-            ->assertSee('Sandbox keys')->assertSee('Production keys')->assertSee('Not set')
+            ->assertSee('Sandbox keys')->assertSee('Production keys')
             ->getContent();
         $this->assertDoesNotMatchRegularExpression('/data-keys="sandbox"[^>]*\shidden[\s>]/', $html);
         $this->assertMatchesRegularExpression('/data-keys="production"[^>]*\shidden[\s>]/', $html);
         $this->assertSame(2, substr_count($html, 'x-model="env"'));
         $this->assertMatchesRegularExpression('/data-env-badge[^>]*>(?:\s|<[^>]+>)*Sandbox/', $html);
-        foreach (['View Sandbox API Key', 'Edit Sandbox API Key', 'Hide Sandbox API Key', 'Cancel Sandbox API Key', 'Edit Production Secret Key', 'Cancel Production Secret Key'] as $label) {
+        foreach (['View Sandbox API Key', 'Edit Sandbox API Key', 'Hide Sandbox API Key', 'Cancel Sandbox API Key', 'View Production API Key', 'Edit Production API Key'] as $label) {
             $this->assertStringContainsString('aria-label="' . $label . '"', $html);
         }
-        $this->assertStringNotContainsString('aria-label="View Production Secret Key"', $html); // not set: Edit only
+        // Not set: an empty input ready to type, no badge, no View or Edit.
+        foreach (['View Production Secret Key', 'Edit Production Secret Key', 'Cancel Production Secret Key'] as $label) {
+            $this->assertStringNotContainsString('aria-label="' . $label . '"', $html);
+        }
+        $this->assertMatchesRegularExpression('/<input type="text"[^>]*id="f-key-quadx_production_secret_key"[^>]*name="secrets\[quadx_production_secret_key\]"[^>]*value=""/', $html);
+        $this->assertStringNotContainsString('ac-cred__unset', $html);
+        $this->assertDoesNotMatchRegularExpression('/x-badge__label">\s*Not set\s*</', $html);
         $this->assertSame(1, substr_count($html, 'aria-live="polite"'));
         $this->assertStringContainsString(route('accounts.reveal', [$qx->courier, 'quadx_sandbox_api_key']), stripslashes(stripslashes($html)));
-        // Untouched fields post nothing: no secrets[] name is rendered by the server.
-        $this->assertStringNotContainsString('name="secrets[', $html);
+        // A saved key's field posts nothing until it is edited: the server renders no name for it.
+        $this->assertStringNotContainsString('name="secrets[quadx_sandbox_api_key]"', $html);
+        $this->assertStringNotContainsString('name="secrets[quadx_production_api_key]"', $html);
         $this->assertStringNotContainsString('name="settings[quadx_sandbox_api_key]"', $html);
         foreach (['Staging', 'UAT', 'Live', 'Allow live', 'Default for', '>Active<', 'Public address'] as $gone) {
             $this->assertStringNotContainsString($gone, $html);
@@ -256,14 +263,15 @@ class CourierAccountKeysTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/data-keys="production"[^>]*\shidden[\s>]/', $html);
         $this->assertMatchesRegularExpression('/data-keys="sandbox"[^>]*\shidden[\s>]/', $html);
         $this->assertMatchesRegularExpression('/data-env-badge[^>]*>(?:\s|<[^>]+>)*Production/', $html);
-        $this->assertStringContainsString('aria-label="Edit Production Common API key"', $html);
-        $this->assertStringContainsString('aria-label="Edit Sandbox Common API key"', $html);
+        $this->assertStringContainsString('name="secrets[lbc_production_common_key]"', $html);
+        $this->assertStringContainsString('name="secrets[lbc_sandbox_common_key]"', $html);
+        $this->assertStringNotContainsString('aria-label="Edit Production Common API key"', $html);
 
         $spx = $this->account('spx', ['mode' => 'sandbox']);
         AccountSettings::for($spx)->write('spx_sandbox_app_id', '424242');
         $html = $this->get(route('accounts.show', $spx->courier))->assertOk()->assertSee('App Secret')->assertSee('User Secret')->getContent();
         $this->assertMatchesRegularExpression('/data-keys="production"[^>]*\shidden[\s>]/', $html);
-        $this->assertStringContainsString('aria-label="Edit Sandbox App Secret"', $html);
+        $this->assertStringContainsString('name="secrets[spx_sandbox_secret_key]"', $html);
         $this->assertMatchesRegularExpression('/name="settings\[spx_sandbox_app_id\]"[^>]*value="424242"|value="424242"[^>]*name="settings\[spx_sandbox_app_id\]"/', $html);
         foreach (['spx_sandbox_user_id', 'spx_production_app_id', 'spx_production_user_id'] as $key) {
             $this->assertStringContainsString('name="settings[' . $key . ']"', $html);
@@ -277,7 +285,9 @@ class CourierAccountKeysTest extends TestCase
         $html = $this->actingAs($this->admin())->get(route('accounts.show', $qx->courier))->assertOk()->getContent();
 
         $this->assertStringContainsString('id="account-save-confirmed"', $html);
-        $this->assertStringContainsString("\$dispatch('confirm'", $html);
+        $this->assertMatchesRegularExpression('/<button type="submit" id="account-save-test-confirmed" name="after" value="test" hidden/', $html);
+        $this->assertStringContainsString('x-data="accountForm(', $html);
+        $this->assertStringContainsString('x-on:submit="submit($event)"', $html);
         $this->assertStringContainsString('Switch QuadX to Production? Bookings will be real.', $html);
         $this->assertStringContainsString('Switch to Production', $html);
         $this->assertStringNotContainsString('confirm(', str_replace(["dispatch('confirm'", 'x-ui.confirm'], '', $html));

@@ -56,7 +56,6 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::prefix('accounts/{courier}')->where(['courier' => 'quadx|spx|lbc'])->group(function () {
         Route::get('/', [CourierAccountsController::class, 'show'])->name('accounts.show');
         Route::put('/', [CourierAccountsController::class, 'update'])->name('accounts.update');
-        Route::post('setup', [CourierAccountsController::class, 'setup'])->name('accounts.setup');
         Route::post('test', [CourierAccountsController::class, 'test'])->name('accounts.test');
         Route::post('series', [CourierAccountsController::class, 'series'])->name('accounts.series');
         Route::post('secrets/{key}/reveal', [CourierAccountsController::class, 'reveal'])
