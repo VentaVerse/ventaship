@@ -1,6 +1,5 @@
 @extends('layouts.app')
 
-@section('width', 'wide')
 @section('title', $editing ? 'Edit shipment' : 'Add shipment')
 
 @section('crumb')

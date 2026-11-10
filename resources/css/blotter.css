@@ -76,9 +76,8 @@
     --bl-control-h: 34px;
     --bl-control-h-sm: 28px;
     --bl-gutter: 30px;
-    --bl-content-max: 1240px;
-    --bl-form-max: 880px;
-    --bl-wide-max: 1120px;
+    /* The one content column of every app page (title, tabs and cards share its left edge and width). */
+    --bl-page-max: 1060px;
 }
 
 [data-theme='dark'] {

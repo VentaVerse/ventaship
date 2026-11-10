@@ -335,7 +335,7 @@ class ShipmentFormRedesignTest extends TestCase
         $this->assertStringContainsString('Declared value', $html);
         $this->assertStringContainsString('name="recipient[codes][city]"', $html);
         $this->assertMatchesRegularExpression('/<aside class="sh-summary".*Book shipment/s', $html);
-        $this->assertMatchesRegularExpression('/<main[^>]*class="x-content x-content--wide"/', $html);
+        $this->assertMatchesRegularExpression('/<main[^>]*class="x-content"/', $html);
     }
 
     public function test_array_value_is_refused_not_a_500(): void

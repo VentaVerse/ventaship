@@ -9,6 +9,7 @@ use App\Models\Shipment;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
+/** Every app page sits in one centered content column: same left edge and width for title, tabs and cards. */
 class LayoutWidthTest extends TestCase
 {
     use RefreshDatabase;
@@ -23,31 +24,27 @@ class LayoutWidthTest extends TestCase
         return (string) file_get_contents(resource_path('css/'.$file));
     }
 
-    public function test_width_tokens_exist(): void
+    public function test_one_page_width_token(): void
     {
         $tokens = $this->css('blotter.css');
-        $this->assertStringContainsString('--bl-content-max: 1240px;', $tokens);
-        $this->assertStringContainsString('--bl-form-max: 880px;', $tokens);
-    }
-
-    public function test_content_is_capped_and_centered(): void
-    {
-        $css = $this->css('blotter-components.css');
-        $this->assertMatchesRegularExpression('/\.x-content\s*\{[^}]*max-width:\s*var\(--bl-content-max\);[^}]*margin-inline:\s*auto;/s', $css);
-        $this->assertMatchesRegularExpression('/\.x-content--form\s*\{[^}]*max-width:\s*var\(--bl-form-max\);/s', $css);
-        $this->assertStringNotContainsString('1600px', $css);
-    }
-
-    public function test_list_pages_use_the_default_width(): void
-    {
-        $this->signIn();
-        foreach (['/', '/accounts'] as $url) {
-            $html = $this->get($url)->assertOk()->getContent();
-            $this->assertMatchesRegularExpression('/<main[^>]*class="x-content"/', $html, $url);
+        $this->assertStringContainsString('--bl-page-max: 1060px;', $tokens);
+        foreach (['--bl-content-max', '--bl-form-max', '--bl-wide-max'] as $gone) {
+            $this->assertStringNotContainsString($gone, $tokens);
         }
     }
 
-    public function test_form_pages_use_the_form_width(): void
+    public function test_content_column_is_capped_and_centered_with_no_variants(): void
+    {
+        $css = $this->css('blotter-components.css');
+        $this->assertMatchesRegularExpression('/\.x-content\s*\{[^}]*max-width:\s*calc\(var\(--bl-page-max\) \+ 2 \* var\(--bl-gutter\)\);[^}]*margin-inline:\s*auto;/s', $css);
+        $this->assertStringNotContainsString('x-content--', $css);
+
+        // No page-level panel narrows the column.
+        $this->assertStringNotContainsString('.ac-list', $this->css('pages/accounts.css'));
+        $this->assertStringNotContainsString('.ac-form', $this->css('pages/accounts.css'));
+    }
+
+    public function test_every_page_renders_the_single_page_width_class(): void
     {
         $this->signIn();
         $account = CourierAccount::factory()->create(['courier' => 'quadx', 'status' => 'active']);
@@ -58,17 +55,23 @@ class LayoutWidthTest extends TestCase
         ]);
 
         $urls = [
-            '/settings',
+            '/',
+            '/addresses',
+            route('addresses.pickup.create'),
+            route('addresses.customers.create'),
+            '/accounts',
             route('accounts.show', $account->courier),
+            '/developers',
+            '/settings',
+            '/settings?tab=jobs',
+            '/settings?tab=account',
+            route('shipments.create'),
+            route('shipments.show', $shipment),
         ];
         foreach ($urls as $url) {
             $html = $this->get($url)->assertOk()->getContent();
-            $this->assertMatchesRegularExpression('/<main[^>]*class="x-content x-content--form"/', $html, $url);
+            $this->assertMatchesRegularExpression('/<main id="main" tabindex="-1" class="x-content">/', $html, $url);
+            $this->assertStringNotContainsString('x-content--', $html, $url);
         }
-
-        // Add shipment carries its own summary column, and the shipment page has two columns, so both get the wider wrapper.
-        $this->assertMatchesRegularExpression('/<main[^>]*class="x-content x-content--wide"/', $this->get(route('shipments.create'))->getContent());
-        $this->assertMatchesRegularExpression('/<main[^>]*class="x-content x-content--wide"/', $this->get(route('shipments.show', $shipment))->getContent());
-        $this->assertMatchesRegularExpression('/\.x-content--wide\s*\{[^}]*max-width:\s*var\(--bl-wide-max\);/s', $this->css('blotter-components.css'));
     }
 }

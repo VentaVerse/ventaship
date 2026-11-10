@@ -21,7 +21,6 @@
     $copy = fn (string $value) => ['url' => null, 'value' => $value, 'mask' => $value, 'isSet' => true, 'name' => null];
 @endphp
 
-@section('width', 'wide')
 @section('doc_title', $title.' · Shipment')
 @section('title', $title)
 

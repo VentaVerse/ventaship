@@ -234,17 +234,9 @@
     }
 
     .x-content {
-        max-width: var(--bl-content-max);
+        max-width: calc(var(--bl-page-max) + 2 * var(--bl-gutter));
         margin-inline: auto;
         padding: 22px var(--bl-gutter) 40px;
-    }
-
-    .x-content--form {
-        max-width: var(--bl-form-max);
-    }
-
-    .x-content--wide {
-        max-width: var(--bl-wide-max);
     }
 
     .x-page {

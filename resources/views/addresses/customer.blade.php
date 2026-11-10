@@ -1,6 +1,5 @@
 @extends('layouts.app')
 
-@section('width', 'form')
 @section('title', $customer ? 'Edit customer' : 'Add customer')
 @section('crumb')<a href="{{ route('addresses.index', ['tab' => 'customers']) }}">Addresses</a>@endsection
 

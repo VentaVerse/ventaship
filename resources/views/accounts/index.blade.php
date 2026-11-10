@@ -9,7 +9,7 @@
     $envWords = ['sandbox' => 'Sandbox', 'production' => 'Production'];
 @endphp
 
-<section class="x-panel ac-list ac-page" aria-label="Couriers">
+<section class="x-panel ac-page" aria-label="Couriers">
     <ul class="ac-rows" role="list">
         @foreach($rows as $row)
             @php

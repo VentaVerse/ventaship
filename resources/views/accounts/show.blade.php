@@ -20,7 +20,6 @@
     $header = ['env' => $env, 'saved' => $saved, 'check' => $check, 'unsaved' => $unsaved];
 @endphp
 
-@section('width', 'form')
 @section('title', $name)
 
 @section('title_lead')<x-courier-tile :courier="$courier" class="ac-title-tile" />@endsection
