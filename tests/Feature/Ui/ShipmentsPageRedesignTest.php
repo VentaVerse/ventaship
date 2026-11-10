@@ -31,7 +31,7 @@ class ShipmentsPageRedesignTest extends TestCase
         $this->admin = Admin::query()->create(['name' => 'Ana', 'email' => 'ana@example.com', 'password' => 'correct-horse-battery']);
         $this->actingAs($this->admin);
         $this->account = CourierAccount::factory()->create(['courier' => 'quadx', 'label' => 'QuadX', 'mode' => 'sandbox', 'last_check_ok' => true]);
-        $this->client = ClientApp::factory()->create(['name' => 'Pedallion']);
+        $this->client = ClientApp::factory()->create(['name' => 'Demo Store']);
     }
 
     protected function tearDown(): void
@@ -128,11 +128,11 @@ class ShipmentsPageRedesignTest extends TestCase
     public function test_search_by_reference_and_tracking(): void
     {
         $a = $this->ship('draft', ['client_reference' => 'ORD-77812', 'active_reference' => 'ORD-77812', 'recipient' => ['first_name' => 'Ann', 'last_name' => 'One']]);
-        $b = $this->ship('booked', ['tracking_number' => 'QX55501234', 'recipient' => ['first_name' => 'Ben', 'last_name' => 'Two']]);
+        $b = $this->ship('booked', ['tracking_number' => 'QX10000001', 'recipient' => ['first_name' => 'Ben', 'last_name' => 'Two']]);
 
         $this->get('/?q=77812')->assertOk()->assertSeeText('Ann One')->assertDontSeeText('Ben Two');
-        $this->get('/?q=qx555')->assertOk()->assertSeeText('Ben Two')->assertDontSeeText('Ann One');
-        $this->get('/?q='.urlencode('  QX55501234  '))->assertOk()->assertSeeText('Ben Two');
+        $this->get('/?q=qx1000000')->assertOk()->assertSeeText('Ben Two')->assertDontSeeText('Ann One');
+        $this->get('/?q='.urlencode('  QX10000001  '))->assertOk()->assertSeeText('Ben Two');
     }
 
     public function test_search_like_wildcards_are_literal(): void
@@ -229,13 +229,13 @@ class ShipmentsPageRedesignTest extends TestCase
     public function test_row_shows_meta_line_and_cod_under_amount_and_no_prepaid_badge(): void
     {
         $this->ship('booked', [
-            'client_reference' => '84251967', 'active_reference' => '84251967', 'items_count' => 2,
+            'client_reference' => '10001234', 'active_reference' => '10001234', 'items_count' => 2,
             'payment_method' => 'cod', 'payment_state' => 'cod_unpaid', 'cod_amount' => '980.00', 'total' => '980.00',
         ]);
         $this->ship('booked', ['payment_method' => 'prepaid', 'payment_state' => null, 'total' => '500.00']);
 
         $html = $this->get('/')->assertOk()
-            ->assertSeeText(['84251967', 'Pedallion', '2 items', '₱980.00', 'COD', '₱500.00'])
+            ->assertSeeText(['10001234', 'Demo Store', '2 items', '₱980.00', 'COD', '₱500.00'])
             ->assertDontSeeText('Prepaid')
             ->getContent();
         $this->assertStringNotContainsString('COD · Unpaid', $html);
@@ -319,13 +319,13 @@ class ShipmentsPageRedesignTest extends TestCase
     public function test_labels_json_courier_failure_reason(): void
     {
         CourierRegistry::fake('quadx', FakeCourier::make('quadx')->labelAnswer(['success' => false, 'error' => 'nope']));
-        $s = $this->ship('booked', ['tracking_number' => 'QX87743566', 'recipient' => ['first_name' => 'Everardo', 'last_name' => 'Beahan']]);
+        $s = $this->ship('booked', ['tracking_number' => 'QX10000002', 'recipient' => ['first_name' => 'Everardo', 'last_name' => 'Beahan']]);
 
         $this->postJson('/shipments/labels', ['ids' => [$s->public_id]])->assertOk()
             ->assertJsonPath('ok', [])
             ->assertJsonPath('url', null)
             ->assertJsonPath('failed.0.name', 'Everardo Beahan')
-            ->assertJsonPath('failed.0.tracking', 'QX87743566')
+            ->assertJsonPath('failed.0.tracking', 'QX10000002')
             ->assertJsonPath('failed.0.reason', "QuadX didn't return the waybill. Try again in a minute.");
     }
 

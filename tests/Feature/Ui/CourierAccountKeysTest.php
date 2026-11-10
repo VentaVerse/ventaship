@@ -19,7 +19,7 @@ class CourierAccountKeysTest extends TestCase
 
     private const STAGING_KEY = 'sk_stg_8Hq2LmZ0wXv93KpT7c1f';
 
-    private const LIVE_KEY = 'pk_live_Zr4Nw8Yq1Tx6Vb2Mm0aa9d2e';
+    private const LIVE_KEY = 'fake-production-key-Zr4Nw8Yq9d2e';
 
     protected function setUp(): void
     {

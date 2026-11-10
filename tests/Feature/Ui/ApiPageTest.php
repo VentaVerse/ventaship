@@ -124,18 +124,18 @@ class ApiPageTest extends TestCase
 
     public function test_card_controls_are_named_per_key_and_labelled(): void
     {
-        $app = ClientApp::factory()->create(['name' => 'Pedallion', 'webhook_url' => 'https://a.test/h']);
+        $app = ClientApp::factory()->create(['name' => 'Demo Store', 'webhook_url' => 'https://a.test/h']);
         $key = app(PlatformApps::class)->issueKey($app, 'K')['key'];
         $this->actingAs($this->admin());
 
         $html = $this->get(route('developers.index'))->assertOk()->getContent();
-        $this->assertStringContainsString('aria-label="Send test webhook Pedallion"', $html);
-        $this->assertStringContainsString('aria-label="Save webhook URL Pedallion"', $html);
+        $this->assertStringContainsString('aria-label="Send test webhook Demo Store"', $html);
+        $this->assertStringContainsString('aria-label="Save webhook URL Demo Store"', $html);
         $this->assertStringContainsString('<label class="api-row__label" for="f-token-'.$key->id.'">API key</label>', $html);
         $this->assertStringContainsString('id="f-token-'.$key->id.'"', $html);
         $this->assertStringContainsString('<label class="api-row__label" for="f-secret-'.$app->public_id.'">Webhook secret</label>', $html);
         $this->assertStringContainsString('id="f-secret-'.$app->public_id.'"', $html);
-        foreach (['View API key Pedallion', 'Hide API key Pedallion', 'Copy API key Pedallion', 'View Webhook secret Pedallion', 'Hide Webhook secret Pedallion'] as $name) {
+        foreach (['View API key Demo Store', 'Hide API key Demo Store', 'Copy API key Demo Store', 'View Webhook secret Demo Store', 'Hide Webhook secret Demo Store'] as $name) {
             $this->assertSame(1, substr_count($html, 'aria-label="'.$name.'"'), $name);
         }
         // View hands focus to Hide and back; the 30-second countdown shows beside them while shown.
