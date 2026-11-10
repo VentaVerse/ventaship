@@ -22,7 +22,7 @@
     <aside class="x-side" id="x-nav" :class="{ 'is-open': nav }" @keydown.escape.window="closeNav()">
         <div class="x-side__head">
             <a class="x-logo" href="{{ Route::has('fulfillment') ? route('fulfillment') : url('/') }}">
-                <img class="x-logo__img" src="{{ asset('brand/ventaship-logo-dark.png') }}" alt="Ventaship" width="108" height="34">
+                <img class="x-logo__img" src="{{ asset('brand/ventaship-logo-dark.png') }}" alt="Ventaship" width="133" height="42">
             </a>
             <button type="button" class="x-side__close" x-ref="navClose" @click="closeNav()" aria-label="Close navigation">
                 <x-ui.icon name="x" size="16" />
