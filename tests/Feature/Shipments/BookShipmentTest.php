@@ -131,7 +131,7 @@ class BookShipmentTest extends TestCase
         $s->refresh();
         $this->assertSame('unknown', $s->state);
         $this->assertTrue($s->needs_attention);
-        $this->assertSame('Booking outcome unknown — check the courier portal before retrying', $s->attention_reason);
+        $this->assertSame('Booking outcome unknown. Check the courier portal before retrying', $s->attention_reason);
         $this->assertSame('4211', $s->active_reference, 'an unknown booking keeps its reference');
         $this->assertSame(0, DB::table('jobs')->count(), 'not released back onto the queue');
         $this->assertSame(0, DB::table('failed_jobs')->count(), 'handled, not rethrown');

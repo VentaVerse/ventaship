@@ -19,14 +19,14 @@ use Throwable;
  */
 final class Canceller
 {
-    public const OUTCOME_UNKNOWN_REASON = 'Cancel outcome unknown — check the courier portal';
+    public const OUTCOME_UNKNOWN_REASON = 'Cancel outcome unknown. Check the courier portal';
 
-    public const UNKNOWN_BOOKING_REASON = 'Cancel requested while the booking outcome is unknown — resolve the booking first';
+    public const UNKNOWN_BOOKING_REASON = 'Cancel requested while the booking outcome is unknown. Resolve the booking first';
 
-    public const NOT_PREPARED_REASON = 'Cancel could not be prepared — check the account settings';
+    public const NOT_PREPARED_REASON = 'Cancel could not be prepared. Check the account settings';
 
     /** Set by the sweep on a booked shipment whose requested cancel never reached the courier. */
-    public const STUCK_REASON = 'Cancel request stuck — check and retry';
+    public const STUCK_REASON = 'Cancel request stuck. Check and retry';
 
     private const REASON_MAX = 255;
 
@@ -195,7 +195,7 @@ final class Canceller
             $account = $s->courierAccount;
             $courier = $account === null ? null : CourierRegistry::for($account);
             if ($courier === null) {
-                $this->cancelFailed($s, 'refused', 'This shipment\'s courier account no longer exists — cancel it at the courier portal');
+                $this->cancelFailed($s, 'refused', 'This shipment\'s courier account no longer exists. Cancel it at the courier portal');
 
                 return false;
             }

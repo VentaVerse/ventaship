@@ -13,7 +13,7 @@ namespace App\Couriers\Support;
  * shared bucket; this class gives each bucket one shared colour, so the
  * queue reads as ONE system no matter which courier a row belongs to.
  *
- * TONE PHILOSOPHY, one rule, applied per phase — adapted verbatim from the
+ * TONE PHILOSOPHY, one rule, applied per phase, adapted verbatim from the
  * ERP's own App\Support\ChannelStatusTone (same rule, same wording, ported
  * from "per channel" to "per phase" now that Venta has a single spine
  * instead of one status vocabulary per marketplace):
@@ -21,22 +21,22 @@ namespace App\Couriers\Support;
  *   success  the operator's move, right now. This is the only tone that
  *            resolves to the accent colour, so it is the one thing the eye
  *            lands on when a hundred rows are on screen. Spend it nowhere
- *            else — only `to_pack` (go pack/book the shipment) earns it.
- *   warning  waiting on someone the seller CAN chase — a parcel on its way
+ *            else, only `to_pack` (go pack/book the shipment) earns it.
+ *   warning  waiting on someone the seller CAN chase, a parcel on its way
  *            back (`returning`), or a buyer who hasn't paid yet (`unpaid`:
  *            the seller can follow up on a manual/reseller order sitting
  *            unpaid, the same "chaseable" reasoning as returning).
- *   info     waiting on someone the seller CANNOT chase — a courier
+ *   info     waiting on someone the seller CANNOT chase, a courier
  *            creating, holding, or carrying the shipment (`booking`,
  *            `to_handover`, `in_transit`).
  *   neutral  settled. A finished order should recede, which is why
  *            `delivered` is neutral and not the success tone: a page where
  *            "pack this now" and "delivered weeks ago" are the same colour
  *            has no signal left.
- *   danger   ended badly — cancellations, failed/lost/damaged deliveries
+ *   danger   ended badly, cancellations, failed/lost/damaged deliveries
  *            (`failed`, `cancelled`).
  *
- * An unrecognised phase resolves to neutral — unremarkable, never
+ * An unrecognised phase resolves to neutral, unremarkable, never
  * accidentally alarming or reassuring.
  */
 class PhaseTone

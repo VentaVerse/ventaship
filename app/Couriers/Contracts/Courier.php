@@ -9,11 +9,11 @@ use App\Couriers\Support\ServiceabilityVerdict;
 /**
  * Contract every courier module implements (QuadX, and future couriers).
  *
- * This is the FULFILLMENT side of shipping — booking a confirmed order with a
+ * This is the FULFILLMENT side of shipping, booking a confirmed order with a
  * courier from the dedicated Fulfillment admin page. It is deliberately
  * separate from checkout: Venta's checkout never calls a courier. The admin
  * UI and CourierRegistry only ever talk to this interface, never to a concrete
- * courier — so adding a new courier never changes any shared code.
+ * courier, so adding a new courier never changes any shared code.
  */
 interface Courier
 {
@@ -27,17 +27,17 @@ interface Courier
     public function isEnabled(): bool;
 
     /**
-     * Which of this courier's REQUIRED credential fields — the same fields
+     * Which of this courier's REQUIRED credential fields, the same fields
      * isEnabled() itself checks, e.g. SPX's App ID/App Secret pair, QuadX's
-     * API Key/Secret Key pair — are currently empty. isEnabled() only
+     * API Key/Secret Key pair, are currently empty. isEnabled() only
      * answers "configured or not" as one bool; this names WHICH fields are
-     * missing, so the booking modal's step 1 (CourierRegistry::flagged() —
+     * missing, so the booking modal's step 1 (CourierRegistry::flagged(),
      * couriers whose ENABLED FLAG is on regardless of credential
      * completeness) can render a specific, actionable message ("missing App
      * ID / App Secret") instead of a generic one.
      *
      * Empty array = fully configured. Says nothing about whether the
-     * enabled FLAG itself is on — that's flagged() vs isEnabled(), a
+     * enabled FLAG itself is on, that's flagged() vs isEnabled(), a
      * separate axis this method doesn't need to know about (a courier can
      * have zero configurationIssues() and still be flag-off, in which case
      * it's simply not in flagged() at all and this is never called for it
@@ -88,7 +88,7 @@ interface Courier
     public function cancelShipment(string $trackingNumber): array;
 
     /**
-     * Resolves an in-flight ASYNC shipment creation — a booking
+     * Resolves an in-flight ASYNC shipment creation, a booking
      * whose createShipment() returned success with courier_status='creating'
      * because the courier's own create call is a submit-then-poll flow (SPX's
      * batch_create_order -> get_order_create_result) that didn't finish
@@ -114,7 +114,7 @@ interface Courier
     public function getTracking(string $trackingNumber): array;
 
     /**
-     * Statuses considered final — the scheduled poll stops checking an order
+     * Statuses considered final, the scheduled poll stops checking an order
      * once it reaches one of these, so finished shipments aren't re-polled.
      * @return string[]
      */
@@ -143,12 +143,12 @@ interface Courier
      * the core order status's placement alone
      * (FulfillmentService::tabBucket()).
      *
-     * `to_pack` is deliberately NEVER returned here — "no booking exists
+     * `to_pack` is deliberately NEVER returned here, "no booking exists
      * yet" isn't a courier status, it's the absence of one, so it's the
      * caller's job (see FulfillmentService::phaseFor()) to short-circuit to
      * `to_pack` before ever calling this method with a null tracking
      * number. A synchronous courier (like QuadX, whose createShipment()
-     * always returns a status) never produces `booking` either — that
+     * always returns a status) never produces `booking` either, that
      * bucket exists for a courier whose booking creates asynchronously.
      *
      * Also returns the legacy 4-step happy-path stepper derivation for
@@ -166,10 +166,10 @@ interface Courier
 
     /**
      * Estimated shipping fee for booking this order with the given options
-     * (same shape as createShipment()'s $opts) — shown to the operator on the
+     * (same shape as createShipment()'s $opts), shown to the operator on the
      * booking modal BEFORE they commit, where a courier can quote one (SPX's
      * batch_check_order), with a QuadX-safe default: couriers with
-     * no quoting API return null and the UI simply renders no estimate slot —
+     * no quoting API return null and the UI simply renders no estimate slot,
      * "not supported" is silence, never a fake zero.
      *
      * @return object|null null = unsupported/unavailable; otherwise an object
@@ -227,12 +227,12 @@ interface Courier
      * `url` does NOT have to be the provider's own (possibly
      * perishable) link. A courier whose label link expires quickly and/or
      * has a limited open-count (SPX's AWB: valid 30 minutes, openable at
-     * most 10 times — api.md §1.6) MAY instead download+store the asset
+     * most 10 times, api.md §1.6) MAY instead download+store the asset
      * itself on first request and return the URL of THIS APP'S OWN
      * authenticated serving route, which streams the cached file on every
      * subsequent call without hitting the provider again. Same signature,
      * same `{success, url, error}` shape the caller (FulfillmentController::
-     * label(), which just redirects to `url`) already expects — nothing
+     * label(), which just redirects to `url`) already expects, nothing
      * downstream needs to know which strategy a given courier chose.
      */
     public function printLabel(string $trackingNumber, string $format): array;
@@ -250,12 +250,12 @@ interface Courier
      *
      * Each field is:
      *   key:          string   the literal setting key (conventionally
-     *                          prefixed with getKey(), e.g. 'quadx_mode') —
+     *                          prefixed with getKey(), e.g. 'quadx_mode'),
      *                          renamed keys break stored data, so once shipped
      *                          a key is effectively permanent.
      *   label:        string   form label.
      *   type:         string   'text'|'password'|'secret'|'select'|'toggle'.
-     *   options:      array    for type='select' only —
+     *   options:      array    for type='select' only,
      *                          array<int,array{value:string,label:string}>,
      *                          same shape as getServiceTypes()/getParcelOptions().
      *   encrypted:    bool     stored via AccountSettings::writeSecret()
@@ -282,11 +282,11 @@ interface Courier
 
     /**
      * Tracking URLs extracted from this order's courier_meta, in this
-     * courier's own shape — courier_meta is entirely provider-owned (QuadX
+     * courier's own shape, courier_meta is entirely provider-owned (QuadX
      * nests its links under a "delivery"/"pickup" pair at refresh time, or
      * buried inside booked_response's own tracking_links at booking time; a
      * different courier might store one flat url, or none at all). Returned
-     * in preference order (best/most useful link first) — the queue page
+     * in preference order (best/most useful link first), the queue page
      * loops this rather than parsing courier_meta's shape itself.
      *
      * @return array<int, array{label:string, url:string}>
@@ -295,7 +295,7 @@ interface Courier
 
     /**
      * Verify the currently saved credentials actually work by pinging the
-     * provider. Backs the settings page's "Test Connection" button only —
+     * provider. Backs the settings page's "Test Connection" button only,
      * never called on page load.
      *
      * @return array{ok:bool, message:string}
@@ -307,7 +307,7 @@ interface Courier
      * cache as this courier's "{key}_status_labels" setting (used to
      * humanize raw courier statuses in the queue view and to label the
      * settings page's status-mapping table). Backs the settings page's
-     * explicit "Refresh from {courier}" button only — never called on page
+     * explicit "Refresh from {courier}" button only, never called on page
      * load or on a schedule.
      *
      * @return array{ok:bool, labels?:array<string,string>, error?:string}

@@ -1649,7 +1649,7 @@ It only moves forward: `cod_unpaid → cod_collected → cod_remitted`, and `cod
 
 `POST /shipments` stores the shipment and answers `202` at once; a worker books it with the courier right after. Follow the result by webhook (`shipment.booked`, `shipment.booking_failed`, `shipment.unknown`), by `GET /shipments/{id}`, or by waiting in the create call itself with `?wait=N` (N ≤ 20 seconds).
 
-A shipment that has not started booking within 30 minutes (workers down) becomes `failed` with `error.code` `not_started`. One stuck in `booking` for more than 10 minutes becomes `unknown`, except an SPX shipment waiting for its tracking number (`courier_status` `creating`), which Ventaship keeps polling. One still `creating` after 6 hours stays `booking` but gets `needs_attention` ("SPX has not confirmed the booking after 6 hours — check the SPX portal"), cleared when SPX confirms it.
+A shipment that has not started booking within 30 minutes (workers down) becomes `failed` with `error.code` `not_started`. One stuck in `booking` for more than 10 minutes becomes `unknown`, except an SPX shipment waiting for its tracking number (`courier_status` `creating`), which Ventaship keeps polling. One still `creating` after 6 hours stays `booking` but gets `needs_attention` ("SPX has not confirmed the booking after 6 hours. Check the SPX portal"), cleared when SPX confirms it.
 
 ### 9.2 `client_reference`
 
@@ -1698,17 +1698,17 @@ What `POST /shipments/{id}/cancel` does, by the shipment's state when you ask:
 | `booked`, courier status still cancelable (or none yet) | `cancel_state` `requested`; Ventaship asks the courier | `202` | then one of the four below |
 | … the courier cancels | state `cancelled`, phase `cancelled`, COD → `cod_void`, reference freed | | `shipment.cancelled` |
 | … the courier refuses | `cancel_state` `refused`, `needs_attention`, state stays `booked` | | `shipment.cancel_failed` |
-| … the call fails or times out | `cancel_state` `failed`, `needs_attention` ("Cancel outcome unknown — check the courier portal"). Never retried | | `shipment.cancel_failed` |
+| … the call fails or times out | `cancel_state` `failed`, `needs_attention` ("Cancel outcome unknown. Check the courier portal"). Never retried | | `shipment.cancel_failed` |
 | `booked`, courier status no longer cancelable (e.g. picked up) | refused at once, the courier is not called; `needs_attention` | `200`, `cancel_state` `refused` | `shipment.cancel_failed` |
-| `booked`, its courier account deleted | refused at once: `cancel_state` `refused`, `needs_attention` ("This shipment's courier account no longer exists — cancel it at the courier portal") | `200` | `shipment.cancel_failed` |
-| `booked`, the cancel cannot be prepared (account settings unreadable) | `cancel_state` `failed`, `needs_attention` ("Cancel could not be prepared — check the account settings"); the courier is not called | `200` | `shipment.cancel_failed` |
+| `booked`, its courier account deleted | refused at once: `cancel_state` `refused`, `needs_attention` ("This shipment's courier account no longer exists. Cancel it at the courier portal") | `200` | `shipment.cancel_failed` |
+| `booked`, the cancel cannot be prepared (account settings unreadable) | `cancel_state` `failed`, `needs_attention` ("Cancel could not be prepared. Check the account settings"); the courier is not called | `200` | `shipment.cancel_failed` |
 | `booked` at **LBC** | LBC has no cancel API: `cancel_state` `unsupported`, `needs_attention`, `attention_reason` "LBC has no cancel API. Call LBC to void this booking." The shipment stays `booked` | `200` | `shipment.cancel_failed` |
 | `failed`, `cancelled` | nothing to do; returned unchanged | `200` | none |
 | any, with `cancel_state` already set | returned unchanged (a cancel is asked once) | `202` if `requested`, else `200` | none |
 
 Whatever the cancel did, a later courier report in phase `cancelled` settles the shipment (see [8.2](#82-phase)).
 
-A cancel left `requested` for more than 30 minutes on a booked shipment is flagged `needs_attention` ("Cancel request stuck — check and retry").
+A cancel left `requested` for more than 30 minutes on a booked shipment is flagged `needs_attention` ("Cancel request stuck. Check and retry").
 
 Cancelable courier statuses:
 

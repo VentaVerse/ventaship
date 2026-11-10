@@ -128,7 +128,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // createShipment — fast-complete path: payload shape + async resolution.
+    // createShipment, fast-complete path: payload shape + async resolution.
     // ------------------------------------------------------------------
 
     public function test_create_shipment_sends_the_documented_payload_shape_and_resolves_fast(): void
@@ -314,7 +314,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // createShipment — credential + address guards.
+    // createShipment, credential + address guards.
     // ------------------------------------------------------------------
 
     public function test_create_shipment_fails_clearly_without_user_credentials_and_never_calls_spx(): void
@@ -473,7 +473,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // createShipment — async pending path (bounded poll never completes).
+    // createShipment, async pending path (bounded poll never completes).
     // ------------------------------------------------------------------
 
     public function test_create_shipment_persists_creating_status_when_still_pending_after_bounded_poll(): void
@@ -528,7 +528,7 @@ class SpxFulfillmentTest extends TestCase
 
     /**
      * task_status 5 (Failed) is a SETTLED outcome,
-     * exactly as final as 4 (Done) — polling further gains nothing.
+     * exactly as final as 4 (Done), polling further gains nothing.
      * pollCreateResult() must stop at the FIRST poll that returns it
      * (asserted via the exact HTTP call count: 1 create + 1 poll, not the
      * full bounded 6), and createShipment() must report it as a failure
@@ -556,13 +556,13 @@ class SpxFulfillmentTest extends TestCase
 
         $this->assertFalse($result['success']);
         $this->assertStringContainsString('Failed', $result['error']);
-        // 1 create + exactly 1 poll — proves it stopped immediately rather
+        // 1 create + exactly 1 poll, proves it stopped immediately rather
         // than exhausting the full bounded backoff window.
         Http::assertSentCount(2);
     }
 
     // ------------------------------------------------------------------
-    // resolvePendingCreation — the courier:poll-status pending-creation pass.
+    // resolvePendingCreation, the courier:poll-status pending-creation pass.
     // ------------------------------------------------------------------
 
     public function test_resolve_pending_creation_returns_the_tracking_number_once_done(): void
@@ -817,7 +817,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // statusPhase — every code in api.md's order status table.
+    // statusPhase, every code in api.md's order status table.
     // ------------------------------------------------------------------
 
     public static function statusPhaseProvider(): array
@@ -840,7 +840,7 @@ class SpxFulfillmentTest extends TestCase
             '7001 Cancelled'        => ['7001', 'cancelled'],
             // The literal statuses the admin
             // Cancel action stamps (the shared cancel writes
-            // 'canceled' for every courier) bucket to cancelled too — an
+            // 'canceled' for every courier) bucket to cancelled too, an
             // admin-cancelled SPX order must not read as 'to_handover'
             // until the next poll overwrites it with 7001.
             'admin cancel literal'  => ['canceled', 'cancelled'],
@@ -979,7 +979,7 @@ class SpxFulfillmentTest extends TestCase
         $order = $this->makeOrder([], ['items' => [['name' => 'Guitar Strap', 'price' => 500, 'quantity' => 2]]]);
 
         // The exact JSON blob a chosen date option's `value` carries (see
-        // getPickupSlots()) — createShipment() must decode and forward it
+        // getPickupSlots()), createShipment() must decode and forward it
         // unchanged, same as before the date-collapse change.
         $pickupSlot = json_encode([
             'pickup_time'          => 1645088400,
@@ -1030,7 +1030,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // printLabel() — 1.6 Get AWB V2, download+store, serve cached.
+    // printLabel(), 1.6 Get AWB V2, download+store, serve cached.
     // ------------------------------------------------------------------
 
     private function makeSpxOrder(string $trackingNumber, ?int $batchNo = 207982800897461): Shipment
@@ -1044,7 +1044,7 @@ class SpxFulfillmentTest extends TestCase
 
     /**
      * The DOCUMENTED v2 endpoint must still short-circuit the whole flow when it settles on its
-     * first attempt — no v1 fallback call at all. Fakes ONLY the v2 URL
+     * first attempt, no v1 fallback call at all. Fakes ONLY the v2 URL
      * (not v1) so a v1 call, if one wrongly happened, would hit an
      * unfaked/default response and this test's exact-count assertion would
      * catch it.
@@ -1076,7 +1076,7 @@ class SpxFulfillmentTest extends TestCase
         $stored = Storage::disk('local')->get('labels/spx/SPEPH000000000001.pdf');
         $this->assertSame('%PDF-1.4 fake label bytes', $stored);
         // Only real PDF bytes ever get
-        // stored — this is the magic-number check's happy path.
+        // stored, this is the magic-number check's happy path.
         $this->assertTrue(str_starts_with($stored, '%PDF'));
 
         // Exactly two calls: v2 (settled immediately, short-circuiting
@@ -1147,7 +1147,7 @@ class SpxFulfillmentTest extends TestCase
         $this->assertTrue($first['success']);
         Http::assertSentCount(2);
 
-        // Second request: file already cached — zero additional HTTP calls,
+        // Second request: file already cached, zero additional HTTP calls,
         // same URL returned.
         $second = $courier->printLabel('SPEPH000000000005', 'zebra');
         $this->assertTrue($second['success']);
@@ -1156,7 +1156,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     /**
-     * api.md §1.6 — a cancelled order's AWB
+     * api.md §1.6, a cancelled order's AWB
      * cannot be printed. The guard must fire server-side AND before the
      * cache check: a PDF cached while the booking was live must not keep
      * serving after the shipment is cancelled (that AWB is void).
@@ -1227,11 +1227,11 @@ class SpxFulfillmentTest extends TestCase
     /**
      * v2 sits at task_status=3
      * ("Running") for BOTH short-window attempts, so the flow falls
-     * through to the v1 fallback — which, in THIS test, is EXPLICITLY
+     * through to the v1 fallback, which, in THIS test, is EXPLICITLY
      * faked to return a well-formed but unsettled array (`ret_code: 0`,
      * empty `data`: no `awb_link`/`fail_list`/`task_status`), so this
      * genuinely exercises the "v1 responded, but nothing in it settles"
-     * branch of pollLabelResult()/labelResultSettled(), hermetically — see
+     * branch of pollLabelResult()/labelResultSettled(), hermetically, see
      * this class's setUp() for why an unfaked URL is not an option
      * (without Http::preventStrayRequests() an unmatched v1 would fall
      * through to a REAL outbound call to SPX UAT). Neither phase ever settles -> printLabel must fail
@@ -1250,7 +1250,7 @@ class SpxFulfillmentTest extends TestCase
             ]),
             '*/v1/order/batch_get_shipping_label*' => Http::response([
                 'ret_code' => 0, 'message' => 'success.',
-                'data' => [], // well-formed, but no awb_link/fail_list/task_status — never settles.
+                'data' => [], // well-formed, but no awb_link/fail_list/task_status, never settles.
             ]),
         ]);
 
@@ -1258,7 +1258,7 @@ class SpxFulfillmentTest extends TestCase
 
         $this->assertFalse($result['success']);
         Storage::disk('local')->assertMissing('labels/spx/SPEPH000000000007.pdf');
-        // v2's SHORT window (2 attempts) + exactly ONE v1 fallback attempt —
+        // v2's SHORT window (2 attempts) + exactly ONE v1 fallback attempt,
         // never the original ~15s/6-attempt window.
         Http::assertSentCount(3);
     }
@@ -1266,8 +1266,8 @@ class SpxFulfillmentTest extends TestCase
     /**
      * THE core scenario: v2 (the
      * DOCUMENTED endpoint) reliably sits at `task_status: 3` ("Running",
-     * `progress: "0.00%"`) indefinitely on real UAT — live-probed 8+
-     * minutes with no change — so after its short window elapses without
+     * `progress: "0.00%"`) indefinitely on real UAT, live-probed 8+
+     * minutes with no change, so after its short window elapses without
      * settling, pollLabelResult() falls through to the UNDOCUMENTED v1
      * endpoint (absent from api.md; batch_no + tracking_no_list), which
      * live-probing found returns `{awb_link, fail_list}` SYNCHRONOUSLY.
@@ -1284,12 +1284,12 @@ class SpxFulfillmentTest extends TestCase
         Http::fake([
             '*/v2/order/batch_get_shipping_label*' => Http::response([
                 'ret_code' => 0, 'message' => 'success.',
-                // v2 never settles — exactly the live-probed stall.
+                // v2 never settles, exactly the live-probed stall.
                 'data' => ['batch_no' => 207982800897461, 'task_status' => 3, 'description' => 'Running', 'progress' => '0.00%'],
             ]),
             '*/v1/order/batch_get_shipping_label*' => Http::response([
                 'ret_code' => 0, 'message' => 'success.',
-                // No `task_status` key at all — exactly what the
+                // No `task_status` key at all, exactly what the
                 // undocumented v1 fallback returns on real UAT.
                 'data' => [
                     'awb_link' => 'https://test-stable.spx.ph/downloads/resource/shipping_label/uat.pdf?access_token=abc',
@@ -1308,7 +1308,7 @@ class SpxFulfillmentTest extends TestCase
         // v2's short window (2 attempts) + the v1 fallback call + the PDF download.
         Http::assertSentCount(4);
         // The v1 fallback carries batch_no AND tracking_no_list (unlike v2,
-        // which only ever sends batch_no) — proves the tracking number is
+        // which only ever sends batch_no), proves the tracking number is
         // actually threaded through, not just the batch_no.
         Http::assertSent(function ($request) {
             if (!str_contains($request->url(), '/v1/order/batch_get_shipping_label')) {
@@ -1323,7 +1323,7 @@ class SpxFulfillmentTest extends TestCase
 
     /**
      * Observed on UAT: a per-tracking-number entry in `fail_list` is a
-     * definitive failure to stop on immediately — reached here via the v1
+     * definitive failure to stop on immediately, reached here via the v1
      * fallback (the endpoint that actually returns fail_list on UAT),
      * after v2's short window stalls at Running exactly as in the success
      * case above.
@@ -1359,13 +1359,13 @@ class SpxFulfillmentTest extends TestCase
     }
 
     /**
-     * A well-formed SpxApiException (SPX rejecting the request itself — bad
+     * A well-formed SpxApiException (SPX rejecting the request itself, bad
      * batch_no, auth, etc.) must not be swallowed by the poll's generic
      * `catch (\Throwable)`, which would produce the same misleading "still
      * in progress" message as a genuinely pending label. It must surface
      * the actual SPX error instead. v2 throws immediately (no
      * pointless 2nd v2 attempt against the same batch_no), the v1 fallback
-     * is still given its own chance — and, faked identically here, throws
+     * is still given its own chance, and, faked identically here, throws
      * too, so ITS error (the more recent, more specific one) is what
      * surfaces.
      */
@@ -1387,21 +1387,21 @@ class SpxFulfillmentTest extends TestCase
         $this->assertStringNotContainsString('still in progress', $result['error']);
         // v2 throws on its FIRST attempt (no 2nd v2 attempt burned on a
         // well-formed API error) + one v1 fallback attempt (also throws,
-        // same faked ret_code) — 2 total.
+        // same faked ret_code), 2 total.
         Http::assertSentCount(2);
     }
 
     /**
      * The v1
      * fallback's `awb_link` itself can respond HTTP 200 with a JSON error
-     * body instead of a PDF — SPX's UAT label RENDERER failing
+     * body instead of a PDF, SPX's UAT label RENDERER failing
      * server-side, downstream of an otherwise valid `awb_link` (observed
      * live: `{"retcode":2501,"message":"invoke rpc failed",...}`, ~193
      * bytes, consistent across fresh links and retries). `$pdf->successful()`
-     * doesn't catch this — HTTP-level the download genuinely succeeded, it's
+     * doesn't catch this, HTTP-level the download genuinely succeeded, it's
      * just not a PDF. Bytes are checked for the `%PDF` magic number before
      * ever touching disk, so a corrupt "PDF" can never reach an admin's
-     * download — the JSON body is decoded and its `retcode`/`message`
+     * download, the JSON body is decoded and its `retcode`/`message`
      * surfaced honestly instead.
      */
     public function test_print_label_surfaces_a_renderer_error_when_the_awb_link_returns_json_instead_of_a_pdf(): void
@@ -1434,7 +1434,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // parseWebhook() — api.md §4.1 payload shapes, verbatim.
+    // parseWebhook(), api.md §4.1 payload shapes, verbatim.
     // ------------------------------------------------------------------
 
     public function test_parse_webhook_normalizes_the_documented_pending_pickup_payload(): void
@@ -1468,7 +1468,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // verifyWebhookSignature() — same HMAC scheme as outbound
+    // verifyWebhookSignature(), same HMAC scheme as outbound
     // calls (see SpxClientTest for the low-level SpxClient::
     // verifyWebhookSignature() coverage); this proves SpxFulfillment wires
     // the RAW request bytes + all four headers through correctly.
@@ -1507,7 +1507,7 @@ class SpxFulfillmentTest extends TestCase
     // ------------------------------------------------------------------
     // SPX status from code to its actual meaning: the documented status
     // vocabulary (docs/couriers/spx/guide.md,
-    // "Order status code" table) exposed two ways — refreshStatusLabels()
+    // "Order status code" table) exposed two ways, refreshStatusLabels()
     // (the existing "Refresh from SPX" button's contract) and statusLabels()
     // (available without that click). No Http::fake needed: neither method
     // makes an outbound call.
@@ -1531,7 +1531,7 @@ class SpxFulfillmentTest extends TestCase
         $this->assertSame(SpxFulfillment::STATUS_LABELS, $this->courier()->statusLabels());
     }
 
-    /** Every mappable status code must resolve to a real human label — no gaps in the table. */
+    /** Every mappable status code must resolve to a real human label, no gaps in the table. */
     public function test_every_mappable_status_has_a_label(): void
     {
         $labels = $this->courier()->statusLabels();

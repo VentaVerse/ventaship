@@ -258,7 +258,7 @@ class CancelTest extends TestCase
         $this->assertSame('failed', $s->cancel_state);
         $this->assertSame('booked', $s->state);
         $this->assertTrue($s->needs_attention);
-        $this->assertSame('Cancel outcome unknown — check the courier portal', $s->attention_reason);
+        $this->assertSame('Cancel outcome unknown. Check the courier portal', $s->attention_reason);
         $this->assertCount(1, $fake->callsTo('cancelShipment'));
         $this->assertSame('shipment.cancel_failed', OutgoingEvent::query()->sole()->type);
 
@@ -280,7 +280,7 @@ class CancelTest extends TestCase
         $s->refresh();
         $this->assertSame('booked', $s->state);
         $this->assertTrue($s->needs_attention);
-        $this->assertSame('Cancel could not be prepared — check the account settings', $s->attention_reason);
+        $this->assertSame('Cancel could not be prepared. Check the account settings', $s->attention_reason);
         $this->assertSame('shipment.cancel_failed', OutgoingEvent::query()->sole()->type);
     }
 

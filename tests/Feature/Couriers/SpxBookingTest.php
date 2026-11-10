@@ -347,7 +347,7 @@ class SpxBookingTest extends TestCase
     public function test_an_spx_webhook_for_an_unknown_shipment_books_it(): void
     {
         Http::fake();
-        $s = $this->queuedShipment(['state' => 'unknown', 'needs_attention' => true, 'attention_reason' => 'Booking outcome unknown — check the courier portal before retrying']);
+        $s = $this->queuedShipment(['state' => 'unknown', 'needs_attention' => true, 'attention_reason' => 'Booking outcome unknown. Check the courier portal before retrying']);
 
         $this->postSigned($this->payload())->assertOk();
 
@@ -387,7 +387,7 @@ class SpxBookingTest extends TestCase
         $this->assertSame('failed', $s->state);
         $this->assertSame(self::TRACKING, $s->tracking_number);
         $this->assertTrue($s->needs_attention);
-        $this->assertStringContainsString('cancel it at the courier portal', $s->attention_reason);
+        $this->assertStringContainsString('Cancel it at the courier portal', $s->attention_reason);
     }
 
     public function test_a_cancelled_report_does_not_book_a_failed_shipment(): void

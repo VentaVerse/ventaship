@@ -14,7 +14,7 @@ use Illuminate\Support\Str;
  *   header  = {"alg":"HS256","typ":"JWT"}
  *   payload = {"sub": <api_key>, "iat": <unix>, "jti": <unique nonce>}
  *   sig     = HMAC_SHA256(b64url(header)."."b64url(payload), <secret_key>)
- * A fresh jti per request (anti-replay) — QuadX rejects repeats.
+ * A fresh jti per request (anti-replay), QuadX rejects repeats.
  */
 class QuadXClient
 {
@@ -32,7 +32,7 @@ class QuadXClient
 
     /**
      * Which of isConfigured()'s two mode-scoped fields are missing, labeled
-     * exactly as QuadXFulfillment::settingsSchema() labels them — backs
+     * exactly as QuadXFulfillment::settingsSchema() labels them, backs
      * QuadXFulfillment::configurationIssues() (Courier's
      * sanctioned evolution #6). Mode-aware the same way apiKey()/secretKey()
      * already are: checks whichever environment (sandbox/production) is currently

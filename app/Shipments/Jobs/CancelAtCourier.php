@@ -86,7 +86,7 @@ class CancelAtCourier implements ShouldQueue
 
         $account = $s->courierAccount;
         if ($account === null || $account->trashed() || $s->tracking_number === null) {
-            $canceller->refused($s->id, 'This shipment cannot be cancelled from here — cancel it at the courier portal');
+            $canceller->refused($s->id, 'This shipment cannot be cancelled from here. Cancel it at the courier portal');
 
             return;
         }

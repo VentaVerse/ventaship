@@ -174,7 +174,7 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
      * "Paid via GCash, Scan QR" while GET /orders still returns 'cash', so
      * their pickup-collection label does not track this field either.
      * The API does NOT distinguish GCash "Scan QR" vs "Wallet" (both are just
-     * gcash) — that split exists only in QuadX's own dashboard. "Receiver pays
+     * gcash), that split exists only in QuadX's own dashboard. "Receiver pays
      * the fee" (COD shipping on top of item value) is a separate mechanism
      * (a shipping line item added to the total) and isn't offered here yet.
      */
@@ -319,7 +319,7 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
 
     /**
      * QuadX's createShipment() is synchronous (POST /orders returns the
-     * tracking number directly) — it never produces courier_status='creating',
+     * tracking number directly), it never produces courier_status='creating',
      * so there is never anything for the poll command's pending-creation pass
      * to resolve here.
      */
@@ -346,7 +346,7 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
 
     public function terminalStatuses(): array
     {
-        // Final states — the poll stops re-checking once an order reaches one.
+        // Final states, the poll stops re-checking once an order reaches one.
         // failed_delivery is NOT terminal (rider retries), so we keep polling it.
         return ['delivered', 'canceled', 'cancelled', 'returned', 'failed_return'];
     }
@@ -399,12 +399,12 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
     }
 
     /**
-     * UNCHANGED from before the 8-phase spine existed — the exact logic the
+     * UNCHANGED from before the 8-phase spine existed, the exact logic the
      * queue view's stepper has always rendered off. Kept as its own method,
      * untouched, rather than derived from the new phase bucket, because a
      * few raw statuses (e.g. 'failed_pickup' vs 'failed_delivery') land in
      * the SAME new bucket ('failed') but resolved to DIFFERENT legacy steps
-     * depending on where in the journey they broke — information the new
+     * depending on where in the journey they broke, information the new
      * bucket alone no longer carries.
      *
      * @return array{0:int, 1:bool}
@@ -432,7 +432,7 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
         return [1, false];
     }
 
-    /** Raw statuses meaning "the courier has it" — shared by the legacy step derivation and the new spine bucketing below. */
+    /** Raw statuses meaning "the courier has it", shared by the legacy step derivation and the new spine bucketing below. */
     private const SHIPPED_STATUSES = ['picked_up','in_transit','out_for_delivery','for_delivery',
                 'in_transit_to_delivery_area','received_at_delivery_hub',
                 'received_at_delivery_area','at_sorting_center','at_3pl_facility',
@@ -441,7 +441,7 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
     /**
      * Buckets a raw QuadX status onto the spine. Never returns
      * 'to_pack' (no booking isn't a courier status) or 'booking' (QuadX's
-     * createShipment() is synchronous — see the interface docblock).
+     * createShipment() is synchronous, see the interface docblock).
      */
     private static function phaseBucket(string $s): string
     {
@@ -499,8 +499,8 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
             return null;
         }
 
-        // `amount` and `label` keep meaning exactly what they always meant —
-        // the shipping fee for the chosen parcel — because the ERP's own
+        // `amount` and `label` keep meaning exactly what they always meant,
+        // the shipping fee for the chosen parcel, because the ERP's own
         // estimate endpoint reads them and a silently widened figure would
         // change numbers it stores. Everything the total needs is ADDED
         // beside them, so both callers get what they ask for.
@@ -707,7 +707,7 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
 
     /**
      * QuadX schedules pickup on its own side after booking (no slot choice in
-     * its API), so the booking form renders no slot picker — the interface's
+     * its API), so the booking form renders no slot picker, the interface's
      * sanctioned empty default.
      */
     public function getPickupSlots(CourierOrder $order): array
@@ -920,7 +920,7 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
         return ['ok' => true, 'labels' => $labels];
     }
 
-    /** Curated subset presented on the status-mapping table — unchanged from before this became courier-owned data. */
+    /** Curated subset presented on the status-mapping table, unchanged from before this became courier-owned data. */
     /**
      * The statuses an order status may be hung on, picked from the 59
      * QuadX's own /orders/statuses endpoint lists. It covers what QuadX
@@ -997,7 +997,7 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
             'pickup_address'   => $this->pickupAddress($opts),
             'contact_number'   => $order->shipping_phone ?: ($order->phone ?: ''),
             'buyer_name'       => trim($order->shipping_first_name . ' ' . $order->shipping_last_name),
-            // QuadX prices by parcel category (shipment), not by weight/dimensions —
+            // QuadX prices by parcel category (shipment), not by weight/dimensions,
             // it accepts orders with no parcel object, so we don't collect or send them.
             'payment_provider' => 'other',
             'payment_method'   => $buyerPayment === 'cod' ? 'cod' : 'other',
@@ -1008,7 +1008,7 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
             'total'            => (float) self::orderTotal($order),
             // QuadX insures via declared_value (~1% fee on that amount). Omitting
             // this field entirely makes QuadX silently DEFAULT declared_value to
-            // the order total — auto-insuring every booking with an unwanted fee.
+            // the order total, auto-insuring every booking with an unwanted fee.
             // We always send it explicitly: 0 = uninsured (default), order total
             // = insured (admin opt-in via the "Insure shipment" checkbox).
             'declared_value'   => self::declaredValue($order, $opts),

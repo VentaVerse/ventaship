@@ -79,7 +79,7 @@ class SweepTest extends TestCase
         $this->assertSame('booking', $old->state);
         $this->assertSame('creating', $old->courier_status);
         $this->assertTrue($old->needs_attention);
-        $this->assertSame('SPX has not confirmed the booking after 6 hours — check the SPX portal', $old->attention_reason);
+        $this->assertSame('SPX has not confirmed the booking after 6 hours. Check the SPX portal', $old->attention_reason);
         $this->assertSame('4211-'.$old->id, $old->active_reference);
         $this->assertFalse($young->refresh()->needs_attention);
         $this->assertSame('Something else', $other->refresh()->attention_reason);
@@ -133,7 +133,7 @@ class SweepTest extends TestCase
 
         $stuck->refresh();
         $this->assertTrue($stuck->needs_attention);
-        $this->assertSame('Cancel request stuck — check and retry', $stuck->attention_reason);
+        $this->assertSame('Cancel request stuck. Check and retry', $stuck->attention_reason);
         $this->assertSame('requested', $stuck->cancel_state);
         foreach ([$fresh, $justBooked, $running] as $s) {
             $this->assertFalse($s->refresh()->needs_attention);
@@ -198,7 +198,7 @@ class SweepTest extends TestCase
     {
         return $this->shipment([
             'state' => 'unknown', 'needs_attention' => true,
-            'attention_reason' => 'Booking outcome unknown — check the courier portal before retrying',
+            'attention_reason' => 'Booking outcome unknown. Check the courier portal before retrying',
         ]);
     }
 

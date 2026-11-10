@@ -356,7 +356,7 @@ class InboundQuadXTest extends TestCase
             'active_reference' => '4211',
             'cancel_state' => 'failed',
             'needs_attention' => true,
-            'attention_reason' => 'Cancel outcome unknown — check the courier portal',
+            'attention_reason' => 'Cancel outcome unknown. Check the courier portal',
         ]);
 
         $this->postRaw('/webhooks/quadx?token='.self::TOKEN, $this->statusBody('canceled', '2026-11-08T10:00:00+08:00'))->assertOk();

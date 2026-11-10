@@ -16,10 +16,10 @@ use Illuminate\Support\Facades\Log;
  */
 final class BookingOutcomes
 {
-    public const UNKNOWN_REASON = 'Booking outcome unknown — check the courier portal before retrying';
+    public const UNKNOWN_REASON = 'Booking outcome unknown. Check the courier portal before retrying';
 
     /** Set by the sweep on an SPX booking still `creating` after 6 hours; cleared when SPX confirms it. */
-    public const CREATING_STALE_REASON = 'SPX has not confirmed the booking after 6 hours — check the SPX portal';
+    public const CREATING_STALE_REASON = 'SPX has not confirmed the booking after 6 hours. Check the SPX portal';
 
     /** A tracking number an operator may record: letters, digits, - and _, 3 to 64 characters, not starting with - or _. */
     public const TRACKING_PATTERN = '/^[A-Za-z0-9][A-Za-z0-9_-]{2,63}$/';
@@ -78,7 +78,7 @@ final class BookingOutcomes
                 $s->forceFill([
                     'needs_attention' => true,
                     'attention_reason' => mb_substr("The courier booked this shipment after it was marked {$s->state}"
-                        .($trackingNumber ? " (tracking {$trackingNumber})" : '').' — check the courier portal', 0, 255),
+                        .($trackingNumber ? " (tracking {$trackingNumber})" : '').'. Check the courier portal', 0, 255),
                 ])->save();
 
                 return false;
@@ -268,7 +268,7 @@ final class BookingOutcomes
                     'tracking_number' => $s->tracking_number ?: $trackingNumber,
                     'meta' => array_replace($current, $meta),
                     'needs_attention' => true,
-                    'attention_reason' => mb_substr("The courier booked this shipment after it was cancelled here (tracking {$trackingNumber}) — cancel it at the courier portal", 0, 255),
+                    'attention_reason' => mb_substr("The courier booked this shipment after it was cancelled here (tracking {$trackingNumber}). Cancel it at the courier portal", 0, 255),
                 ])->save();
 
                 return null;
@@ -290,7 +290,7 @@ final class BookingOutcomes
                     $s->forceFill(['active_reference' => $s->client_reference]);
                 } else {
                     $name = $holder->courier_ref ?: $holder->public_id;
-                    $attention = "The courier booked this shipment after it failed, and {$name} now uses its reference — cancel one of them";
+                    $attention = "The courier booked this shipment after it failed, and {$name} now uses its reference. Cancel one of them";
                 }
             }
 

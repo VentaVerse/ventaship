@@ -12,7 +12,7 @@ use Tests\TestCase;
 /**
  * QuadXFulfillment::statusPhase()
  * re-bucketed onto the common 8-phase spine. QuadX's raw status vocabulary
- * itself (terminalStatuses/cancelableStatuses/mappableStatuses) is FROZEN —
+ * itself (terminalStatuses/cancelableStatuses/mappableStatuses) is FROZEN,
  * this only proves every raw status QuadX ever produces lands in exactly one
  * spine bucket, and that the legacy 4-step happy-path stepper (still
  * consumed by the queue view's 'step'/'failed' keys) keeps resolving
@@ -107,7 +107,7 @@ class QuadXStatusPhaseTest extends TestCase
         $this->assertSame($expectedPhase, $result['phase']);
         $this->assertContains($result['phase'], PhaseTone::PHASES, 'phase must be one of the 8 spine buckets');
 
-        // QuadX never produces 'to_pack' or 'booking' from a raw status —
+        // QuadX never produces 'to_pack' or 'booking' from a raw status,
         // 'to_pack' is "no booking exists yet" (a FulfillmentService-level
         // concern, not a courier status), and 'booking' is for async
         // couriers whose createShipment() doesn't return a status
@@ -118,7 +118,7 @@ class QuadXStatusPhaseTest extends TestCase
 
     // ------------------------------------------------------------------
     // Backward compatibility: the 4-step happy-path stepper must still
-    // derive from statusPhase()'s 'step'/'failed' keys exactly as before —
+    // derive from statusPhase()'s 'step'/'failed' keys exactly as before,
     // failed/cancelled/returning are terminal badge states, not steps.
     // ------------------------------------------------------------------
 

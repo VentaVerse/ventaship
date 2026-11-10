@@ -8,7 +8,7 @@ namespace App\Couriers\Spx;
  * "Response envelope is always { ret_code, message, data }; ret_code: 0 =
  * success."). Carries the raw ret_code so callers can branch on the specific
  * SPX error family (auth 1xxx, param 11xxx, account 12xxx, order 13xxx,
- * business-rule 10xxx — see guide.md's "Error codes mapping") without
+ * business-rule 10xxx, see guide.md's "Error codes mapping") without
  * string-matching the message.
  */
 class SpxApiException extends \RuntimeException

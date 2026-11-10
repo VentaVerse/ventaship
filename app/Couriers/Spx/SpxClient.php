@@ -10,25 +10,25 @@ use Illuminate\Support\Facades\Log;
  * Low-level SPX Open API client: HMAC-SHA256 request signing + HTTP wrapper.
  *
  * Auth (guide.md "API authentication guide", verified against the guide's
- * own test vector — see tests/Unit/SpxSignerTest.php):
+ * own test vector, see tests/Unit/SpxSignerTest.php):
  *
  *   originalValue = "{app_id}_{timestamp}_{random_num}_{payload}"
  *   check-sign    = hex(HMAC_SHA256(key: app_secret, message: originalValue))
  *
- * `payload` MUST be the literal JSON bytes sent over the wire — re-encoding
+ * `payload` MUST be the literal JSON bytes sent over the wire, re-encoding
  * independently (e.g. letting the HTTP client re-serialize the array) risks
  * a byte-level mismatch (whitespace/escaping) that SPX rejects as
  * `1007 CheckSignVerificationFailedCode`. post() therefore json_encodes the
  * body exactly once and reuses that same string for both signing and
- * Http::withBody() — never $http->post($url, $body), which would let Guzzle
+ * Http::withBody(), never $http->post($url, $body), which would let Guzzle
  * re-encode.
  *
  * Two independent credential pairs:
- *   - app-id / app-secret   — header-level, issued once per integration.
- *   - user_id / user_secret — body-level, per SPX account (3.1 Create
+ *   - app-id / app-secret, header-level, issued once per integration.
+ *   - user_id / user_secret, body-level, per SPX account (3.1 Create
  *     Account), required by every order-related endpoint.
  * Both secrets are the account's own, stored encrypted (AccountSettings::writeSecret()), mirroring QuadXClient's
- * pattern — see SpxFulfillment::settingsSchema().
+ * pattern, see SpxFulfillment::settingsSchema().
  *
  * The environment is the account's: production talks to spx.ph, sandbox to SPX's UAT system.
  */
@@ -41,7 +41,7 @@ class SpxClient
 
     public function __construct(private readonly AccountSettings $settings) {}
 
-    /** App-level credentials present — the minimum needed to sign a request. */
+    /** App-level credentials present, the minimum needed to sign a request. */
     public function isConfigured(): bool
     {
         return $this->appId() !== null && $this->appSecret() !== null;
@@ -49,10 +49,10 @@ class SpxClient
 
     /**
      * Which of isConfigured()'s two app-level fields are missing, labeled
-     * exactly as SpxFulfillment::settingsSchema() labels them — backs
+     * exactly as SpxFulfillment::settingsSchema() labels them, backs
      * SpxFulfillment::configurationIssues() (Courier's
      * sanctioned evolution #6). Deliberately scoped to the SAME pair
-     * isConfigured() checks (never the user_id/user_secret account pair —
+     * isConfigured() checks (never the user_id/user_secret account pair,
      * hasAccountCredentials() is a separate, later step), so this can never
      * disagree with isEnabled()'s own credential check.
      *
@@ -71,7 +71,7 @@ class SpxClient
         return $missing;
     }
 
-    /** Body-level account credentials present — required by every order/account endpoint. */
+    /** Body-level account credentials present, required by every order/account endpoint. */
     public function hasAccountCredentials(): bool
     {
         return $this->userId() !== null && $this->userSecret() !== null;
@@ -110,11 +110,11 @@ class SpxClient
     // --- Endpoints ------------------------------------------------------
 
     /**
-     * 3.1 Create Account (account/create) — issues the user_id/
+     * 3.1 Create Account (account/create), issues the user_id/
      * user_secret pair every order-related SPX call needs, so a fresh
      * install doesn't have to go dig those out of an email. Deliberately
      * takes no user_id/user_secret (that pair is what THIS call produces,
-     * not what it authenticates with) — only app-id/app-secret via post()'s
+     * not what it authenticates with), only app-id/app-secret via post()'s
      * usual signing. $email is optional per api.md §3.1.
      */
     public function createAccount(string $phone, ?string $email = null): array
@@ -128,7 +128,7 @@ class SpxClient
     }
 
     /**
-     * 3.2 Check Account Credentials — the cheapest authenticated call in the
+     * 3.2 Check Account Credentials, the cheapest authenticated call in the
      * API surface (no order side-effects), used as SPX's "test connection".
      */
     public function verifyAccount(): array
@@ -140,7 +140,7 @@ class SpxClient
     }
 
     /**
-     * 1.4 Create Order V2 (batch_create_order) — submits up to 100 orders,
+     * 1.4 Create Order V2 (batch_create_order), submits up to 100 orders,
      * returns only `batch_no` (data.batch_no). Genuinely async: the caller
      * must poll getOrderCreateResult() for the real tracking number(s).
      *
@@ -155,7 +155,7 @@ class SpxClient
         ]);
     }
 
-    /** 1.5 Get Order Create Result V2 (get_order_create_result) — poll with the batch_no from createOrders(). */
+    /** 1.5 Get Order Create Result V2 (get_order_create_result), poll with the batch_no from createOrders(). */
     public function getOrderCreateResult(int $batchNo): array
     {
         return $this->post('/open/api/v2/order/get_order_create_result', [
@@ -166,7 +166,7 @@ class SpxClient
     }
 
     /**
-     * 1.3 Cancel Order (batch_cancel_order) — tracking_no_list MUST be a real JSON array, never a comma-joined string.
+     * 1.3 Cancel Order (batch_cancel_order), tracking_no_list MUST be a real JSON array, never a comma-joined string.
      */
     public function cancelOrders(array $trackingNumbers): array
     {
@@ -207,7 +207,7 @@ class SpxClient
         ], $timeout);
     }
 
-    /** 2.2 Get Order Fee (batch_get_asf) — ACTUAL fee AFTER order creation. */
+    /** 2.2 Get Order Fee (batch_get_asf), ACTUAL fee AFTER order creation. */
     public function getActualFee(array $trackingNumbers): array
     {
         return $this->post('/open/api/v1/order/batch_get_asf', [
@@ -227,18 +227,18 @@ class SpxClient
         ]);
     }
 
-    /** 5.1 Get Address file download link (get_address_download_url) — no request body beyond the standard headers. */
+    /** 5.1 Get Address file download link (get_address_download_url), no request body beyond the standard headers. */
     public function getAddressDownloadUrl(): array
     {
         return $this->post('/open/api/address/get_address_download_url', []);
     }
 
     /**
-     * 1.6 Get AWB V2 (batch_get_shipping_label) — same submit-then-poll shape
+     * 1.6 Get AWB V2 (batch_get_shipping_label), same submit-then-poll shape
      * as 1.4/1.5 create-order, except it's a SINGLE endpoint acting as both:
      * call it with the batch_no from 1.4 Create Order V2, inspect
      * data.task_status (1 New / 2 Waiting / 3 Running / 4 Done / 5 Failed),
-     * and call it again on the same batch_no until it settles — data.awb_link
+     * and call it again on the same batch_no until it settles, data.awb_link
      * only appears once task_status is 4. See SpxFulfillment::printLabel()
      * for the bounded poll loop built on top of this.
      */
@@ -252,16 +252,16 @@ class SpxClient
     }
 
     /**
-     * UNDOCUMENTED — absent from api.md entirely, found by probing the real
+     * UNDOCUMENTED, absent from api.md entirely, found by probing the real
      * SPX UAT API. The documented v2
      * endpoint above (getShippingLabel()) reliably sits at `task_status: 3`
-     * ("Running", `progress: "0.00%"`) indefinitely on UAT — live-probed
-     * 8+ minutes with no change, never settling. This v1 sibling — same
-     * `batch_no`, PLUS `tracking_no_list` — returns
+     * ("Running", `progress: "0.00%"`) indefinitely on UAT, live-probed
+     * 8+ minutes with no change, never settling. This v1 sibling, same
+     * `batch_no`, PLUS `tracking_no_list`, returns
      * `{awb_link, fail_list}` SYNCHRONOUSLY on UAT instead. Kept as a
      * fallback SpxFulfillment::pollLabelResult() only reaches for after
      * giving the documented v2 endpoint a short, fair chance to settle on
-     * its own — being undocumented, its shape/behavior on PRODUCTION is
+     * its own, being undocumented, its shape/behavior on PRODUCTION is
      * unverified; worth re-testing there before leaning on it long-term.
      */
     public function getShippingLabelV1(int $batchNo, array $trackingNumbers): array
@@ -280,16 +280,16 @@ class SpxClient
      * Verifies an INBOUND SPX webhook's `check-sign` header.
      * api.md §4.1/§4.2: every request (including webhook verification) is
      * signed using the exact same algorithm as
-     * outbound calls (sign()) — SPX signs the callback body with OUR
+     * outbound calls (sign()), SPX signs the callback body with OUR
      * app-secret, so we recompute the same HMAC over the four header values
      * + the raw request bytes and compare with hash_equals().
      *
-     * $rawBody MUST be the literal bytes SPX sent (Request::getContent()) —
-     * never a re-encoded array — for exactly the same byte-fidelity reason
+     * $rawBody MUST be the literal bytes SPX sent (Request::getContent()),
+     * never a re-encoded array, for exactly the same byte-fidelity reason
      * post() never lets Guzzle re-serialize an outbound body (see this
      * class's docblock).
      *
-     * Also checks the app-id header matches OUR configured app-id — a valid
+     * Also checks the app-id header matches OUR configured app-id, a valid
      * signature computed with the right secret already proves that, but this
      * gives an early explicit rejection instead of a signature mismatch on a
      * spoofed app-id that happens to guess right (defense in depth, appears
@@ -348,9 +348,9 @@ class SpxClient
 
         $url = rtrim($this->baseUrl(), '/') . '/' . ltrim($path, '/');
 
-        // Encoded ONCE — this exact string is what gets signed AND sent.
+        // Encoded ONCE, this exact string is what gets signed AND sent.
         // Order bodies carry raw customer-entered addresses (name, address
-        // lines, delivery instructions) — invalid UTF-8 in any of those makes
+        // lines, delivery instructions), invalid UTF-8 in any of those makes
         // json_encode() return false silently rather than throwing, which
         // would otherwise sign/send the literal string "false" as the body.
         $payload = json_encode($body);

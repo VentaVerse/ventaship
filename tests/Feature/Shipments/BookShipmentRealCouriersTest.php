@@ -184,7 +184,7 @@ class BookShipmentRealCouriersTest extends TestCase
         $this->assertSame('unknown', $s->state);
         $this->assertSame('4211', $s->active_reference, 'reference kept');
         $this->assertTrue($s->needs_attention);
-        $this->assertSame('Booking outcome unknown — check the courier portal before retrying', $s->attention_reason);
+        $this->assertSame('Booking outcome unknown. Check the courier portal before retrying', $s->attention_reason);
         $this->assertNull($s->error_code);
         $this->assertSame(['shipment.unknown'], OutgoingEvent::query()->pluck('type')->all());
         $this->assertCount(1, Http::recorded(), 'sent once, never retried');
