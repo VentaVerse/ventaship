@@ -3,7 +3,7 @@
   <img alt="Ventaship, self-hosted shipping software for Philippine online shops" src="public/brand/ventaship-logo-light.png" height="72">
 </picture>
 
-**Ventaship is open-source, self-hosted shipping software for Philippine online shops.** Book parcels with **QuadX**, **SPX Express** and **LBC Express** from one dashboard, print waybills, and track every delivery, without logging in to each courier's portal.
+**Ventaship is open-source, self-hosted shipping software for Philippine online shops.** Book parcels with **QuadX**, **SPX Express** and **LBC Express** (more coming soon) from one dashboard, print waybills, and track every delivery, without logging in to each courier's portal.
 
 ![Ventaship shipping dashboard showing shipments booked with QuadX, SPX Express and LBC Express](docs/screenshots/shipments.png)
 
