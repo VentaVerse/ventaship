@@ -178,27 +178,25 @@
         min-width: 0;
     }
 
-    /* The thin bar above the page title: the navigation button (under 1024px) on the left, the profile menu on the
-       right edge of the content column. Under 1024px it stays at the top while the page scrolls; only its buttons
-       take clicks. */
+    /* The app's own top bar: full width right of the sidebar, profile at its far right, stays put on scroll. */
     .x-top {
         position: sticky;
         top: 0;
         z-index: 20;
-        pointer-events: none;
+        background: var(--bl-sheet);
+        border-bottom: 1px solid var(--bl-rule-2);
     }
 
     .x-top__in {
         display: flex;
         align-items: center;
         gap: 12px;
-        max-width: calc(var(--bl-page-max) + 2 * var(--bl-gutter));
-        margin-inline: auto;
-        padding: 12px var(--bl-gutter) 0;
+        min-height: 56px;
+        padding: 0 var(--bl-gutter);
     }
 
-    .x-top__in > * {
-        pointer-events: auto;
+    .x-top__in > :last-child {
+        margin-left: auto;
     }
 
     .x-menu {
@@ -316,7 +314,7 @@
     .x-content {
         max-width: calc(var(--bl-page-max) + 2 * var(--bl-gutter));
         margin-inline: auto;
-        padding: 14px var(--bl-gutter) 40px;
+        padding: 22px var(--bl-gutter) 40px;
     }
 
     .x-page {
@@ -395,10 +393,6 @@
             display: flex;
             height: 100vh;
             padding-top: 0;
-        }
-
-        .x-top {
-            position: static;
         }
 
         .x-side__close,
