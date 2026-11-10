@@ -893,6 +893,12 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
         return ServiceabilityVerdict::unknown(null, $problem);
     }
 
+    /** "Tue, Nov 10": how a pickup date (a slot's `value`) reads in lists and on a shipment. */
+    public static function dateLabel(\Carbon\CarbonInterface $date): string
+    {
+        return $date->format('D, M j');
+    }
+
     /**
      * The dates a pickup can be asked for, Monday to Saturday from the next
      * business day. The booking form uses a date picker; this list serves
@@ -906,7 +912,7 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
 
         while (count($slots) < self::PICKUP_SLOT_COUNT) {
             if (!$date->isSunday()) {
-                $slots[] = ['value' => $date->format('Y-m-d'), 'label' => $date->format('D, M j')];
+                $slots[] = ['value' => $date->format('Y-m-d'), 'label' => self::dateLabel($date)];
             }
             $date = $date->addDay();
         }

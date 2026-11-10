@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Models\Shipment;
 use App\Shipments\PhaseResolver;
+use App\Shipments\PickupSlot;
 use App\Shipments\TrackingLink;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
@@ -55,8 +56,10 @@ class ShipmentResource extends JsonResource
             'label_available' => $s->state === 'booked' && $s->tracking_number !== null,
             'method' => $s->method,
             'service' => $s->service,
-            'pickup_date' => data_get($s->options, 'pickup_date'),
+            // The slot's day when there is a slot (it is what LBC and SPX book on), else the date sent as pickup_date.
+            'pickup_date' => PickupSlot::date($s) ?? (is_string(data_get($s->options, 'pickup_date')) ? data_get($s->options, 'pickup_date') : null),
             'pickup_slot' => is_string(data_get($s->options, 'pickup_slot')) ? data_get($s->options, 'pickup_slot') : null,
+            'pickup_slot_label' => PickupSlot::label($s),
             'fee' => $s->fee_amount === null ? null : ['amount' => $s->fee_amount, 'currency' => $s->fee_currency ?? 'PHP'],
             'payment_method' => $s->payment_method,
             'payment_state' => $s->payment_state,

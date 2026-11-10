@@ -168,7 +168,7 @@ final class CourierFormFields
         $dates = [];
         while (count($dates) < self::LBC_DATES) {
             if (! $date->isSunday()) {
-                $dates[] = ['value' => $date->format('Y-m-d'), 'label' => $date->format('D, M j')];
+                $dates[] = ['value' => $date->format('Y-m-d'), 'label' => LbcFulfillment::dateLabel($date)];
             }
             $date = $date->addDay();
         }

@@ -22,6 +22,7 @@
         "service": "next_day",
         "pickup_date": null,
         "pickup_slot": null,
+        "pickup_slot_label": null,
         "fee": null,
         "payment_method": "cod",
         "payment_state": "cod_unpaid",

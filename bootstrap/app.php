@@ -53,9 +53,15 @@ return Application::configure(basePath: dirname(__DIR__))
             return (new ApiError(401, 'unauthorized', 'Unauthorized'))->toResponse();
         });
         $exceptions->render(function (ValidationException $e, Request $request) {
-            return $request->is('api/*')
-                ? (new ApiError(422, 'invalid_request', 'The request is invalid.', false, $e->errors()))->toResponse()
-                : null;
+            if (! $request->is('api/*')) {
+                return null;
+            }
+            $errors = $e->errors();
+            // A refused pickup_slot alone gets its own code, so clients can ask for slots again; any other error with it
+            // keeps invalid_request. The messages stay under errors.pickup_slot either way.
+            $code = array_keys($errors) === ['pickup_slot'] ? 'pickup_slot_unavailable' : 'invalid_request';
+
+            return (new ApiError(422, $code, 'The request is invalid.', false, $errors))->toResponse();
         });
         // A missing model is already a NotFoundHttpException by the time it is rendered.
         $exceptions->render(function (NotFoundHttpException $e, Request $request) {

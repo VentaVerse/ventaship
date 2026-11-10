@@ -1194,6 +1194,14 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
         return $slot === null ? null : self::slotLabel($slot);
     }
 
+    /** The day (Y-m-d, Manila) of a stored `pickup_slot` value; null when it is not an SPX slot. */
+    public static function slotDay(mixed $value): ?string
+    {
+        $slot = self::decodeSlot($value);
+
+        return $slot === null ? null : self::slotDate($slot['pickup_time']);
+    }
+
     /** Y-m-d in the app zone (Manila) of a 1.1 pickup_time. */
     private static function slotDate(int $pickupTime): string
     {

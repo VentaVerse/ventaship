@@ -293,6 +293,7 @@ Every code the API can answer:
 | 409 | `not_trackable` | false | `POST /shipments/{id}/refresh` on a shipment with no booking to track | `{}` |
 | 409 | `idempotency_in_progress` | **true** | The first request with this `Idempotency-Key` is still running | `{}` |
 | 422 | `invalid_request` | false | The body or query is invalid; `Idempotency-Key` missing or too long; `account_id` and `courier` disagree | field → messages |
+| 422 | `pickup_slot_unavailable` | false | `pickup_slot` is refused (not a string ≤ 255, or for SPX not a `value` from `POST /pickup-slots`), and it is the only field in error. Ask `POST /pickup-slots` again and send one of its values. With other errors too, the code is `invalid_request` | `{"pickup_slot": [...]}` |
 | 422 | `idempotency_key_reused` | false | This `Idempotency-Key` was used for a different request | `{}` |
 | 422 | `account_not_found` | false | No courier account with this `account_id`, or no default account for this `courier` | `{"account_id": [...]}` or `{"courier": [...]}` |
 | 422 | `account_misconfigured` | false | The courier account cannot be used: disabled, its courier not installed, or settings missing (e.g. no API keys). On `POST /shipments/{id}/submit`, also a draft whose courier account no longer exists | usually `{"account": ["…", …]}`; `{}` for a draft without an account |
@@ -874,7 +875,7 @@ Request fields:
 | `submit` | optional boolean, default `true`. `false` saves a **draft** (`201`), booked later with `POST /shipments/{id}/submit` |
 | `method` | optional, `pickup` (default) or `dropoff`. **SPX** books exactly this. A `pickup` without a `pickup_slot` is booked on the earliest pickup time SPX offers when it books (SPX 1.1), and that slot is stored on the shipment (`pickup_slot`); when SPX offers none the booking fails `courier_refused` "SPX has no pickup time available for this address." A pickup is never booked as a drop-off. With `dropoff`, `pickup_slot` is ignored. QuadX and LBC always collect |
 | `pickup_date` | optional, `YYYY-MM-DD`, today or later (Manila). Anything else (`11/12/2026`, an impossible date, a past date) is refused with `422`; it is never replaced by another date. **LBC** books its pickup on this date when no `pickup_slot` is sent. For an LBC account the date must also be a Monday to Saturday, no earlier than the next business day and no later than the 10th business day from it; a Sunday, today, or a date outside that range is refused with `422` on `pickup_date`. When omitted, LBC books the next business day. Other couriers ignore it |
-| `pickup_slot` | optional string ≤ 255: a `value` from `POST /pickup-slots`. For **SPX** anything else is refused with `422`. A slot whose day is over, or one SPX refuses as past its cutoff (SPX 10080), is replaced by the next pickup time SPX offers (SPX is asked again once after a cutoff refusal); the shipment then shows the slot it was booked on. When SPX refuses that one too, the booking fails `courier_refused` |
+| `pickup_slot` | optional string ≤ 255: a `value` from `POST /pickup-slots`. For **SPX** anything else is refused with `422` on `pickup_slot`, code `pickup_slot_unavailable` when it is the only field in error. A slot whose day is over, or one SPX refuses as past its cutoff (SPX 10080), is replaced by the next pickup time SPX offers (SPX is asked again once after a cutoff refusal); the shipment then shows the slot it was booked on. When SPX refuses that one too, the booking fails `courier_refused` |
 | `service` | optional string ≤ 64: a `service_types` value from `GET /couriers`; the account's default when omitted |
 | `insure` | optional boolean, default `false`. `true` asks the courier to insure the parcel at `payment.declared_value` (or `total`). `false` sends no insurance, except at **LBC**, which always insures a COD parcel |
 | `parcel` | optional object |
@@ -989,6 +990,7 @@ Response `202 Accepted`:
         "service": "next_day",
         "pickup_date": null,
         "pickup_slot": null,
+        "pickup_slot_label": null,
         "fee": null,
         "payment_method": "cod",
         "payment_state": "cod_unpaid",
@@ -1012,7 +1014,7 @@ Response `202 Accepted`:
 }
 ```
 
-Statuses: `202` queued for booking; `201` draft saved; `409 active_shipment_exists`; `422 invalid_request`, `account_not_found`, `account_misconfigured` (an account that cannot book is refused here, before anything is stored); `422 idempotency_key_reused`; `409 idempotency_in_progress`.
+Statuses: `202` queued for booking; `201` draft saved; `409 active_shipment_exists`; `422 invalid_request`, `pickup_slot_unavailable`, `account_not_found`, `account_misconfigured` (an account that cannot book is refused here, before anything is stored); `422 idempotency_key_reused`; `409 idempotency_in_progress`.
 
 <!-- fixture: error-active-shipment-exists.response -->
 ```json
@@ -1072,6 +1074,7 @@ For reconciliation (say, after your webhook endpoint was down), list with `updat
             "service": "next_day",
             "pickup_date": null,
             "pickup_slot": null,
+            "pickup_slot_label": null,
             "fee": {
                 "amount": "77.00",
                 "currency": "PHP"
@@ -1143,6 +1146,7 @@ One shipment. `?include=parties` adds the personal data: `pickup`, `recipient`, 
         "service": "next_day",
         "pickup_date": null,
         "pickup_slot": null,
+        "pickup_slot_label": null,
         "fee": {
             "amount": "77.00",
             "currency": "PHP"
@@ -1197,6 +1201,7 @@ With `?include=parties`:
         "service": "next_day",
         "pickup_date": null,
         "pickup_slot": null,
+        "pickup_slot_label": null,
         "fee": {
             "amount": "77.00",
             "currency": "PHP"
@@ -1352,6 +1357,7 @@ You rarely need this: couriers' webhooks and Ventaship's polling keep shipments 
         "service": "next_day",
         "pickup_date": null,
         "pickup_slot": null,
+        "pickup_slot_label": null,
         "fee": {
             "amount": "77.00",
             "currency": "PHP"
@@ -1457,6 +1463,7 @@ Cancelling is idempotent by state: asking again returns the shipment unchanged. 
         "service": "next_day",
         "pickup_date": null,
         "pickup_slot": null,
+        "pickup_slot_label": null,
         "fee": {
             "amount": "77.00",
             "currency": "PHP"
@@ -1532,8 +1539,9 @@ The same object in every answer and in every shipment webhook (`data.shipment`),
 | `label_available` | bool | `true` when `GET /shipments/{id}/label` can answer a PDF (state `booked` with a tracking number) |
 | `method` | string | `pickup` or `dropoff` |
 | `pickup_slot` | string\|null | the pickup slot the shipment is booked on: the `value` you sent, or for SPX the one Ventaship chose or moved to (see `pickup_slot` in [`POST /shipments`](#post-shipments)) |
+| `pickup_slot_label` | string\|null | `pickup_slot` as people read it, Manila: `Tue, Nov 10 · 08:00-12:00` (SPX), `Tue, Nov 10` (LBC), the same wording as the slot's `label` in `POST /pickup-slots`. `null` when there is no slot, for an SPX drop-off, and for couriers without slots. Display only: send `pickup_slot`, never this |
 | `service` | string\|null | the service requested |
-| `pickup_date` | string\|null | `YYYY-MM-DD` requested |
+| `pickup_date` | string\|null | `YYYY-MM-DD`, Manila: the day of `pickup_slot` when there is one (SPX, LBC), else the `pickup_date` you sent; `null` when neither is set. `null` for an SPX drop-off without a sent date |
 | `fee` | object\|null | `{amount, currency}`: the fee the courier reported when it booked; `null` if it reported none. SPX: its estimated shipping fee for the booking (after vouchers), also when the booking settled late; the fee SPX finally bills can differ |
 | `payment_method` | string | `cod` or `prepaid` |
 | `payment_state` | string | see [8.3](#83-payment_state) |
@@ -1658,6 +1666,8 @@ If the courier times out, cannot be reached, or answers with a server error whil
 
 **SPX settles some of these itself.** When an SPX booking is retried and SPX answers that it already has the order (its error 13103), Ventaship looks the order up and books the shipment with it (`shipment.booked`, with `needs_attention` asking the owner to check its details at SPX); when it cannot be found the shipment is `unknown` with the reason "SPX already has order VS…: find its tracking number in the SPX portal and record it". And when SPX reports a parcel (by webhook) for a shipment that is `failed` or `unknown` here, the shipment becomes `booked` with that tracking number and `shipment.booked` is sent: a client must accept `shipment.booked` after `shipment.booking_failed` or `shipment.unknown`. If another live shipment holds the reference by then, both are kept and the recovered one gets `needs_attention`.
 
+When both are kept, you may then cancel the older duplicate with `POST /shipments/{id}/cancel` and keep the newer one; the owner sees those cancels in Ventaship, and the usual [cancel rules](#10-cancel-rules) apply.
+
 ### 9.4 Booking error codes
 
 When `state` is `failed`, `error` is `{code, message}`. `message` is for people (often the courier's own words). An SPX refusal reads as a sentence first, then SPX's code and its specific reason in brackets, e.g. `The pickup slot is past SPX's cutoff. Choose another pickup date. (SPX 10080: now_time over cutoff_time)`; show it whole, do not parse it.
@@ -1780,6 +1790,7 @@ For every `shipment.*` type, `data` is:
             "service": "next_day",
             "pickup_date": null,
             "pickup_slot": null,
+            "pickup_slot_label": null,
             "fee": {
                 "amount": "77.00",
                 "currency": "PHP"
@@ -1840,6 +1851,7 @@ For every `shipment.*` type, `data` is:
             "service": "next_day",
             "pickup_date": null,
             "pickup_slot": null,
+            "pickup_slot_label": null,
             "fee": {
                 "amount": "77.00",
                 "currency": "PHP"
