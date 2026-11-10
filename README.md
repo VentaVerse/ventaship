@@ -1,59 +1,41 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Ventaship
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Ventaship books your parcels with Philippine couriers — **QuadX**, **SPX** and **LBC** — from one place. Add a shipment by hand or let your online store send orders in, print waybills, and follow every parcel until it is delivered.
 
-## About Laravel
+It runs on your own server. One install serves your shop and any store you connect to it.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+![Shipments](docs/screenshots/shipments.png)
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## What you can do
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- **Book shipments** with QuadX, SPX or LBC, by hand or from a connected store.
+- **See everything in one list.** The *Needs action* view shows what is waiting on you: a booking a courier refused, a result you need to check, a draft to book. Search by name, order number or tracking number.
+- **Fix problems in place.** A refused booking shows the courier's reason with a *Retry* button.
+- **Print waybills** for one parcel or many at once.
+- **Follow each parcel** with the courier's live status and a tracking link for your customer.
+- **Save pickup addresses and customers** so a new shipment takes seconds. Philippine addresses are picked from province, city and barangay lists.
+- **Set up each courier** with separate Sandbox and Production keys, and check them with *Save and test*.
+- **Connect your stores** with API keys and webhooks. Your store can check coverage, get quotes, book, cancel and print waybills, and is told about every status change.
+- **Light and dark mode**, and it works on your phone.
 
-## Learning Laravel
+| | |
+|---|---|
+| ![Needs action](docs/screenshots/needs-action.png) | ![A refused booking](docs/screenshots/shipment-failed.png) |
+| ![Add shipment](docs/screenshots/add-shipment.png) | ![Courier account](docs/screenshots/courier-account.png) |
+| ![Addresses](docs/screenshots/addresses.png) | ![API keys](docs/screenshots/api.png) |
+| ![Dark mode](docs/screenshots/shipments-dark.png) | ![On a phone](docs/screenshots/phone-dark.png) |
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+## Install
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+See **[docs/install.md](docs/install.md)**. In short: a PHP 8.2+ server with MySQL, `composer install`, `npm run build`, set up `.env`, run the migrations, create your admin account, and add one cron line.
 
-## Laravel Sponsors
+## For developers
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+- The API your store talks to is described in **[docs/api.md](docs/api.md)**.
+- Courier API references are in [docs/couriers](docs/couriers).
+- Run the tests with `php artisan test` and `npm run test:js`.
+- How versions, the changelog and releases work: **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
-### Premium Partners
+## Version
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
-
-## Contributing
-
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
-
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+The current version is in [VERSION](VERSION), and what changed in each release is in [CHANGELOG.md](CHANGELOG.md).
