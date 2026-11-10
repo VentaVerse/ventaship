@@ -13,7 +13,7 @@ Ventaship connects your shop to Philippine couriers through their official APIs.
 
 ## Features
 
-- Book shipments with QuadX, SPX Express and LBC Express from one place.
+- Book shipments with QuadX, SPX Express and LBC Express (more coming soon) from one place.
 - Print shipping labels and waybills for one parcel or many.
 - Track every parcel until it is delivered.
 - See which shipments need your attention.
