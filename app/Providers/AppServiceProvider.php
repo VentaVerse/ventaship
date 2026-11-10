@@ -46,7 +46,7 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * Per API token, per minute (base plan §2). Every limiter runs after AuthenticateClient, so the token is always the
+     * Per API token, per minute. Every limiter runs after AuthenticateClient, so the token is always the
      * authenticated one; the IP fallback only covers a route someone mounts without client.auth.
      */
     private function configureRateLimits(): void

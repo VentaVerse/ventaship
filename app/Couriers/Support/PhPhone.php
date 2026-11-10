@@ -13,7 +13,7 @@ namespace App\Couriers\Support;
  *
  * SPX states the format (docs/spx/api.md §1.4, sender_phone/deliver_phone):
  * "11 digits starting with 0, or 12 digits starting with 63". Everything but
- * digits is stripped first, so the shapes actually seen in the dev DB all
+ * digits is stripped first, so the common shapes all
  * resolve: "+63 917 123 4567" and "639171234567" pass through as 12 digits
  * starting with 63; "09171234567" passes through as-is; a bare 10-digit
  * mobile gains its leading zero. Anything else (a landline, a truncated

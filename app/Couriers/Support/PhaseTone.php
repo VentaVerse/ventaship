@@ -69,7 +69,7 @@ class PhaseTone
 
     /**
      * DISPLAY-ONLY overrides for phases whose internal name is not what an
-     * operator should read (owner ruling, 2026-08-09).
+     * operator should read.
      *
      * `in_transit` is the courier-side spine vocabulary and stays exactly
      * that everywhere it matters (statusPhase() contracts, the tone map

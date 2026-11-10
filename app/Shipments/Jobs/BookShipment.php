@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Books one queued shipment with its courier (base plan §2 "Booking safety"). Dispatched by ShipmentCreator after
+ * Books one queued shipment with its courier. Dispatched by ShipmentCreator after
  * the shipment's transaction commits.
  *
  * NEVER retried automatically: a second createShipment can book the parcel twice, and LBC cannot cancel. So

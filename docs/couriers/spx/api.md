@@ -3,7 +3,7 @@
 Source: https://spx.ph/integration/en/api/c27c8517d55c4fea96bcb426cfcaf140
 Harvested: 2026-08-08 (verbatim `document.querySelector('div.doc').innerText` extraction per endpoint)
 
-All endpoints use `{{host}}` as a placeholder — replace with the base URL for the target environment/region (see `guide.md` → "API address" section, and `integration-brief.md`). All endpoints are **POST**, JSON body, UTF-8, `Content-Type: application/json`, and all require the four standard signed headers (`app-id`, `check-sign`, `timestamp`, `random-num`) — see `guide.md` → "How to call the open API" / "API authentication guide" for the full header spec and the HMAC-SHA256 signing algorithm.
+All endpoints use `{{host}}` as a placeholder — replace with the base URL for the target environment/region (see `guide.md` → "API address" section). All endpoints are **POST**, JSON body, UTF-8, `Content-Type: application/json`, and all require the four standard signed headers (`app-id`, `check-sign`, `timestamp`, `random-num`) — see `guide.md` → "How to call the open API" / "API authentication guide" for the full header spec and the HMAC-SHA256 signing algorithm.
 
 ---
 

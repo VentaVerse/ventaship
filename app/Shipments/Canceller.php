@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Every cancel state change (base plan §2 "Cancel rules"). Each is one transaction with the shipment row locked,
+ * Every cancel state change. Each is one transaction with the shipment row locked,
  * re-checks the state it expects and writes its outbox event in the same transaction. The courier is never called
  * here: a booked shipment is marked `requested` and CancelAtCourier makes the call outside any transaction.
  */

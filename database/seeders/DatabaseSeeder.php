@@ -8,6 +8,6 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        // Admin users are created with an artisan command (later task).
+        // No sample data. Admin users are created with `php artisan ventaship:admin`.
     }
 }

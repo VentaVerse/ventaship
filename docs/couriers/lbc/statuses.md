@@ -54,5 +54,5 @@ LBC's delivery event statuses, from *LBC Track and Trace API V2* (rev 2.3.5, 202
 ## Notes
 
 - Tracking is a SOAP `LBCTrackAndTrace` call per tracking number. There is no status push.
-- `integration-notes.md` mentions an LBC 3PL webhook product that is unconfirmed.
+- An LBC 3PL webhook product may exist; it is unconfirmed.
 - Ventaship's LBC adapter (`app/Couriers/Lbc/LbcTrackingStatus.php`) condenses this history into 18 statuses of its own before recording.

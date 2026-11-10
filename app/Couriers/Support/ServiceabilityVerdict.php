@@ -20,8 +20,8 @@ namespace App\Couriers\Support;
  *
  * `reason` is the courier's OWN words, verbatim, never our paraphrase. It is
  * shown ONLY when `kind` is null, because an unrecognised failure is a
- * failure whose only useful description is theirs (owner ruling, 2026-08-12:
- * printing both our sentence and theirs was redundant). It is deliberately
+ * failure whose only useful description is theirs (printing both our
+ * sentence and theirs would be redundant). It is deliberately
  * left NULL for a transport failure, where the message would be curl's or
  * ours and never the courier's.
  *

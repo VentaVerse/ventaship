@@ -6,7 +6,7 @@ use App\Couriers\Spx\SpxClient;
 use PHPUnit\Framework\TestCase;
 
 /**
- * SpxClient::sign() proven byte-exact against the verified test vector from SPX's integration brief. None of these
+ * SpxClient::sign() proven byte-exact against the test vector from SPX's API authentication guide. None of these
  * values are real credentials: they are the document's own published test vector. sign() touches neither the
  * database nor any facade, so this is a plain PHPUnit test.
  */

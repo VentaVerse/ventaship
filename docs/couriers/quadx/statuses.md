@@ -2,11 +2,11 @@
 
 QuadX's official status list, from the example response of `GET /orders/statuses` in the docs fetched on 2026-11-08 (see `api.md`, *Get List of Statuses*).
 
-The docs list **58** statuses. The live endpoint is the authority: it may return more (the owner's 2026-08-30 pick was made from 59 returned live).
+The docs list **58** statuses. The live endpoint is the authority: it may return more (the status map's pick was made from 59 returned live).
 
-**Owner's pick** marks the 31 statuses chosen on 2026-08-30 for the status map, and the group each one sits in. Source: `mappableStatusGroups()` in `app/Couriers/QuadX/QuadXFulfillment.php`.
+**Status map** marks the 31 statuses chosen for the status map, and the group each one sits in. Source: `mappableStatusGroups()` in `app/Couriers/QuadX/QuadXFulfillment.php`.
 
-| # | Status | QuadX label | Owner's pick |
+| # | Status | QuadX label | Status map |
 |---|---|---|---|
 | 1 | `pending` | Pending |  |
 | 2 | `for_pickup` | Ready for pickup | Before pickup |

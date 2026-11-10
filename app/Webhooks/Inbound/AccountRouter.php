@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Finds the courier account an inbound courier webhook belongs to (base plan §3).
+ * Finds the courier account an inbound courier webhook belongs to.
  *
  * - QuadX: `?token=` matched by sha256 against webhook_token_hash.
  * - SPX: the path token, else every SPX account whose external_ref (its SPX app id) equals the `app-id` header

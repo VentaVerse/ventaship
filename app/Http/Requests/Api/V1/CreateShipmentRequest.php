@@ -12,7 +12,7 @@ use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
-/** POST /shipments (base plan §2 "Create a shipment"). Authorization is the signed request itself. */
+/** POST /shipments. Authorization is the signed request itself. */
 class CreateShipmentRequest extends FormRequest
 {
     use ValidatesShipmentParts;

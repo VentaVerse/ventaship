@@ -24,27 +24,24 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
- * SPX (Shopee Xpress) courier — Task T2 of the fulfillment-workflow-v2 + SPX
- * plan (`docs/superpowers/plans/2026-08-08-spx-courier.md`). Fills in every
- * method Task T1 left as a deliberate stub: createShipment/cancelShipment/
- * getTracking, the status-vocabulary/phase methods, the option lists, and
- * the v2 estimateFee()/getPickupSlots() methods. Ground truth for every shape
- * is docs/spx/api.md (verbatim endpoint tables) + docs/spx/integration-brief.md
- * — see each method's docblock for which section it implements.
+ * SPX (Shopee Xpress) courier: createShipment/cancelShipment/getTracking,
+ * the status-vocabulary/phase methods, the option lists, and the
+ * estimateFee()/getPickupSlots() methods. Ground truth for every shape is
+ * docs/couriers/spx/api.md (verbatim endpoint tables) — see each method's
+ * docblock for which section it implements.
  *
- * Task T3 additions: printLabel() (1.6 Get AWB V2 — download+store the
+ * Labels and webhooks: printLabel() (1.6 Get AWB V2 — download+store the
  * perishable label PDF, serve it through this app's own authenticated
  * route), parseWebhook() + verifyWebhookSignature() (4.1 Tracking Web Hook —
  * signed fast-ack dispatch, see CourierWebhookController's SPX branch and
  * App\Couriers\Jobs\ProcessCourierWebhookJob).
  *
- * Load-bearing decisions made in THIS task (documented in the T2 report too):
+ * Load-bearing decisions:
  *  - Sender address reuses the module-wide pickup origin rather than a new
  *    spx_sender_* settings block, since QuadX already shares that exact
- *    origin — one pickup address serves every courier. That origin is now a
+ *    origin — one pickup address serves every courier. That origin is a
  *    row in courier_fulfillment_pickup_addresses (a store may keep several
- *    and choose one per booking); it used to be the eight flat
- *    `settings(group=shipping, key=pickup_*)` rows, which are retired.
+ *    and choose one per booking).
  *  - Sender and deliver addresses are placed on SPX's own location list
  *    (SpxLocations, compiled from SPX's xlsx by ventaship:spx-locations-compile):
  *    SPX's state/city/district/street are island group/province/city/barangay,
@@ -66,9 +63,9 @@ use Illuminate\Support\Str;
 class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
 {
     /**
-     * Sensible default PH pouch dimensions (T1 placeholder, editable via the
+     * Sensible default PH pouch dimensions (editable via the
      * spx_pouch_presets setting — see settingsSchema()). Well inside SPX's
-     * documented PH parcel limits (integration-brief.md §8: weight < 50kg,
+     * documented PH parcel limits (weight < 50kg,
      * each dimension <= 150cm). Small/Medium/Large mirrors the same shopper
      * mental model QuadX's pouch parcel options already use.
      */
@@ -123,13 +120,13 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
     ];
 
     /**
-     * SPX's failures, classified by GROUP rather than one code at a time
-     * (owner ruling, 2026-08-12), so a code nobody has seen yet still lands
+     * SPX's failures, classified by GROUP rather than one code at a time,
+     * so a code nobody has seen yet still lands
      * somewhere sensible instead of falling through as a mystery.
      *
      * These four are REFUSALS of this shipment: the card goes inert and the
      * modal writes its own sentence for the group, naming the destination.
-     * Codes are the owner's own grouping of docs/spx/guide.md's error tables.
+     * Codes are a grouping of docs/couriers/spx/guide.md's error tables.
      *
      * Two of them are deliberately NOT "does not deliver here":
      *  - `cod` is an address SPX will happily deliver to, just not collecting
@@ -138,8 +135,8 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
      *    operator fix it in ten seconds.
      */
     private const REFUSAL_GROUPS = [
-        // Destination not covered. 10062 and 10066 are guide.md codes outside
-        // the owner's table, added here because they say the same thing:
+        // Destination not covered. 10062 and 10066 are further guide.md codes,
+        // added here because they say the same thing:
         // "no route code for this address", "basic serviceable area not
         // configured".
         // 10055 (delivery branch), 10067-10069 (serviceable area or route not
@@ -236,7 +233,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
         return [null, false];
     }
 
-    /** api.md §"Order status codes" (also integration-brief.md §5's table), bucketed for statusPhase()/terminalStatuses()/cancelableStatuses(). */
+    /** api.md §"Order status codes", bucketed for statusPhase()/terminalStatuses()/cancelableStatuses(). */
     private const DELIVERED = ['4001'];
     private const CANCELLED = ['7001'];
     /** Coming back to the seller — in progress (6001) or completed (6003), mirrors QuadX's 'returned' also living in the 'returning' bucket, not 'delivered'. */
@@ -299,7 +296,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
         ];
     }
 
-    /** Configured spx_pouch_presets (or DEFAULT_POUCH_PRESETS — T1 carry-forward note) plus a custom-dims escape hatch. */
+    /** Configured spx_pouch_presets (or DEFAULT_POUCH_PRESETS) plus a custom-dims escape hatch. */
     public function getParcelOptions(): array
     {
         $options = [];
@@ -342,7 +339,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
      */
     public function createShipment(CourierOrder $order, array $opts): array
     {
-        // Carry-forward note (b) from T1's review: the booking gate must
+        // The booking gate must
         // consult USER-credential completeness (not just app-id/secret) and
         // fail with a clear message, never a raw SPX auth error.
         if (!$this->client->hasAccountCredentials()) {
@@ -679,8 +676,8 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
 
     /**
      * 1.2 Track Order (batch_search_order). Retries a bounded 2x on 13251
-     * (order not yet propagated — integration-brief.md §5's timing caveat:
-     * "don't call Track immediately (<1-3s) after a successful Create").
+     * (order not yet propagated — SPX's timing caveat: don't call Track
+     * immediately (<1-3s) after a successful Create).
      * api.md §1.2's own note says 13251 can surface EITHER way — the whole
      * call rejected with that ret_code, OR (ret_code:0 overall) this
      * tracking number landed in the per-item data.fail_list with that code
@@ -868,8 +865,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
         $s = (string) $status;
 
         if ($s === 'creating') {
-            // Sanctioned per this task's brief: "the async-create pending
-            // state maps to phase booking".
+            // The async-create pending state maps to phase booking.
             return ['phase' => 'booking', 'step' => 1, 'failed' => false];
         }
         if ($s === 'creation_failed') {
@@ -878,12 +874,11 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
         if (in_array($s, self::DELIVERED, true)) {
             return ['phase' => 'delivered', 'step' => 3, 'failed' => false];
         }
-        // Final-review fix (Finding 1): alongside SPX's own 7001, the
-        // literal 'canceled'/'cancelled' the admin Cancel action stamps
-        // (FulfillmentController::cancel() writes it for EVERY courier)
-        // must bucket to the cancelled phase too — otherwise an
-        // admin-cancelled SPX order read as 'to_handover' until the next
-        // poll/webhook overwrote it with 7001.
+        // Alongside SPX's own 7001, the literal 'canceled'/'cancelled' the
+        // admin Cancel action stamps (FulfillmentController::cancel() writes
+        // it for EVERY courier) must bucket to the cancelled phase too —
+        // otherwise an admin-cancelled SPX order would read as 'to_handover'
+        // until the next poll/webhook overwrote it with 7001.
         if (in_array($s, self::CANCELLED, true) || in_array($s, CourierOrder::CANCELED_STATUSES, true)) {
             return ['phase' => 'cancelled', 'step' => 1, 'failed' => true];
         }
@@ -1219,7 +1214,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
     }
 
     /**
-     * 1.6 Get AWB V2 (batch_get_shipping_label) — Task T3. SPX's own label
+     * 1.6 Get AWB V2 (batch_get_shipping_label). SPX's own label
      * link is PERISHABLE (api.md §1.6: "valid within half an hour, and can
      * be opened up to 10 times"), so this never hands that raw link back to
      * an admin who might revisit the page later and find it dead or
@@ -1237,7 +1232,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
      *  3. Otherwise fetch it via pollLabelResult()'s two-phase strategy
      *     (documented v2 endpoint first, short window; an UNDOCUMENTED v1
      *     fallback if that doesn't settle — see that method's docblock for
-     *     why, this is a live-UAT gate finding, not documented behavior),
+     *     why, this is observed UAT behavior, not documented behavior),
      *     then download the resulting awb_link PDF bytes and store them at
      *     `labels/spx/{tracking}.pdf`.
      *  4. Return that stored path — never SPX's own link — per the
@@ -1259,7 +1254,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
             return ['success' => false, 'error' => 'No SPX order found for this tracking number.'];
         }
 
-        // Final-review fix (Finding 1): api.md §1.6 — a cancelled order's
+        // api.md §1.6 — a cancelled order's
         // AWB cannot be printed. Refused server-side (the queue's button
         // gating is only UI), and BEFORE the cache check: a PDF cached
         // while the booking was live must not keep serving after the
@@ -1320,11 +1315,10 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
             return ['ok' => false, 'error' => 'SPX label generation is still in progress, try again shortly.'];
         }
 
-        // Live-UAT gate finding (fulfillment-workflow-v2 + SPX plan): UAT's
-        // real batch_get_shipping_label response has NO `task_status` key at
-        // all — it returns `{awb_link, fail_list}` immediately, not the
-        // documented submit-then-poll {task_status: 1..5} shape (see
-        // docs/spx/index.md's quirks list). So "done" is decided by
+        // Observed on UAT: a batch_get_shipping_label response can carry NO
+        // `task_status` key at all — it returns `{awb_link, fail_list}`
+        // immediately, not the documented submit-then-poll
+        // {task_status: 1..5} shape. So "done" is decided by
         // awb_link's PRESENCE (plus this tracking number not appearing in
         // fail_list), not by task_status alone. The documented shape is
         // still honored when task_status IS present: 5 (Failed) always
@@ -1373,7 +1367,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
             return ['ok' => false, 'error' => "SPX label download failed (HTTP {$pdf->status()})."];
         }
 
-        // Live-UAT gate finding, round 3: awb_link can respond HTTP 200 with
+        // Observed on UAT: awb_link can respond HTTP 200 with
         // a JSON error body instead of a PDF (UAT's label RENDERER failing
         // server-side, downstream of a perfectly valid awb_link — this is
         // NOT the same failure class as `$pdf->successful()` catches, which
@@ -1399,18 +1393,15 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
     }
 
     /**
-     * Two-phase label fetch — see docs/spx/index.md's quirks list for the
-     * full live-UAT gate history behind this shape (round 1 AND round 2 of
-     * the finding).
+     * Two-phase label fetch, shaped by how SPX's UAT actually behaves.
      *
      * Phase 1 — 1.6 Get AWB V2 (the DOCUMENTED endpoint, SpxClient::
      * getShippingLabel()): a SHORT window only (2 attempts, one brief
-     * backoff between them) rather than the original ~15s bounded poll.
-     * Round 2's live-probing refined round 1's finding: this endpoint DOES
-     * return the documented shape on UAT (task_status present) — it just
+     * backoff between them) rather than a long bounded poll. On UAT this
+     * endpoint returns the documented shape (task_status present) but
      * reliably sits at `task_status: 3` ("Running", `progress: "0.00%"`)
-     * INDEFINITELY (probed 8+ minutes, never changes), so the original full
-     * poll window only ever burned ~15s to arrive at the same "still stuck"
+     * INDEFINITELY (probed 8+ minutes, never changes), so a long poll
+     * window would only burn time to arrive at the same "still stuck"
      * outcome a short window reaches just as certainly, faster. A short
      * window still gives v2 every fair chance to settle immediately, in
      * case it behaves as documented after all (plausible on production,
@@ -1424,8 +1415,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
      * well-formed error there doesn't rule out the fallback succeeding, so
      * it's still attempted). Live-probed to return `{awb_link, fail_list}`
      * SYNCHRONOUSLY. Its response is run through the EXACT SAME
-     * labelResultSettled()/fetchAndStoreLabel() parse logic as v2's — the
-     * shape-handling fix from round 1 already covers it unchanged.
+     * labelResultSettled()/fetchAndStoreLabel() parse logic as v2's.
      *
      * Error precedence when NEITHER phase settles: an SpxApiException from
      * v1 (the more recent, more specific attempt) wins; otherwise an
@@ -1587,7 +1577,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
     }
 
     /**
-     * Task T3: verifies an inbound SPX webhook request's signature —
+     * Verifies an inbound SPX webhook request's signature —
      * see SpxClient::verifyWebhookSignature()'s docblock for the algorithm.
      * Uses $request->getContent() (the raw wire bytes), never
      * $request->all() (which would re-encode and could byte-mismatch).
@@ -1636,7 +1626,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
     }
 
     /**
-     * The one real capability this task ships: SPX's 3.2 Check Account
+     * SPX's 3.2 Check Account
      * Credentials (`POST /open/api/v1/account/verify`) is the cheapest
      * authenticated call in the whole API surface — no order side-effects —
      * so it doubles as "test connection". Graceful (never throws) when
@@ -1728,17 +1718,16 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
 
     /**
      * No LIVE status-vocabulary endpoint exists in the documented API
-     * surface (unchanged fact from T1), but the vocabulary itself is not
+     * surface, but the vocabulary itself is not
      * actually unknown — SPX documents it as a stable table (STATUS_LABELS,
-     * sourced from docs/spx/guide.md's "Order status code" section). So
-     * unlike a true no-op, this now succeeds immediately (no HTTP call,
+     * sourced from docs/couriers/spx/guide.md's "Order status code" section). So
+     * unlike a true no-op, this succeeds immediately (no HTTP call,
      * nothing to fail) and hands back that documented map — wiring it
      * through the EXACT SAME "Refresh from SPX" button -> {ok, labels} ->
      * `spx_status_labels` setting flow QuadX's live refresh already uses
      * (the account's status-label refresh), so no shared code
      * needed to change for this courier to participate in it. See
-     * statusLabels() below for the second, complementary half of this
-     * task's wiring: the same map made available WITHOUT requiring that
+     * statusLabels() below for the complementary half: the same map made available WITHOUT requiring that
      * button click first.
      */
     public function refreshStatusLabels(): array
@@ -1747,8 +1736,8 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
     }
 
     /**
-     * Owner task (2026-08-08, "SPX status from code to their actual
-     * meaning"): the documented vocabulary made available WITHOUT requiring
+     * SPX status from code to its actual meaning: the documented vocabulary
+     * made available WITHOUT requiring
      * the admin to click "Refresh from SPX" first. Not part of
      * Courier — no other courier has a static,
      * pre-known vocabulary to expose this way (QuadX's only comes from a
@@ -1838,7 +1827,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
         ];
     }
 
-    // --- Task T2: pending-creation resolution ------------------------------
+    // --- Pending-creation resolution ---------------------------------------
 
     /**
      * Resolves an in-flight async creation (courier_status='creating') by
@@ -2118,7 +2107,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
      * ($opts['pickup'], see PickupOrigin::from()), the same origin QuadX and
      * LBC read.
      *
-     * SPX's address levels are not PSGC's (docs/couriers/spx/index.md):
+     * SPX's address levels are not PSGC's:
      * state = island group, city = province, district = city/municipality
      * (Manila: its sub-district), street = barangay. The stored PSGC address
      * is placed on a row of SPX's own location list (SpxLocations) and sent
@@ -2298,7 +2287,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
      * Normalizes a raw phone number to SPX's mandatory PH format (api.md
      * §1.4: "11 digits starting with 0, or 12 digits starting with 63" for
      * both sender_phone and deliver_phone). Strips everything but digits
-     * first, so the common raw shapes actually seen in the dev DB all
+     * first, so the common raw shapes all
      * resolve: `+63 917 123 4567` / `639171234567` (already 12 digits
      * starting with 63) pass through as-is; a bare 10-digit mobile with no
      * leading 0 (`9171234567`) gets a `0` prepended to become the 11-digit
@@ -2577,7 +2566,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
     /**
      * "Be careful: if all orders failed to be created, the task status is
      * still Done" (api.md §1.5) — success is NEVER inferred from task_status
-     * alone, only from fail_list/fail_count, per this task's brief. An
+     * alone, only from fail_list/fail_count. An
      * explicit task_status 5 (Failed) is treated the same way — it's simply
      * another way this batch can be settled-but-unsuccessful, folded into
      * the same "no usable order" branch below via $failed.

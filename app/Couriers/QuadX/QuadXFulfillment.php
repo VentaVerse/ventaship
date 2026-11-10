@@ -129,7 +129,7 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
     public function getServiceTypes(): array
     {
         return [
-            // Owner ruling 2026-09-03: same day sits first because it is the
+            // Same day sits first because it is the
             // one with a cut-off to catch, and both are named "Pickup" so the
             // two read as one pair rather than two unrelated things.
             // The VALUES are QuadX's own and never change: bookings, the
@@ -155,7 +155,7 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
      * per their published docs (Postman collection 12850780/TVKJyvMn, "Create
      * Orders"): "available options: cash, gcash or null".
      *
-     * OPEN WITH QUADX as of 2026-08-20: gcash is documented and offered in
+     * Open with QuadX: gcash is documented and offered in
      * their own dashboard, but POST /orders refuses it. Confirmed against both
      * sandbox and the live account, with and without seller_payment_provider
      * (which accepts gcash|quadx):
@@ -321,7 +321,7 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
      * QuadX's createShipment() is synchronous (POST /orders returns the
      * tracking number directly) — it never produces courier_status='creating',
      * so there is never anything for the poll command's pending-creation pass
-     * to resolve here. Sanctioned interface evolution #1's QuadX-safe default.
+     * to resolve here.
      */
     public function resolvePendingCreation(CourierOrder $order): ?array
     {
@@ -634,9 +634,9 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
      *
      * The rate endpoint answers the fee question twice: `shipping_fee` is the
      * list price, and `fees_adjustments.shipping_fee` is the same map after
-     * QuadX's own surcharges and campaigns have been applied (verified on
-     * staging 2026-08-19: a box to Cebu quotes 490 list against 450 net, from
-     * a fixed fuel surcharge and a percentage price drop). Billing follows the
+     * QuadX's own surcharges and campaigns have been applied (on staging a
+     * box to Cebu quotes 490 list against 450 net, from a fixed fuel
+     * surcharge and a percentage price drop). Billing follows the
      * net map, so every figure Venta puts on screen follows it too.
      *
      * The list map is the fallback rather than the default: a store with no
@@ -689,8 +689,8 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
      * The rate endpoint takes the address alone (no contact block), so the
      * booking payload's name/mobile_number are dropped here rather than sent
      * to an endpoint that has no use for them. `line_2` is carried as an
-     * empty string because Venta stopped storing a second address line
-     * (2026-03-06 migration) and the field is optional to QuadX.
+     * empty string because no second address line is stored and the field
+     * is optional to QuadX.
      */
     private static function rateAddress(array $address): array
     {
@@ -772,9 +772,8 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
                 'label'   => 'Default schedule',
                 'type'    => 'select',
                 'options' => $this->getServiceTypes(),
-                // Not "pre-selected on the booking form" any more: since
-                // 2026-09-03 that form asks every time and pre-selects
-                // nothing. This is the fallback for a booking that arrives
+                // Not "pre-selected on the booking form": that form asks
+                // every time and pre-selects nothing. This is the fallback for a booking that arrives
                 // without a schedule, which is the ERP API's path.
                 'help'    => 'Used when a booking arrives without one, such as from the ERP API. The booking form asks every time.',
             ],
@@ -858,15 +857,12 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
     }
 
     /**
-     * The GoGo Xpress tracker, and nothing else.
-     *
-     * Owner ruling 2026-09-03: app.gogoxpress.com/track/{tracking} only.
+     * The GoGo Xpress tracker, and nothing else:
+     * app.gogoxpress.com/track/{tracking} only.
      *
      * QuadX's API hands back tracking_links pointing at fareye.co, the
      * logistics platform GoGo Xpress runs on rather than the brand a shopper
-     * bought from. Those were preferred here and in resolveTrackingLink(),
-     * so a live parcel showed a fareye link in the queue while the customer
-     * held a gogoxpress one from an earlier write. Both now build the same
+     * bought from. This method and resolveTrackingLink() both build the same
      * URL from the tracking number, so the queue and the customer's email
      * cannot disagree, and no link the shopper does not recognise is shown.
      *
@@ -926,18 +922,17 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
 
     /** Curated subset presented on the status-mapping table — unchanged from before this became courier-owned data. */
     /**
-     * The statuses an order status may be hung on, cherry-picked by the owner
-     * (2026-08-30) from the 59 QuadX's own /orders/statuses endpoint lists.
-     * The nine this used to be were a guess that never included half of
-     * what QuadX actually sends (received_at_pickup_hub stranded a live
-     * order; failed_pickup_attempt is what arrives, never failed_pickup).
+     * The statuses an order status may be hung on, picked from the 59
+     * QuadX's own /orders/statuses endpoint lists. It covers what QuadX
+     * actually sends (received_at_pickup_hub; failed_pickup_attempt is what
+     * arrives, never failed_pickup).
      *
      * Left out on purpose: for_release and claimed (never seen), the
-     * claims/lost/damaged/disposal chain (waits on the returns process,
-     * board VENT-18), and the four ops-system events (dws_update,
+     * claims/lost/damaged/disposal chain (waits on the returns process),
+     * and the four ops-system events (dws_update,
      * runsheet_closure, rcd_*). The map page appends any status this store
      * has actually received that is not listed here, so nothing can strand
-     * an order silently again.
+     * an order silently.
      */
     public function mappableStatuses(): array
     {
@@ -1044,10 +1039,9 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
 
         // The buyer's message to the courier (core's courier_comment),
         // surfaced on the QuadX dashboard as the
-        // address block's "Other locations and details" field (verified on
-        // staging 2026-08-16: delivery_address.remarks is accepted, persisted
-        // and returned by GET /orders; notes/instructions/landmark are
-        // silently dropped). Omitted entirely when there is no note.
+        // address block's "Other locations and details" field
+        // (delivery_address.remarks is accepted, persisted and returned by
+        // GET /orders; notes/instructions/landmark are silently dropped). Omitted entirely when there is no note.
         $remarks = trim((string) $order->courier_comment);
         if ($remarks !== '') {
             $address['remarks'] = mb_substr($remarks, 0, 500);

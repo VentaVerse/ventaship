@@ -6,7 +6,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
-/** GET /shipments: list and reconcile (base plan §2). Every filter is optional; they combine with AND. */
+/** GET /shipments: list and reconcile. Every filter is optional; they combine with AND. */
 class ListShipmentsRequest extends FormRequest
 {
     public const MAX_IDS = 50;

@@ -89,8 +89,8 @@ class QuadXClient
     }
 
     /**
-     * Rate estimate for an origin/destination pair. Verified live against
-     * QuadX staging (owner, 2026-08-12): a serviceable destination answers
+     * Rate estimate for an origin/destination pair. On QuadX staging, a
+     * serviceable destination answers
      * 200 with `data.attributes.shipping_fee` as a map of parcel category to
      * peso amount; an unserviceable one answers 422 with
      * `errors.detail = "Delivery address is not serviceable."`.

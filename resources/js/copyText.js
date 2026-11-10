@@ -1,5 +1,5 @@
-// Copies text to the clipboard. The Clipboard API only exists on secure origins (https, localhost), and the owner
-// opens Ventaship over plain http on the LAN, so when it is missing or refuses, the text is copied through a
+// Copies text to the clipboard. The Clipboard API only exists on secure origins (https, localhost), and Ventaship
+// may be opened over plain http on a LAN, so when it is missing or refuses, the text is copied through a
 // temporary off-screen textarea and execCommand('copy'). The textarea is removed straight away: a secret never
 // stays in the DOM. Resolves true when either way worked.
 export async function copyText(value, env = {}) {

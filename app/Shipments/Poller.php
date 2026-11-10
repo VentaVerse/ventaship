@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * ventaship:couriers-poll (base plan §3 "Polling"). Per account, under the lock `poll:{account}`:
+ * ventaship:couriers-poll. Per account, under the lock `poll:{account}`:
  *  1. SPX pending creations (`booking` + `creating`) are resolved first, through BookingOutcomes;
  *  2. every non-terminal booked shipment that is due (`next_poll_at`, and ThrottlesStatusPolling for couriers such
  *     as LBC) is asked getTracking(), and what it reports is recorded through StatusRecorder with source `poll`.

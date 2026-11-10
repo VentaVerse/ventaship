@@ -27,9 +27,7 @@ interface Courier
     public function isEnabled(): bool;
 
     /**
-     * Sanctioned interface evolution #6 (owner directive, 2026-08-08
-     * "unconfigured couriers visible with configuration gate" task): which
-     * of this courier's REQUIRED credential fields — the same fields
+     * Which of this courier's REQUIRED credential fields — the same fields
      * isEnabled() itself checks, e.g. SPX's App ID/App Secret pair, QuadX's
      * API Key/Secret Key pair — are currently empty. isEnabled() only
      * answers "configured or not" as one bool; this names WHICH fields are
@@ -90,8 +88,7 @@ interface Courier
     public function cancelShipment(string $trackingNumber): array;
 
     /**
-     * Sanctioned interface evolution #1 (Task T2, fulfillment-workflow-v2 +
-     * SPX plan): resolves an in-flight ASYNC shipment creation — a booking
+     * Resolves an in-flight ASYNC shipment creation — a booking
      * whose createShipment() returned success with courier_status='creating'
      * because the courier's own create call is a submit-then-poll flow (SPX's
      * batch_create_order -> get_order_create_result) that didn't finish
@@ -171,8 +168,7 @@ interface Courier
      * Estimated shipping fee for booking this order with the given options
      * (same shape as createShipment()'s $opts) — shown to the operator on the
      * booking modal BEFORE they commit, where a courier can quote one (SPX's
-     * batch_check_order). Sanctioned interface evolution #4
-     * (fulfillment-workflow-v2 spec) with a QuadX-safe default: couriers with
+     * batch_check_order), with a QuadX-safe default: couriers with
      * no quoting API return null and the UI simply renders no estimate slot —
      * "not supported" is silence, never a fake zero.
      *
@@ -184,9 +180,7 @@ interface Courier
 
     /**
      * Will this courier carry a parcel to this order's delivery address?
-     * Sanctioned interface evolution #7 (owner directive, 2026-08-12,
-     * "the booking modal says who will carry it before you choose"), and the
-     * seam the 2026-08-11 serviceability design hangs from.
+     * The booking modal says who will carry it before the operator chooses.
      *
      * Asked BEFORE anything is booked, from the booking modal's courier step,
      * so an address a courier will not serve is visible as a greyed card with
@@ -218,8 +212,7 @@ interface Courier
 
     /**
      * Pickup time slots the operator can choose from when booking this order
-     * (SPX's pickup-time endpoint). Sanctioned interface evolution #5
-     * (fulfillment-workflow-v2 spec) with a QuadX-safe default: couriers
+     * (SPX's pickup-time endpoint), with a QuadX-safe default: couriers
      * without slot scheduling return [] and the booking form renders no slot
      * picker at all.
      *
@@ -231,8 +224,7 @@ interface Courier
      * @param string $format provider format hint (e.g. 'zebra'|'fuji')
      * @return array{success:bool, url?:string, manifest_url?:string, error?:string}
      *
-     * Sanctioned interface evolution #2 (Task T3, fulfillment-workflow-v2 +
-     * SPX plan): `url` does NOT have to be the provider's own (possibly
+     * `url` does NOT have to be the provider's own (possibly
      * perishable) link. A courier whose label link expires quickly and/or
      * has a limited open-count (SPX's AWB: valid 30 minutes, openable at
      * most 10 times — api.md §1.6) MAY instead download+store the asset

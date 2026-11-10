@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Every minute (base plan §2 "Booking safety"):
+ * Every minute:
  * - queued for more than 30 minutes (the job never started) → failed / not_started
  * - booking for more than 10 minutes, not waiting on SPX `creating` → unknown (the job died mid-call)
  * - waiting on SPX `creating` for more than 6 hours → needs attention, state unchanged; the poller keeps trying

@@ -18,7 +18,7 @@ use Tests\Concerns\BuildsShipments;
 use Tests\TestCase;
 
 /**
- * The Add / Edit shipment form after the owner's fixes of 2026-11-09: errors under their fields only (the flash keeps
+ * The Add / Edit shipment form: errors under their fields only (the flash keeps
  * the rest), controls linked to their errors, plain messages, labels that match their controls, the picked customer,
  * the section order, the summary and Save draft.
  */

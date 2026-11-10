@@ -9,11 +9,11 @@ Ventaship uses semantic versioning, MAJOR.MINOR.PATCH, starting at 1.0.0. The cu
 - A release that breaks how connected stores use the API (a removed or renamed field or endpoint) raises MAJOR: 1.4.2 becomes 2.0.0.
 - A pre-release takes a suffix, such as 1.1.0-beta.1.
 
-The version changes only when the owner releases. It never changes per commit or per push. Between releases, `VERSION` stays at the last release.
+The version changes only when a maintainer releases. It never changes per commit or per push. Between releases, `VERSION` stays at the last release.
 
 ## Changelog
 
-Every change adds a line under `## Unreleased` at the top of `CHANGELOG.md`, in the right section. Unreleased work is the internal note: it stays under `## Unreleased` until the owner releases.
+Every change adds a line under `## Unreleased` at the top of `CHANGELOG.md`, in the right section. Unreleased work is the internal note: it stays under `## Unreleased` until a maintainer releases.
 
 There are three sections. Leave out any that are empty.
 
@@ -27,8 +27,8 @@ Each line is one sentence written for the person using Ventaship. No bold, no em
 
 ## Releases and tags
 
-1. List what is under `## Unreleased` so the owner picks the version number.
+1. List what is under `## Unreleased` so the maintainer picks the version number.
 2. Turn `## Unreleased` into `## X.Y.Z (YYYY-MM-DD)`, add a new empty `## Unreleased` above it, and raise `VERSION` to the same number, all in one commit.
-3. Tell the owner the exact commit to tag `vX.Y.Z`.
+3. Tell the maintainer the exact commit to tag `vX.Y.Z`.
 
-Tags are the owner's. Never create or push tags.
+Tags are the maintainer's. Never create or push tags.

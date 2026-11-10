@@ -25,7 +25,7 @@ use JsonException;
 use Throwable;
 
 /**
- * Turns one stored courier webhook into shipment events (base plan §3). Parsed by the account's courier
+ * Turns one stored courier webhook into shipment events. Parsed by the account's courier
  * (parseWebhook), each event is matched within the account:
  *  1. by tracking number;
  *  2. by courier_ref = reference_id, only for a shipment still `booking` (SPX `creating` included).

@@ -102,7 +102,7 @@ Every API request carries an API key (a Sanctum token) in the `Authorization` he
 Authorization: Bearer 12|vsk_…
 ```
 
-- The Ventaship owner issues keys, on the platform's page in the dashboard or with `ventaship:key-issue`. A client app may hold several keys. Send the token exactly as given, including the number and `|` in front.
+- The Ventaship admin issues keys, on the platform's page in the dashboard or with `ventaship:key-issue`. A client app may hold several keys. Send the token exactly as given, including the number and `|` in front.
 - Older tokens look like `vsk_…`, without a number in front. They keep working; send them as they are.
 - A missing, unknown, revoked or expired token is answered `401` with code `unauthorized`. The reason is not disclosed.
 - A valid token of a disabled client app is answered `403 app_disabled`.
@@ -284,7 +284,7 @@ Every code the API can answer:
 | HTTP | `code` | `retryable` | When | `errors` |
 |---|---|---|---|---|
 | 401 | `unauthorized` | false | Missing, unknown, revoked or expired API key | `{}` |
-| 403 | `app_disabled` | false | The client app is disabled by the owner | `{}` |
+| 403 | `app_disabled` | false | The client app is disabled by the admin | `{}` |
 | 404 | `not_found` | false | Unknown route, or a shipment or courier account that does not exist. Another app's shipment is also a 404 | `{}` |
 | 405 | `method_not_allowed` | false | Wrong HTTP method for the route (see the `Allow` header) | `{}` |
 | 409 | `active_shipment_exists` | false | A live shipment of yours already holds this `client_reference` | `{"shipment": "shp_…"}` (the holder's id, a string) |
@@ -618,7 +618,7 @@ The courier accounts of this install. Every client app sees all of them. Ordered
 |---|---|
 | `id` | `acc_…` |
 | `courier` | courier key |
-| `label` | the owner's name for it |
+| `label` | the admin's name for it |
 | `mode` | `sandbox` or `production`. `sandbox` means the courier's test system: QuadX staging, SPX UAT. LBC has no test system: in either mode an LBC booking is a real parcel |
 | `status` | `active` or `disabled` |
 | `is_default` | the account used when you send only `courier` |
@@ -1526,7 +1526,7 @@ The same object in every answer and in every shipment webhook (`data.shipment`),
 | `id` | string | `shp_…` |
 | `client_reference` | string | your reference |
 | `order_label` | string\|null | your display label |
-| `source` | string | `api` (created through this API); `manual` and `csv` are created by the owner and never belong to a client app |
+| `source` | string | `api` (created through this API); `manual` and `csv` are created by the admin and never belong to a client app |
 | `account` | object\|null | `{id, courier, label}` of the courier account |
 | `courier` | string | courier key (`quadx`, `spx`, `lbc`) |
 | `state` | string | the booking's lifecycle, see [8.1](#81-state) |
@@ -1588,7 +1588,7 @@ Transitions:
 ```
 draft ──submit──▶ queued ──▶ booking ──▶ booked
                     │            ├──▶ failed
-                    │            └──▶ unknown ──(owner checks the courier portal)──▶ booked | failed
+                    │            └──▶ unknown ──(admin checks the courier portal)──▶ booked | failed
                     └──(not started within 30 min)──▶ failed
 
 draft | queued ──cancel──▶ cancelled
@@ -1597,18 +1597,18 @@ booked ──cancelled at the courier (asked for or not)──▶ cancelled
 
 ### 8.2 `phase`
 
-Where the parcel is, on one scale shared by every courier. `null` until the courier reports its first status. Phases come from the courier's status (the owner may re-map a courier status to another phase), so a parcel can move backwards (e.g. `in_transit` after a failed delivery attempt).
+Where the parcel is, on one scale shared by every courier. `null` until the courier reports its first status. Phases come from the courier's status (the admin may re-map a courier status to another phase), so a parcel can move backwards (e.g. `in_transit` after a failed delivery attempt).
 
 | Phase | Meaning |
 |---|---|
 | `draft` | not booked (reserved; `phase` is `null` before booking) |
 | `booking` | the courier accepted the request but has not issued the tracking number yet: SPX's `creating` status maps here. A shipment waiting on SPX is recognisable by `state` `booking` with `courier_status` `creating`; its `phase` may still be `null`, because that interim status is not recorded as a timeline event |
-| `attention` | the courier has the parcel but is holding it (SPX `3001` On Hold); also reached when the Ventaship owner maps a courier status to it (a status no one knows becomes `in_transit`). Not final |
+| `attention` | the courier has the parcel but is holding it (SPX `3001` On Hold); also reached when the Ventaship admin maps a courier status to it (a status no one knows becomes `in_transit`). Not final |
 | `to_handover` | booked, waiting for the courier to collect it (or for drop-off) |
 | `in_transit` | the courier has it, on its way (includes out for delivery) |
 | `delivered` | delivered to the recipient |
 | `failed` | a failed attempt or exception (failed pickup, failed delivery, rejected, lost or damaged per some couriers) |
-| `lost_damaged` | lost or damaged. SPX `5002` Damaged and `5003` Lost map here (final). QuadX `lost`/`damaged` and LBC damaged statuses are still `failed`; an owner status mapping can move them |
+| `lost_damaged` | lost or damaged. SPX `5002` Damaged and `5003` Lost map here (final). QuadX `lost`/`damaged` and LBC damaged statuses are still `failed`; an admin status mapping can move them |
 | `returning` | coming back to the sender, or returned |
 | `cancelled` | cancelled |
 
@@ -1628,7 +1628,7 @@ Where the cash stands. Ventaship records it; it never holds money.
 
 It only moves forward: `cod_unpaid → cod_collected → cod_remitted`, and `cod_unpaid → cod_void`. `cod_void` is final, and so is `cod_collected` against later bad news (a delivered parcel stays `cod_collected`). Each change produces a `shipment.payment_state_changed` webhook.
 
-`cod_void` follows the phases `cancelled`, `returning` and `lost_damaged`. A lost or damaged SPX COD parcel becomes `cod_void`. QuadX and LBC report lost or damaged parcels as phase `failed`, so theirs stay `cod_unpaid` until the courier reports them returning or cancelled, or the owner re-maps the status.
+`cod_void` follows the phases `cancelled`, `returning` and `lost_damaged`. A lost or damaged SPX COD parcel becomes `cod_void`. QuadX and LBC report lost or damaged parcels as phase `failed`, so theirs stay `cod_unpaid` until the courier reports them returning or cancelled, or the admin re-maps the status.
 
 ### 8.4 `cancel_state`
 
@@ -1659,14 +1659,14 @@ Your reference is held by at most **one live shipment** per client app (every st
 
 If the courier times out, cannot be reached, or answers with a server error while booking, the parcel **may or may not** have been booked. Ventaship never retries a booking automatically (a second attempt could book the parcel twice). The shipment becomes `unknown` with `needs_attention: true`, and keeps holding its `client_reference`.
 
-**Do not try to book the same order again while a shipment is `unknown`.** The Ventaship owner checks the courier portal and resolves it, which sends `shipment.resolved`:
+**Do not try to book the same order again while a shipment is `unknown`.** The Ventaship admin checks the courier portal and resolves it, which sends `shipment.resolved`:
 
 - found at the courier: state `booked` with its tracking number;
 - not found: state `failed` with `error.code` `not_booked`; the reference is released and you may create it again.
 
-**SPX settles some of these itself.** When an SPX booking is retried and SPX answers that it already has the order (its error 13103), Ventaship looks the order up and books the shipment with it (`shipment.booked`, with `needs_attention` asking the owner to check its details at SPX); when it cannot be found the shipment is `unknown` with the reason "SPX already has order VS…: find its tracking number in the SPX portal and record it". And when SPX reports a parcel (by webhook) for a shipment that is `failed` or `unknown` here, the shipment becomes `booked` with that tracking number and `shipment.booked` is sent: a client must accept `shipment.booked` after `shipment.booking_failed` or `shipment.unknown`. If another live shipment holds the reference by then, both are kept and the recovered one gets `needs_attention`.
+**SPX settles some of these itself.** When an SPX booking is retried and SPX answers that it already has the order (its error 13103), Ventaship looks the order up and books the shipment with it (`shipment.booked`, with `needs_attention` asking the admin to check its details at SPX); when it cannot be found the shipment is `unknown` with the reason "SPX already has order VS…: find its tracking number in the SPX portal and record it". And when SPX reports a parcel (by webhook) for a shipment that is `failed` or `unknown` here, the shipment becomes `booked` with that tracking number and `shipment.booked` is sent: a client must accept `shipment.booked` after `shipment.booking_failed` or `shipment.unknown`. If another live shipment holds the reference by then, both are kept and the recovered one gets `needs_attention`.
 
-When both are kept, you may then cancel the older duplicate with `POST /shipments/{id}/cancel` and keep the newer one; the owner sees those cancels in Ventaship, and the usual [cancel rules](#10-cancel-rules) apply.
+When both are kept, you may then cancel the older duplicate with `POST /shipments/{id}/cancel` and keep the newer one; the admin sees those cancels in Ventaship, and the usual [cancel rules](#10-cancel-rules) apply.
 
 ### 9.4 Booking error codes
 
@@ -1677,7 +1677,7 @@ When `state` is `failed`, `error` is `{code, message}`. `message` is for people 
 | `courier_refused` | the courier refused the booking (bad address, unserviceable, invalid data, SPX centavos…) |
 | `account_misconfigured` | the account became unusable between create and booking (disabled, credentials removed) |
 | `not_started` | the booking job did not start within 30 minutes |
-| `not_booked` | the owner resolved an `unknown` booking as not booked |
+| `not_booked` | the admin resolved an `unknown` booking as not booked |
 
 ### 9.5 Drafts
 
@@ -1693,7 +1693,7 @@ What `POST /shipments/{id}/cancel` does, by the shipment's state when you ask:
 |---|---|---|---|
 | `draft`, `queued` | cancelled at once (nothing was sent to the courier); reference freed | `200`, state `cancelled`, `cancel_state` `cancelled` | `shipment.cancelled` |
 | `booking` | `cancel_state` `requested`. When the booking finishes: if booked, the cancel is sent to the courier (next rows); if refused, the cancel is simply done (state stays `failed`) | `202` | later `shipment.cancelled` / `shipment.cancel_failed` |
-| `unknown` | `cancel_state` `requested`, `needs_attention`. Waits for the owner to resolve the booking: resolved booked → sent to the courier; resolved not booked → cancel done (state `failed`) | `202` | later |
+| `unknown` | `cancel_state` `requested`, `needs_attention`. Waits for the admin to resolve the booking: resolved booked → sent to the courier; resolved not booked → cancel done (state `failed`) | `202` | later |
 | `booked`, the courier already reports it cancelled | cancelled at once, the courier is not called; reference freed | `200`, state `cancelled`, `cancel_state` `cancelled` | `shipment.cancelled` |
 | `booked`, courier status still cancelable (or none yet) | `cancel_state` `requested`; Ventaship asks the courier | `202` | then one of the four below |
 | … the courier cancels | state `cancelled`, phase `cancelled`, COD → `cod_void`, reference freed | | `shipment.cancelled` |
@@ -1722,7 +1722,7 @@ Cancelable courier statuses:
 
 ## 11. Outgoing webhooks
 
-Ventaship POSTs an event to your client app's webhook URL for every change to one of your shipments. The URL, the webhook secret (`whsec_…`, shown once) and an optional event-type filter are set by the Ventaship owner. Shipments that do not belong to a client app (created by the owner by hand or by CSV) produce no webhooks.
+Ventaship POSTs an event to your client app's webhook URL for every change to one of your shipments. The URL, the webhook secret (`whsec_…`, shown once) and an optional event-type filter are set by the Ventaship admin. Shipments that do not belong to a client app (created by the admin by hand or by CSV) produce no webhooks.
 
 ### 11.1 Event types
 
@@ -1731,12 +1731,12 @@ Ventaship POSTs an event to your client app's webhook URL for every change to on
 | `shipment.booked` | the courier booked it | `null` |
 | `shipment.booking_failed` | the courier refused, or the booking could not start | `null` |
 | `shipment.unknown` | the booking outcome is unknown ([9.3](#93-unknown-never-resubmit)) | `null` |
-| `shipment.resolved` | the owner resolved an `unknown` shipment: read `data.shipment.state` (`booked` or `failed`) | `null` |
+| `shipment.resolved` | the admin resolved an `unknown` shipment: read `data.shipment.state` (`booked` or `failed`) | `null` |
 | `shipment.status_changed` | a new courier status was recorded (webhook, poll, refresh, or the booking answer) | the status, see below |
 | `shipment.payment_state_changed` | `payment_state` changed | `null` |
 | `shipment.cancelled` | the cancel is done (also when the courier cancelled it on its own, see [8.2](#82-phase)) | `null` |
 | `shipment.cancel_failed` | the cancel was refused, unsupported or its outcome is unknown | `null` |
-| `ping` | the owner sent a test (`ventaship:app-ping`) | (no shipment: `data` is `{"message": "ping"}`) |
+| `ping` | the admin sent a test (`ventaship:app-ping`) | (no shipment: `data` is `{"message": "ping"}`) |
 
 A booking that the courier answers with a status records that status first: the client receives `shipment.status_changed` (e.g. `for_pickup`) immediately followed by `shipment.booked`, so the booked snapshot already carries `courier_status` and `phase`. A delivery to a COD recipient produces `shipment.status_changed` (delivered) followed by `shipment.payment_state_changed` (`cod_collected`).
 
@@ -1963,15 +1963,15 @@ app.post('/ventaship/webhooks', express.raw({ type: 'application/json' }), (req,
 
 - Answer any **2xx** within **10 seconds**. Anything else (a 3xx is not followed, a 4xx, a 5xx, a timeout, a refused connection) is a failed attempt.
 - Do the work after answering, or make it quick: store the event, answer 200, process it.
-- A failed event is retried after **1 min, 5 min, 15 min, 30 min, 1 h, 2 h, 4 h, then every 6 h**, until **72 hours** have passed since it first became deliverable. Then it is given up (the owner can resend it by hand).
+- A failed event is retried after **1 min, 5 min, 15 min, 30 min, 1 h, 2 h, 4 h, then every 6 h**, until **72 hours** have passed since it first became deliverable. Then it is given up (the admin can resend it by hand).
 - After a connection failure or timeout, deliveries to your app pause for a minute.
 
 ### 11.6 Ordering, duplicates and gaps
 
 - **Ordering.** Events of one shipment are delivered strictly in `sequence` order: a later event is not sent while an earlier one of the same shipment is still pending. Events are sent right after the change that produced them, in order, so a burst of changes to one shipment (for example `status_changed` + `booked`) arrives within seconds. Retries (11.5) run on Ventaship's scheduler. A failing endpoint therefore holds back the later events of that shipment until the earlier one is delivered or given up. Events of different shipments are independent.
-- **Duplicates.** The same event may be delivered more than once (a lost acknowledgement, a worker restart, an owner resend). **Dedupe on `id`.**
+- **Duplicates.** The same event may be delivered more than once (a lost acknowledgement, a worker restart, an admin resend). **Dedupe on `id`.**
 - **Stale events.** Each event carries the full shipment snapshot of its moment. Keep the highest `sequence` you have applied per shipment and ignore an event with a lower or equal `sequence` for state purposes: the snapshot you already have is newer.
-- **Gaps.** `sequence` can skip numbers (for example when the owner filters out an event type for your app). A gap is not an error. If you suspect you missed something, `GET /shipments/{id}` is always current.
+- **Gaps.** `sequence` can skip numbers (for example when the admin filters out an event type for your app). A gap is not an error. If you suspect you missed something, `GET /shipments/{id}` is always current.
 
 ### 11.7 What is not delivered
 
@@ -1981,7 +1981,7 @@ These events are marked skipped and never sent (and never retried): the client a
 
 ## 12. Quickstart
 
-**1. Get credentials from the Ventaship owner.** They run:
+**1. Get credentials from the Ventaship admin.** They run:
 
 ```bash
 php artisan ventaship:app-create "My Shop" --webhook-url=https://shop.example.com/ventaship/webhooks
@@ -2019,6 +2019,6 @@ $r = $vs->request('POST', '/api/v1/shipments?wait=10', $payload, ['Idempotency-K
 - `unknown`: show "needs attention", and **do not** book this order again ([9.3](#93-unknown-never-resubmit)).
 - `queued` / `booking`: the result arrives by webhook.
 
-**5. Receive webhooks.** Verify `X-Signature` over the raw body, store `id` (ignore ones you have), answer 200 fast, then apply `data.shipment` if its `sequence` is newer than the last you applied for that shipment. Ask the owner to send a test (`ventaship:app-ping app_…`): you receive a `ping`.
+**5. Receive webhooks.** Verify `X-Signature` over the raw body, store `id` (ignore ones you have), answer 200 fast, then apply `data.shipment` if its `sequence` is newer than the last you applied for that shipment. Ask the admin to send a test (`ventaship:app-ping app_…`): you receive a `ping`.
 
 **6. Reconcile now and then.** `GET /api/v1/shipments?updated_since=…` catches anything your endpoint missed while it was down.

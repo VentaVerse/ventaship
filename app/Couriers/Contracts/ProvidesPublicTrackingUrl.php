@@ -13,7 +13,7 @@ namespace App\Couriers\Contracts;
  * that does not simply leaves it unimplemented and falls back to whatever
  * its API returned, or to plain text, which is honest.
  *
- * Owner ruling 2026-09-03: where a courier implements this, its public
+ * Where a courier implements this, its public
  * tracker WINS over the API's per-shipment links rather than standing in
  * for them. An API link can point somewhere the shopper does not recognise
  * (QuadX returns fareye.co, its logistics platform, not GoGo Xpress, the

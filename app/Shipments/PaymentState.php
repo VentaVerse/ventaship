@@ -5,7 +5,7 @@ namespace App\Shipments;
 use App\Models\Shipment;
 
 /**
- * Where the cash on a shipment stands (plan A4). Moves forward only: cod_unpaid < cod_collected < cod_remitted, and
+ * Where the cash on a shipment stands. Moves forward only: cod_unpaid < cod_collected < cod_remitted, and
  * cod_void is reachable from cod_unpaid alone. Ventaship records the state; it never holds the money.
  */
 final class PaymentState

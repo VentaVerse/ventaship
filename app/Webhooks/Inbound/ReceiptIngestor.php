@@ -10,7 +10,7 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 
 /**
- * Stores inbound courier webhooks as webhook_receipts (base plan §3 "Fast acknowledgement"). Nothing here parses
+ * Stores inbound courier webhooks as webhook_receipts. Nothing here parses
  * the courier's payload or touches a shipment: a known account's receipt is processed by ProcessReceipt in this
  * process once the response is sent (AfterResponse), so the courier is answered at once even with no queue worker.
  * A run that fails leaves the receipt `received`, and ventaship:receipts-reprocess queues it again after two minutes.

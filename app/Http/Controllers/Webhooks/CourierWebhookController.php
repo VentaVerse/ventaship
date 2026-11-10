@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 
 /**
- * Courier webhooks (base plan §3). Stateless, CSRF-free, throttled per IP. Authenticate, store the receipt, answer:
+ * Courier webhooks. Stateless, CSRF-free, throttled per IP. Authenticate, store the receipt, answer:
  * the courier's payload is processed after the response (AfterResponse), so even SPX's 3 second limit is met.
  *
  * QuadX answers: 200 for a known account (matched, unmatched, duplicate or truncated alike: a courier must not see

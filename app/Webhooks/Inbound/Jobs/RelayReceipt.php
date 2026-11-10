@@ -16,7 +16,7 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Forwards an unmatched courier webhook to the account's relay URL (base plan §3 "Unmatched events"), so parcels a
+ * Forwards an unmatched courier webhook to the account's relay URL, so parcels a
  * store books itself on a shared courier account still reach it. The raw body goes byte for byte with the original
  * allow-listed courier headers (SPX's check-sign, app-id, timestamp and random-num stay valid). QuadX's relay URL
  * carries its own ?token; nothing of ours is added to it.

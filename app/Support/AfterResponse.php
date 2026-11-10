@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Work run in this PHP process once the response is sent, so an install with no queue worker (the Pi) still gets it
+ * Work run in this PHP process once the response is sent, so an install with no queue worker still gets it
  * done and a caller (a courier webhook) is answered first.
  *
  * - HTTP: on the app's terminating step, after the response went out (php-fpm's fastcgi_finish_request).

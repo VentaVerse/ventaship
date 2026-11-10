@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
- * The courier account page after the owner's 2026-11-10 review: the header follows the toggle, an unset secret is an
+ * The courier account page: the header follows the toggle, an unset secret is an
  * empty input, Save and test, the first Save creates the account, JSON settings in a code box.
  */
 class CourierAccountPageTest extends TestCase

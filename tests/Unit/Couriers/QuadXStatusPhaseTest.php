@@ -10,7 +10,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
- * Task W1 (fulfillment-workflow-v2 plan): QuadXFulfillment::statusPhase()
+ * QuadXFulfillment::statusPhase()
  * re-bucketed onto the common 8-phase spine. QuadX's raw status vocabulary
  * itself (terminalStatuses/cancelableStatuses/mappableStatuses) is FROZEN —
  * this only proves every raw status QuadX ever produces lands in exactly one

@@ -9,8 +9,8 @@ use Illuminate\Support\Facades\Log;
 /**
  * Low-level SPX Open API client: HMAC-SHA256 request signing + HTTP wrapper.
  *
- * Auth (docs/spx/integration-brief.md §2, verified against the doc's own
- * test vector — see tests/Unit/SpxSignerTest.php):
+ * Auth (guide.md "API authentication guide", verified against the guide's
+ * own test vector — see tests/Unit/SpxSignerTest.php):
  *
  *   originalValue = "{app_id}_{timestamp}_{random_num}_{payload}"
  *   check-sign    = hex(HMAC_SHA256(key: app_secret, message: originalValue))
@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Log;
  * Http::withBody() — never $http->post($url, $body), which would let Guzzle
  * re-encode.
  *
- * Two independent credential pairs (integration-brief.md §2):
+ * Two independent credential pairs:
  *   - app-id / app-secret   — header-level, issued once per integration.
  *   - user_id / user_secret — body-level, per SPX account (3.1 Create
  *     Account), required by every order-related endpoint.
@@ -98,7 +98,7 @@ class SpxClient
 
     /**
      * Pure signer, isolated from Setting/Http so it can be unit-tested
-     * directly against integration-brief.md's verified test vector.
+     * directly against the SPX guide's test vector.
      */
     public static function sign(int $appId, int $timestamp, int $randomNum, string $payload, string $appSecret): string
     {
@@ -110,7 +110,7 @@ class SpxClient
     // --- Endpoints ------------------------------------------------------
 
     /**
-     * Task T4: 3.1 Create Account (account/create) — issues the user_id/
+     * 3.1 Create Account (account/create) — issues the user_id/
      * user_secret pair every order-related SPX call needs, so a fresh
      * install doesn't have to go dig those out of an email. Deliberately
      * takes no user_id/user_secret (that pair is what THIS call produces,
@@ -252,9 +252,8 @@ class SpxClient
     }
 
     /**
-     * UNDOCUMENTED — absent from api.md entirely, discovered by live-probing
-     * the real SPX UAT API (fulfillment-workflow-v2 + SPX plan, Task T3
-     * round 2 — see docs/spx/index.md's quirks list). The documented v2
+     * UNDOCUMENTED — absent from api.md entirely, found by probing the real
+     * SPX UAT API. The documented v2
      * endpoint above (getShippingLabel()) reliably sits at `task_status: 3`
      * ("Running", `progress: "0.00%"`) indefinitely on UAT — live-probed
      * 8+ minutes with no change, never settling. This v1 sibling — same
@@ -278,9 +277,9 @@ class SpxClient
     // --- Webhook signature verification -------------------------------
 
     /**
-     * Task T3: verifies an INBOUND SPX webhook's `check-sign` header.
-     * api.md §4.1/§4.2 + integration-brief.md §2: "Every request (including
-     * webhook verification) is signed" using the exact same algorithm as
+     * Verifies an INBOUND SPX webhook's `check-sign` header.
+     * api.md §4.1/§4.2: every request (including webhook verification) is
+     * signed using the exact same algorithm as
      * outbound calls (sign()) — SPX signs the callback body with OUR
      * app-secret, so we recompute the same HMAC over the four header values
      * + the raw request bytes and compare with hash_equals().

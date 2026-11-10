@@ -8,7 +8,7 @@ A local copy of QuadX's public developer documentation, so we don't have to reac
 | File | What it is |
 |---|---|
 | `api.md` | The full reference as Markdown. It covers the introduction (keys, JWT authorization, responses, pagination, webhooks), then every endpoint: Locations, Orders, AWB Printing. |
-| `statuses.md` | QuadX's official status list with QuadX's own labels. It marks the 31 statuses picked for the status map on 2026-08-30. |
+| `statuses.md` | QuadX's official status list with QuadX's own labels. It marks the 31 statuses picked for the status map. |
 | `postman-collection.json` | The raw Postman collection the docs are built from. Import it into Postman to try the requests. |
 
 ## Facts that shape the integration

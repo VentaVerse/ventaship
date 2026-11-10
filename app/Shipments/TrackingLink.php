@@ -12,7 +12,7 @@ use Throwable;
 /** The tracking link shown for a shipment, in API answers and in the admin screens. */
 class TrackingLink
 {
-    /** The courier's public tracker wins over its API links (owner ruling 2026-09-03); never fatal to the answer. */
+    /** The courier's public tracker wins over its API links; never fatal to the answer. */
     public static function for(Shipment $s): ?string
     {
         if ($s->tracking_number === null || $s->courier === null || ! CourierRegistry::has($s->courier)) {

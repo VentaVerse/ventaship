@@ -1,8 +1,6 @@
 # PSGC address data
 
-Source: `~/venta/database/data/ph/{provinces,cities,districts,barangays,city-zip-map}.json`, copied byte-for-byte on 2026-11-09.
-
-Built by Venta's `ph:build-address-data` from the raw PSGC files, with its remapping:
+Files: `{provinces,cities,districts,barangays,city-zip-map}.json`, built from the raw PSGC (Philippine Standard Geographic Code) files with this remapping:
 
 - a synthetic Metro Manila province
 - highly urbanized cities (HUCs) as cities

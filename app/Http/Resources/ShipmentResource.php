@@ -11,7 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * One shipment as clients see it, in API answers and in webhook `data` (base plan §2 "Shipment resource").
+ * One shipment as clients see it, in API answers and in webhook `data`.
  * Money is a string with two decimals, exactly as stored. Personal data (pickup, recipient, items, note) appears
  * only when the caller asks with withParties(): webhooks never carry it.
  *
