@@ -27,3 +27,18 @@ Thumbs.db
 /storage/app/labels
 .impeccable/
 /.playwright-mcp
+
+# Internal notes and agent files (kept on disk, not published)
+/CLAUDE.md
+/AGENTS.md
+/.claude
+/docs/superpowers/
+/docs/Screenshot*
+/docs/roadmap.md
+/docs/runbook-staging.md
+/docs/couriers/booking-payload-comparison.md
+/docs/couriers/lbc/integration-notes.md
+/docs/couriers/lbc/sample-our-payload-*.xml
+/docs/couriers/spx/index.md
+/docs/couriers/spx/integration-brief.md
+/docs/couriers/spx/questions-for-spx.md
