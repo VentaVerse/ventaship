@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="public/brand/ventaship-logo-dark.png">
+  <img alt="Ventaship" src="public/brand/ventaship-logo-light.png" height="72">
+</picture>
+
 # Ventaship
 
 Ventaship books your parcels with Philippine couriers — **QuadX**, **SPX** and **LBC** — from one place. Add a shipment by hand or let your online store send orders in, print waybills, and follow every parcel until it is delivered.

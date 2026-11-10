@@ -6,8 +6,8 @@
 <form method="POST" action="{{ route('login') }}" class="lg-card" novalidate x-data="{ busy: false, show: false }" x-on:submit="busy = true" x-on:pageshow.window="busy = false">
     @csrf
     <div class="lg-brand">
-        <img class="lg-logo lg-logo--light" src="{{ asset('brand/ventaship-logo-light.svg') }}" alt="Ventaship" width="162" height="40">
-        <img class="lg-logo lg-logo--dark" src="{{ asset('brand/ventaship-logo-dark.svg') }}" alt="" width="162" height="40">
+        <img class="lg-logo lg-logo--light" src="{{ asset('brand/ventaship-logo-light.png') }}" alt="Ventaship" width="157" height="52">
+        <img class="lg-logo lg-logo--dark" src="{{ asset('brand/ventaship-logo-dark.png') }}" alt="" width="165" height="52">
     </div>
     <h1 class="lg-title">Sign in</h1>
 

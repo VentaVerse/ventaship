@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@hasSection('doc_title'){{ trim($__env->yieldContent('doc_title')) }} · @elseif($__env->hasSection('title')){{ trim($__env->yieldContent('title')) }} · @endif{{ config('app.name', 'Ventaship') }}</title>
-    <link rel="icon" href="{{ asset('brand/favicon.svg') }}" type="image/svg+xml">
+    <link rel="icon" href="{{ asset('brand/favicon-64.png') }}" type="image/png">
+    <link rel="apple-touch-icon" href="{{ asset('brand/apple-touch-icon.png') }}">
     @include('partials.theme-boot')
     {{-- The fonts are fetched with the stylesheet, not after it: no fallback-font frame, no text reflow on each page. --}}
     <link rel="preload" href="{{ Vite::asset('resources/fonts/Archivo-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
@@ -21,7 +22,7 @@
     <aside class="x-side" id="x-nav" :class="{ 'is-open': nav }" @keydown.escape.window="closeNav()">
         <div class="x-side__head">
             <a class="x-logo" href="{{ Route::has('fulfillment') ? route('fulfillment') : url('/') }}">
-                <img class="x-logo__img" src="{{ asset('brand/ventaship-logo-dark.svg') }}" alt="Ventaship" width="137" height="34">
+                <img class="x-logo__img" src="{{ asset('brand/ventaship-logo-dark.png') }}" alt="Ventaship" width="133" height="42">
             </a>
             <button type="button" class="x-side__close" x-ref="navClose" @click="closeNav()" aria-label="Close navigation">
                 <x-ui.icon name="x" size="16" />
