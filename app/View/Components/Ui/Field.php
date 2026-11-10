@@ -16,7 +16,8 @@ use Illuminate\View\View;
  * Its public properties are what the x-ui control components inside it read with @aware: when the field's error key
  * has a message they mark themselves invalid (`aria-invalid`, `aria-describedby` → the error, `is-invalid`). The
  * shown error is recorded so the layout's flash does not list it again; `keepFlash` leaves it in the flash too, for
- * a field the page renders hidden.
+ * a field the page renders hidden. `bag` reads a named error bag instead (a second form on the page whose fields share
+ * names with the first, such as the Account tab's Password card).
  */
 class Field extends Component
 {
@@ -34,13 +35,15 @@ class Field extends Component
         public bool $wide = false,
         public ?string $errorKey = null,
         public bool $keepFlash = false,
+        public string $bag = 'default',
     ) {
         $this->fieldKey = $errorKey ?? $name;
         $this->fieldControlId = $for ?? ($name !== null && $name !== '' ? self::controlId($name) : null);
-        $message = $this->fieldKey !== null && $this->fieldKey !== '' ? self::errors()?->first($this->fieldKey) : null;
+        $message = $this->fieldKey !== null && $this->fieldKey !== '' ? self::errors()?->getBag($bag)->first($this->fieldKey) : null;
         $this->fieldMessage = is_string($message) && $message !== '' ? $message : null;
 
-        if ($this->fieldMessage !== null && ! $keepFlash) {
+        // The layout's flash lists only the default bag, so only its keys need marking.
+        if ($this->fieldMessage !== null && ! $keepFlash && $bag === 'default') {
             InlineErrors::mark($this->fieldKey);
         }
     }

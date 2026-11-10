@@ -87,6 +87,7 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');
     Route::put('settings', [SettingsController::class, 'update'])->name('settings.update');
     Route::put('settings/account', [SettingsController::class, 'account'])->name('settings.account');
+    Route::put('settings/password', [SettingsController::class, 'password'])->name('settings.password');
     Route::post('shipments/labels', [ShipmentActionsController::class, 'labels'])->name('shipments.labels');
     Route::get('shipments/labels/bundle', [ShipmentActionsController::class, 'bundle'])
         ->middleware('signed:relative')->name('shipments.labels.bundle');

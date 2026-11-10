@@ -63,8 +63,8 @@ class AccountSecurityTest extends TestCase
 
     private function changePassword(array $jar): TestResponse
     {
-        return $this->as($jar)->put('/settings/account', [
-            'name' => 'Ana', 'email' => 'ana@example.com', 'current_password' => 'correct-horse-battery',
+        return $this->as($jar)->put('/settings/password', [
+            'current_password' => 'correct-horse-battery',
             'password' => 'a-brand-new-passphrase', 'password_confirmation' => 'a-brand-new-passphrase',
         ]);
     }
@@ -121,5 +121,23 @@ class AccountSecurityTest extends TestCase
         RateLimiter::clear('account|'.$this->admin->id.'|127.0.0.1');
         $this->put('/settings/account', $right)->assertSessionHas('status', 'Saved');
         $this->assertSame('new@example.com', $this->admin->fresh()->email);
+    }
+
+    public function test_password_card_shares_the_throttle_and_reports_in_its_own_bag(): void
+    {
+        $this->actingAs($this->admin);
+        $old = $this->admin->password;
+        $wrong = ['current_password' => 'nope', 'password' => 'a-brand-new-passphrase', 'password_confirmation' => 'a-brand-new-passphrase'];
+
+        for ($i = 0; $i < 3; $i++) {
+            $this->put('/settings/account', ['name' => 'Ana', 'email' => 'new@example.com', 'current_password' => 'nope']);
+        }
+        for ($i = 0; $i < 2; $i++) {
+            $this->put('/settings/password', $wrong)->assertSessionHasErrors(['current_password' => 'Current password is wrong.'], null, 'password');
+        }
+        $this->put('/settings/password', ['current_password' => 'correct-horse-battery'] + $wrong)
+            ->assertSessionHasErrors('current_password', null, 'password');
+        $this->assertMatchesRegularExpression('/^Too many attempts\. Try again in \d+ seconds\.$/', session('errors')->getBag('password')->first('current_password'));
+        $this->assertSame($old, $this->admin->fresh()->password);
     }
 }

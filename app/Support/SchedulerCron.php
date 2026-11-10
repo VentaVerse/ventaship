@@ -63,11 +63,16 @@ final class SchedulerCron
         }
     }
 
-    /** @return array{0: string, 1: string} label, badge tone */
+    /**
+     * Green while the label reads "Just now", "1 min ago" or "2 min ago" (under FRESH_SECONDS), amber when older,
+     * neutral "Never" before the first run.
+     *
+     * @return array{0: string, 1: string} label, badge tone
+     */
     public static function lastRunBadge(?CarbonImmutable $at): array
     {
         if ($at === null) {
-            return ['Never', 'attn'];
+            return ['Never', 'mute'];
         }
 
         $seconds = max(0, (int) $at->diffInSeconds(now(), true));

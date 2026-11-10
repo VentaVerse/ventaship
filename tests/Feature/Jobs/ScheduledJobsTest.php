@@ -93,7 +93,7 @@ class ScheduledJobsTest extends TestCase
     {
         $this->admin();
 
-        $this->get('/settings?tab=jobs')->assertSeeInOrder(['Last run', 'x-badge--attn', 'Never']);
+        $this->get('/settings?tab=jobs')->assertSeeInOrder(['Last run', 'x-badge--mute', 'Never']);
 
         app(Settings::class)->set(ScheduleHeartbeat::KEY, now()->subMinutes(2)->subSeconds(5)->toIso8601String());
         $this->get('/settings?tab=jobs')->assertSeeInOrder(['Last run', 'x-badge--good', '2 min ago']);

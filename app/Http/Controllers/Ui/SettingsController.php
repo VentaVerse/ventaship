@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Ui;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Ui\SaveGeneralSettingsRequest;
+use App\Http\Requests\Ui\UpdatePasswordRequest;
+use App\Http\Requests\Ui\UpdateProfileRequest;
 use App\Models\Admin;
 use App\Models\AuditEntry;
 use App\Support\SchedulerCron;
@@ -14,7 +17,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class SettingsController extends Controller
@@ -41,7 +43,7 @@ class SettingsController extends Controller
         ]);
     }
 
-    /** @return array{line: string, command: string, fields: array<string, string>, lastRun: array{0: string, 1: string}} */
+    /** @return array{line: string, lastRun: array{0: string, 1: string}} */
     private function cron(Settings $settings): array
     {
         return [
@@ -50,13 +52,9 @@ class SettingsController extends Controller
         ];
     }
 
-    public function update(Request $request, Settings $settings): RedirectResponse
+    public function update(SaveGeneralSettingsRequest $request, Settings $settings): RedirectResponse
     {
-        $data = $request->validate([
-            'shipments_reference_prefix' => ['required', 'regex:/^[A-Z0-9]{1,8}\z/'],
-        ], [
-            'shipments_reference_prefix.*' => 'Use 1–8 capital letters or digits.',
-        ]);
+        $data = $request->validated();
         $new = [
             'shipments.reference_prefix' => $data['shipments_reference_prefix'],
         ];
@@ -85,87 +83,94 @@ class SettingsController extends Controller
         return redirect()->route('settings.edit', ['tab' => 'general'])->with('status', 'Saved');
     }
 
-    public function account(Request $request): RedirectResponse
+    /** Profile card: name and email. A new email needs the current password; the name alone does not. */
+    public function account(UpdateProfileRequest $request): RedirectResponse
     {
         /** @var Admin $admin */
         $admin = $request->user();
+        $data = $request->validated();
 
-        if (is_string($email = $request->input('email'))) {
-            $request->merge(['email' => Str::lower(trim($email))]);
-        }
+        $changed = array_values(array_filter(['name', 'email'], fn (string $field) => $data[$field] !== $admin->{$field}));
 
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('admins', 'email')->ignore($admin->getKey())],
-            'current_password' => ['nullable', 'string'],
-            'password' => ['nullable', 'string', 'min:12', 'confirmed'],
-        ], [
-            'name.required' => 'Required.',
-            'name.max' => 'Too long.',
-            'email.required' => 'Required.',
-            'email.email' => 'Not a valid email.',
-            'email.max' => 'Too long.',
-            'email.unique' => 'Email already in use.',
-            'password.min' => 'At least 12 characters.',
-            'password.confirmed' => "Passwords don't match.",
-        ]);
-
-        $changed = [];
-        foreach (['name', 'email'] as $field) {
-            if ($data[$field] !== $admin->{$field}) {
-                $changed[] = $field;
+        if (in_array('email', $changed, true)) {
+            $refusal = $this->checkCurrentPassword($request, $admin, (string) ($data['current_password'] ?? ''));
+            if ($refusal !== null) {
+                return back()
+                    ->withInput($request->only(['name', 'email']))
+                    ->withErrors(['current_password' => $refusal]);
             }
-        }
-        $newPassword = $data['password'] ?? null;
-        if ($newPassword !== null && $newPassword !== '') {
-            $changed[] = 'password';
-        }
-
-        if (array_intersect(['email', 'password'], $changed) !== []) {
-            $key = 'account|'.$admin->getKey().'|'.$request->ip();
-            $refuse = fn (string $message) => back()
-                ->withInput($request->except(['current_password', 'password', 'password_confirmation']))
-                ->withErrors(['current_password' => $message]);
-
-            if (RateLimiter::tooManyAttempts($key, self::PASSWORD_ATTEMPTS)) {
-                return $refuse('Too many attempts. Try again in '.RateLimiter::availableIn($key).' seconds.');
-            }
-            if (! Hash::check((string) ($data['current_password'] ?? ''), $admin->password)) {
-                RateLimiter::hit($key, self::PASSWORD_DECAY_SECONDS);
-
-                return $refuse('Current password is wrong.');
-            }
-            RateLimiter::clear($key);
         }
 
         if ($changed !== []) {
-            DB::transaction(function () use ($admin, $data, $changed, $newPassword, $request) {
+            DB::transaction(function () use ($admin, $data, $changed, $request) {
                 $admin->name = $data['name'];
                 $admin->email = $data['email'];
-                if (in_array('password', $changed, true)) {
-                    $admin->password = $newPassword; // hashed by the model cast
-                    $admin->setRememberToken(Str::random(60));
-                }
                 $admin->save();
-
-                AuditEntry::query()->create([
-                    'actor_type' => 'admin',
-                    'actor_id' => (string) $admin->getKey(),
-                    'ip' => $request->ip(),
-                    'action' => 'admin.updated',
-                    'subject_type' => 'admin',
-                    'subject_id' => (string) $admin->getKey(),
-                    'changes' => ['fields' => $changed],
-                    'created_at' => now(),
-                ]);
+                $this->audit($request, $admin, $changed);
             });
         }
 
-        if (in_array('password', $changed, true)) {
-            $this->signOutOtherSessions($request, $admin);
+        return redirect()->route('settings.edit', ['tab' => 'account'])->with('status', 'Saved');
+    }
+
+    /** Password card. Only this browser stays signed in afterwards. */
+    public function password(UpdatePasswordRequest $request): RedirectResponse
+    {
+        /** @var Admin $admin */
+        $admin = $request->user();
+        $data = $request->validated();
+
+        $refusal = $this->checkCurrentPassword($request, $admin, (string) $data['current_password']);
+        if ($refusal !== null) {
+            return back()->withErrors(['current_password' => $refusal], UpdatePasswordRequest::BAG);
         }
 
-        return redirect()->route('settings.edit', ['tab' => 'account'])->with('status', 'Saved');
+        DB::transaction(function () use ($admin, $data, $request) {
+            $admin->password = $data['password']; // hashed by the model cast
+            $admin->setRememberToken(Str::random(60));
+            $admin->save();
+            $this->audit($request, $admin, ['password']);
+        });
+
+        $this->signOutOtherSessions($request, $admin);
+
+        return redirect()->route('settings.edit', ['tab' => 'account'])->with('status', 'Password changed');
+    }
+
+    /**
+     * The current password, throttled per admin and IP (one budget for both cards). Null when it is right, else
+     * the message for its field.
+     */
+    private function checkCurrentPassword(Request $request, Admin $admin, string $given): ?string
+    {
+        $key = 'account|'.$admin->getKey().'|'.$request->ip();
+
+        if (RateLimiter::tooManyAttempts($key, self::PASSWORD_ATTEMPTS)) {
+            return 'Too many attempts. Try again in '.RateLimiter::availableIn($key).' seconds.';
+        }
+        if (! Hash::check($given, $admin->password)) {
+            RateLimiter::hit($key, self::PASSWORD_DECAY_SECONDS);
+
+            return 'Current password is wrong.';
+        }
+        RateLimiter::clear($key);
+
+        return null;
+    }
+
+    /** @param  list<string>  $fields  names only, never values */
+    private function audit(Request $request, Admin $admin, array $fields): void
+    {
+        AuditEntry::query()->create([
+            'actor_type' => 'admin',
+            'actor_id' => (string) $admin->getKey(),
+            'ip' => $request->ip(),
+            'action' => 'admin.updated',
+            'subject_type' => 'admin',
+            'subject_id' => (string) $admin->getKey(),
+            'changes' => ['fields' => $fields],
+            'created_at' => now(),
+        ]);
     }
 
     /**

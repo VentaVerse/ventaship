@@ -842,3 +842,67 @@
         color: var(--bl-bad);
     }
 }
+
+@layer components {
+    /* A read-only value shown in full: it wraps instead of being cut off, Copy sits below it. */
+    .x-copyvalue {
+        min-width: 0;
+    }
+
+    .x-copyvalue__text {
+        display: block;
+        height: auto;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        background: var(--bl-chrome);
+        font: 500 12px/1.5 var(--font-mono);
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        resize: none;
+        field-sizing: content;
+    }
+
+    .x-copyvalue__acts {
+        margin-top: 8px;
+    }
+
+    /* A password input with a show/hide eye inside its right edge (the login page's pattern). */
+    .x-pass {
+        position: relative;
+        width: 100%;
+    }
+
+    .x-pass .x-input {
+        padding-right: 44px;
+    }
+
+    .x-pass__eye {
+        position: absolute;
+        top: 0;
+        right: 0;
+        display: grid;
+        place-items: center;
+        width: 40px;
+        height: 100%;
+        border: 0;
+        border-radius: 0 var(--bl-r-ctrl) var(--bl-r-ctrl) 0;
+        background: none;
+        color: var(--bl-ink-2);
+        cursor: pointer;
+    }
+
+    .x-pass__eye:hover {
+        color: var(--bl-ink);
+    }
+
+    .x-pass__eye:focus-visible {
+        outline: 2px solid var(--bl-brand-btn);
+        outline-offset: -2px;
+    }
+
+    @media (max-width: 639px) {
+        .x-pass__eye {
+            width: 44px;
+        }
+    }
+}
