@@ -119,7 +119,7 @@ class SpxFulfillmentTest extends TestCase
                 'total_count' => 1, 'success_count' => 1, 'fail_count' => 0, 'progress' => '100.00%',
                 'orders' => [[
                     'order_id' => '1', 'tracking_no' => $trackingNo,
-                    'tracking_no_link' => "https://test.spx.co.th/track?{$trackingNo}",
+                    'tracking_link' => "https://test.spx.co.th/track?{$trackingNo}",
                     'estimated_shipping_fee' => 25,
                 ]],
                 'fail_list' => [],
@@ -1684,5 +1684,18 @@ class SpxFulfillmentTest extends TestCase
 
         Http::assertSent(fn ($request) => str_contains($request->url(), 'batch_create_order')
             && (float) $request->data()['orders'][0]['parcel_info']['express_insured_value'] === 800.0);
+    }
+
+    public function test_booking_tracking_link_from_spx_create_result_is_the_shipment_link(): void
+    {
+        // Shape of a real UAT booking's stored response (1.5 Get Order Create Result): SPX names it tracking_link.
+        $order = \App\Couriers\CourierOrder::make(['courier_meta' => ['booked_response' => [
+            'order_id' => 'VS000002',
+            'tracking_no' => 'SPEPH06048584367B',
+            'tracking_link' => 'https://uat.spx.ph/track?SPEPH06048584367B',
+            'order_id_link' => 'https://uat.spx.ph/track?VS000002',
+        ]]]);
+
+        $this->assertSame([['label' => 'Track', 'url' => 'https://uat.spx.ph/track?SPEPH06048584367B']], $this->courier()->trackingLinks($order));
     }
 }

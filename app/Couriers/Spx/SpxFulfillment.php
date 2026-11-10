@@ -1149,9 +1149,10 @@ class SpxFulfillment implements Courier
     /**
      * Preference order: courier_meta.tracking_links.delivery (written by
      * getTracking()'s 'links' -> the poll command / manual Refresh, mirroring
-     * QuadX's own pattern), else booked_response.tracking_no_link (the link
+     * QuadX's own pattern), else booked_response.tracking_link (the link
      * 1.5 Get Order Create Result returns at booking time, before any
-     * tracking poll has run yet).
+     * tracking poll has run yet). Older code read `tracking_no_link`, a name
+     * SPX never sends; it is still accepted for responses stored that way.
      */
     public function trackingLinks(CourierOrder $order): array
     {
@@ -1165,7 +1166,7 @@ class SpxFulfillment implements Courier
             return [['label' => 'Track', 'url' => $metaLinks['delivery']]];
         }
 
-        $fallback = $meta['booked_response']['tracking_no_link'] ?? null;
+        $fallback = $meta['booked_response']['tracking_link'] ?? $meta['booked_response']['tracking_no_link'] ?? null;
         if (is_string($fallback) && str_starts_with($fallback, 'http')) {
             return [['label' => 'Track', 'url' => $fallback]];
         }
