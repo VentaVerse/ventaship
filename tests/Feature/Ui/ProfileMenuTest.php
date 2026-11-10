@@ -96,7 +96,9 @@ class ProfileMenuTest extends TestCase
             $this->assertStringContainsString(':root[data-theme-mode="'.$mode.'"] .x-prof__mode[data-mode="'.$mode.'"]', $css);
         }
         $this->assertMatchesRegularExpression('/@media \(max-width: 639px\)\s*\{.*?\.x-prof__btn\s*\{[^}]*min-height:\s*44px;[^}]*min-width:\s*44px;.*?\.x-prof__name\s*\{\s*display:\s*none;.*?\.x-prof__item,\s*\.x-prof__mode\s*\{\s*min-height:\s*44px;/s', $css);
-        $this->assertMatchesRegularExpression('/\.x-top__in\s*\{[^}]*max-width:\s*calc\(var\(--bl-page-max\) \+ 2 \* var\(--bl-gutter\)\);[^}]*margin-inline:\s*auto;/s', $css);
+        // Its own top bar: full width right of the sidebar (no page-column cap), sticky, profile at the far right.
+        $this->assertMatchesRegularExpression('/\.x-top\s*\{[^}]*position:\s*sticky;[^}]*background:\s*var\(--bl-sheet\);[^}]*border-bottom:/s', $css);
+        $this->assertDoesNotMatchRegularExpression('/\.x-top__in\s*\{[^}]*max-width/s', $css);
         $this->assertMatchesRegularExpression('/\.x-side__ver\s*\{[^}]*font-size:\s*11\.5px;[^}]*color:\s*var\(--bl-side-group\);/s', $css);
     }
 
