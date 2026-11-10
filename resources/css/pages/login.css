@@ -22,22 +22,24 @@
     .lg-brand {
         display: flex;
         align-items: center;
-        gap: 10px;
-        font-weight: 700;
-        font-size: 14px;
-        letter-spacing: .01em;
-        text-transform: uppercase;
-        color: var(--bl-ink);
     }
 
-    .lg-mark {
-        display: grid;
-        place-items: center;
-        width: 32px;
-        height: 32px;
-        border-radius: 10px;
-        background: var(--bl-brand);
+    .lg-logo {
+        display: block;
+        width: auto;
+        height: 40px;
     }
+
+    /* The logo follows the chosen theme (data-theme is set before the page draws). */
+    .lg-logo--dark,
+    :root[data-theme="dark"] .lg-logo--light {
+        display: none;
+    }
+
+    :root[data-theme="dark"] .lg-logo--dark {
+        display: block;
+    }
+
 
     .lg-title {
         margin: 0;

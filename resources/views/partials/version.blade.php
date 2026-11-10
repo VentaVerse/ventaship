@@ -1,0 +1,1 @@
+Ventaship {{ \App\Support\AppVersion::current() }}

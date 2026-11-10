@@ -74,13 +74,10 @@
         text-decoration: none;
     }
 
-    .x-logo__mark {
-        display: grid;
-        place-items: center;
-        width: 26px;
-        height: 26px;
-        border-radius: 8px;
-        background: var(--bl-brand);
+    .x-logo__img {
+        display: block;
+        width: auto;
+        height: 34px;
     }
 
     .x-courier {

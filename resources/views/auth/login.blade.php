@@ -6,10 +6,8 @@
 <form method="POST" action="{{ route('login') }}" class="lg-card" novalidate x-data="{ busy: false, show: false }" x-on:submit="busy = true" x-on:pageshow.window="busy = false">
     @csrf
     <div class="lg-brand">
-        <span class="lg-mark">
-            <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="#0b1228" stroke-width="2" aria-hidden="true"><path d="M2 5l6-3 6 3v6l-6 3-6-3z"/><path d="M2 5l6 3 6-3M8 8v6"/></svg>
-        </span>
-        Ventaship
+        <img class="lg-logo lg-logo--light" src="{{ asset('brand/ventaship-logo-light.svg') }}" alt="Ventaship" width="162" height="40">
+        <img class="lg-logo lg-logo--dark" src="{{ asset('brand/ventaship-logo-dark.svg') }}" alt="" width="162" height="40">
     </div>
     <h1 class="lg-title">Sign in</h1>
 
@@ -44,6 +42,6 @@
         <span x-show="! busy">Sign in</span>
         <span x-show="busy" x-cloak>Signing in…</span>
     </x-ui.button>
-    <div class="lg-foot">v0.1</div>
+    <div class="lg-foot">@include('partials.version')</div>
 </form>
 @endsection

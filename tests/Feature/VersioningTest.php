@@ -70,6 +70,12 @@ class VersioningTest extends TestCase
             ->assertSee('<span class="x-side__ver">Ventaship '.AppVersion::current().'</span>', false);
     }
 
+    public function test_login_shows_the_same_version_as_the_menu(): void
+    {
+        $this->get('/login')->assertOk()
+            ->assertSee('<div class="lg-foot">Ventaship '.AppVersion::current().'</div>', false);
+    }
+
     public function test_reader_accepts_pre_release_and_rejects_junk(): void
     {
         $dir = sys_get_temp_dir().'/vs-version-'.bin2hex(random_bytes(4));
