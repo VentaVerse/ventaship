@@ -7,7 +7,7 @@ use App\Couriers\CourierOrder;
 use App\Couriers\PickupPoint;
 use App\Couriers\Spx\SpxClient;
 use App\Couriers\Spx\SpxFulfillment;
-use App\Couriers\Support\PhaseTone;
+use App\Shipments\PhaseResolver;
 use App\Models\CourierAccount;
 use App\Models\Shipment;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -522,7 +522,8 @@ class SpxFulfillmentTest extends TestCase
         $result = $this->courier()->createShipment($order, $this->opts(['parcel' => 'small', 'shipping_payment' => 'sender_pay']));
 
         $this->assertFalse($result['success']);
-        $this->assertStringContainsString('Address invalid.', $result['error']);
+        // Our sentence for the code first, then SPX's code and specific reason.
+        $this->assertSame("SPX doesn't serve the pickup address. (SPX 10018: x)", $result['error']);
     }
 
     /**
@@ -574,7 +575,13 @@ class SpxFulfillmentTest extends TestCase
 
         $order = $this->makeOrder([], ['state' => 'booking', 'courier_status' => 'creating', 'meta' => ['batch_no' => 42]]);
 
-        $this->assertSame(['tracking_number' => 'SPEPH000000000009'], $this->courier()->resolvePendingCreation($order));
+        $answer = $this->courier()->resolvePendingCreation($order);
+
+        $this->assertSame('SPEPH000000000009', $answer['tracking_number']);
+        $this->assertSame('25.00', $answer['fee']);
+        $this->assertSame('SPEPH000000000009', $answer['meta']['booked_response']['tracking_no']);
+        $this->assertSame('25.00', $answer['meta']['estimated_shipping_fee']);
+        $this->assertSame(['delivery' => 'https://test.spx.co.th/track?SPEPH000000000009'], $answer['meta']['tracking_links']);
     }
 
     public function test_resolve_pending_creation_returns_null_while_still_running(): void
@@ -616,7 +623,7 @@ class SpxFulfillmentTest extends TestCase
         $this->assertSame('creation_failed', $answer['courier_status']);
         $this->assertArrayNotHasKey('tracking_number', $answer);
         $this->assertTrue($answer['meta']['creation_failed']);
-        $this->assertSame('Weight exceeds limit.', $answer['meta']['creation_error']);
+        $this->assertSame('Weight exceeds limit. (SPX 10025)', $answer['meta']['creation_error']);
         $this->assertSame(7, $answer['meta']['batch_no']);
     }
 
@@ -727,7 +734,60 @@ class SpxFulfillmentTest extends TestCase
         $this->assertSame('1001', $result['status']);
         $this->assertSame(['delivery' => 'https://uat.spx.ph/track?SPEPH1'], $result['links']);
         $this->assertSame([['status' => '1001', 'at' => 1753171999]], $result['timeline']);
-        $this->assertSame(['actual_shipping_fee' => 30], $result['fee_info']);
+        // Not delivered yet: 2.2 is not asked (finding #19).
+        $this->assertNull($result['fee_info']);
+        $this->assertNull($result['actual_fee']);
+        $this->assertSame(['tracking_links' => ['delivery' => 'https://uat.spx.ph/track?SPEPH1']], $result['meta']);
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), 'batch_get_asf'));
+    }
+
+    public function test_get_tracking_asks_2_2_once_delivered_at_most_once_a_day(): void
+    {
+        $this->configureAccountCredentials();
+        Http::fake([
+            '*batch_search_order*' => Http::response($this->trackOrderResponse('SPEPH1', [
+                'status' => 'Delivered', 'status_code' => '4001',
+                'edd_info' => ['edd_min' => 1, 'edd_max' => 3],
+            ])),
+            '*batch_get_asf*' => Http::response([
+                'ret_code' => 0, 'message' => 'success.',
+                'data' => ['orders' => [['tracking_no' => 'SPEPH1', 'fee_info' => ['actual_shipping_fee' => 57.5, 'return_shipping_fee' => 0]]], 'fail_list' => []],
+            ]),
+        ]);
+
+        $first = $this->courier()->getTracking('SPEPH1');
+        $second = $this->courier()->getTracking('SPEPH1');
+
+        $this->assertSame('57.50', $first['actual_fee']);
+        $this->assertSame(['min' => 1, 'max' => 3, 'source' => 'tracking'], $first['meta']['edd']);
+        $this->assertArrayNotHasKey('actual_return_fee', $first['meta'], 'a zero return fee is SPX\'s "none"');
+        $this->assertNull($second['actual_fee']);
+        Http::assertSentCount(3); // two tracks, one fee lookup
+
+        $this->travel(25)->hours();
+        $this->courier()->getTracking('SPEPH1');
+        Http::assertSentCount(5); // a day later it may ask again
+    }
+
+    public function test_get_tracking_asks_2_2_for_a_returned_parcel_but_not_for_lost_or_in_transit(): void
+    {
+        $this->configureAccountCredentials();
+        Http::fakeSequence('*batch_search_order*')
+            ->push($this->trackOrderResponse('SPEPH1', ['status_code' => '2001']))
+            ->push($this->trackOrderResponse('SPEPH1', ['status_code' => '5003']))
+            ->push($this->trackOrderResponse('SPEPH1', ['status_code' => '6003']));
+        Http::fake(['*batch_get_asf*' => Http::response([
+            'ret_code' => 0, 'message' => 'success.',
+            'data' => ['orders' => [['tracking_no' => 'SPEPH1', 'fee_info' => ['actual_shipping_fee' => 40, 'return_shipping_fee' => 35]]], 'fail_list' => []],
+        ])]);
+
+        $this->courier()->getTracking('SPEPH1');
+        $this->courier()->getTracking('SPEPH1');
+        $returned = $this->courier()->getTracking('SPEPH1');
+
+        $this->assertSame('40.00', $returned['actual_fee']);
+        $this->assertSame('35.00', $returned['meta']['actual_return_fee']);
+        $this->assertSame(1, collect(Http::recorded())->filter(fn ($pair) => str_contains($pair[0]->url(), 'batch_get_asf'))->count());
     }
 
     public function test_get_tracking_retries_on_13251_then_succeeds(): void
@@ -769,11 +829,11 @@ class SpxFulfillmentTest extends TestCase
             '1001 Pending Pickup'   => ['1001', 'to_handover'],
             '2001 In Transit'       => ['2001', 'in_transit'],
             '2006 Delivering'       => ['2006', 'in_transit'],
-            '3001 On Hold'          => ['3001', 'failed'],
+            '3001 On Hold'          => ['3001', 'attention'],
             '4001 Delivered'        => ['4001', 'delivered'],
             '5001 Pickup Failed'    => ['5001', 'failed'],
-            '5002 Damaged'          => ['5002', 'failed'],
-            '5003 Lost'             => ['5003', 'failed'],
+            '5002 Damaged'          => ['5002', 'lost_damaged'],
+            '5003 Lost'             => ['5003', 'lost_damaged'],
             '6001 Returning'        => ['6001', 'returning'],
             '6002 Return Failed'    => ['6002', 'failed'],
             '6003 Returned'         => ['6003', 'returning'],
@@ -794,7 +854,7 @@ class SpxFulfillmentTest extends TestCase
         $result = $this->courier()->statusPhase($status);
 
         $this->assertSame($expectedPhase, $result['phase']);
-        $this->assertContains($result['phase'], PhaseTone::PHASES);
+        $this->assertContains($result['phase'], PhaseResolver::SPINE);
         $this->assertArrayHasKey('step', $result);
         $this->assertArrayHasKey('failed', $result);
     }
@@ -804,7 +864,11 @@ class SpxFulfillmentTest extends TestCase
         $courier = $this->courier();
 
         foreach ($courier->terminalStatuses() as $status) {
-            $this->assertContains($courier->statusPhase($status)['phase'], ['delivered', 'cancelled', 'returning', 'failed']);
+            $this->assertContains($courier->statusPhase($status)['phase'], ['delivered', 'cancelled', 'returning', 'lost_damaged']);
+        }
+        // On Hold, Pickup Failed and Return Failed are retried by SPX: never final.
+        foreach (['3001', '5001', '6002'] as $status) {
+            $this->assertNotContains($status, $courier->terminalStatuses());
         }
 
         $this->assertSame(['1001'], $courier->cancelableStatuses());
@@ -1435,6 +1499,7 @@ class SpxFulfillmentTest extends TestCase
             'status' => '1001',
             'occurred_at' => date(DATE_ATOM, 1639385434),
             'remarks' => 'xxx',
+            'meta' => ['tracking_links' => ['delivery' => 'https://test.spx.co.th/track?SPXTH026817968592']],
         ], $events[0]);
     }
 
@@ -1697,5 +1762,150 @@ class SpxFulfillmentTest extends TestCase
         ]]]);
 
         $this->assertSame([['label' => 'Track', 'url' => 'https://uat.spx.ph/track?SPEPH06048584367B']], $this->courier()->trackingLinks($order));
+    }
+
+    // ------------------------------------------------------------------
+    // Batch B (money and status): fees, failure reasons, webhook facts, ODZ.
+    // ------------------------------------------------------------------
+
+    public function test_create_shipment_reports_the_estimated_fee_and_the_booked_data(): void
+    {
+        $this->configureAccountCredentials();
+        Http::fake([
+            '*batch_create_order*' => Http::response(['ret_code' => 0, 'message' => 'success.', 'data' => ['batch_no' => 77]]),
+            '*get_order_create_result*' => Http::response($this->doneCreateResultResponse('SPEPH000000000001', 77, [
+                'orders' => [[
+                    'order_id' => 'VS000042', 'tracking_no' => 'SPEPH000000000001',
+                    'tracking_link' => 'https://uat.spx.ph/track?SPEPH000000000001',
+                    'estimated_shipping_fee' => 55, 'basic_shipping_fee' => 195, 'voucher_shipping_fee' => 140,
+                    'remote_area_fee' => 0, 'r_first_sort_code' => 'S1',
+                ]],
+            ])),
+        ]);
+
+        $result = $this->courier()->createShipment($this->makeOrder(), $this->opts(['parcel' => 'small']));
+
+        $this->assertTrue($result['success']);
+        $this->assertSame('55.00', $result['fee']);
+        $this->assertSame('55.00', $result['meta']['estimated_shipping_fee']);
+        $this->assertSame('0.00', $result['meta']['remote_area_fee']);
+        $this->assertSame('S1', $result['meta']['booked_response']['r_first_sort_code']);
+        $this->assertSame(['delivery' => 'https://uat.spx.ph/track?SPEPH000000000001'], $result['meta']['tracking_links']);
+        $this->assertArrayNotHasKey('edd', $result['meta'], 'the real 1.5 answer carries no EDD');
+    }
+
+    /** @return array<string, array{0: array<string, mixed>, 1: string}> */
+    public static function createFailureProvider(): array
+    {
+        return [
+            'known code with debug_msg' => [
+                ['order_id' => 'VS000042', 'message' => 'Create Order Failed.', 'debug_msg' => 'now_time over cutoff_time', 'ret_code' => 10080],
+                "The pickup slot is past SPX's cutoff. Choose another pickup date. (SPX 10080: now_time over cutoff_time)",
+            ],
+            'known code without debug_msg keeps SPX message' => [
+                ['message' => 'Create Order Failed.', 'ret_code' => 10019],
+                "SPX doesn't serve the delivery address. (SPX 10019: Create Order Failed.)",
+            ],
+            'unknown code in SPX words' => [
+                ['message' => 'Receiver name too long.', 'debug_msg' => "deliver_name\nlength 80 > 64", 'ret_code' => 10099],
+                'Receiver name too long. (SPX 10099: deliver_name length 80 > 64)',
+            ],
+            'unknown code, no debug_msg' => [
+                ['message' => 'Create Order Failed.', 'ret_code' => 10099],
+                'Create Order Failed. (SPX 10099)',
+            ],
+            'no code no message' => [[], 'SPX could not create this shipment.'],
+        ];
+    }
+
+    #[DataProvider('createFailureProvider')]
+    public function test_a_create_failure_names_the_reason_then_spx_code_and_debug_msg(array $fail, string $expected): void
+    {
+        $this->configureAccountCredentials();
+        Http::fake([
+            '*batch_create_order*' => Http::response(['ret_code' => 0, 'message' => 'success.', 'data' => ['batch_no' => 5]]),
+            '*get_order_create_result*' => Http::response(['ret_code' => 0, 'message' => 'success.', 'data' => [
+                'batch_no' => 5, 'task_status' => 4, 'description' => 'Done', 'total_count' => 1, 'success_count' => 0,
+                'fail_count' => 1, 'progress' => '100.00%', 'orders' => [], 'fail_list' => [$fail],
+            ]]),
+        ]);
+
+        $result = $this->courier()->createShipment($this->makeOrder(), $this->opts(['parcel' => 'small']));
+
+        $this->assertFalse($result['success']);
+        $this->assertSame($expected, $result['error']);
+    }
+
+    public function test_parse_webhook_carries_the_actual_fee_edd_driver_and_proofs(): void
+    {
+        [$event] = $this->courier()->parseWebhook([
+            'status' => 'Delivered', 'status_code' => '4001', 'message' => 'Delivered',
+            'tracking_no' => 'SPEPH1', 'order_id' => 'VS000042', 'timestamp' => 1762570000, 'id' => 'x',
+            'tracking_link' => 'https://uat.spx.ph/track?SPEPH1',
+            'actual_shipping_fee' => 57.5,
+            'edd_min' => 1762570000, 'edd_max' => 1762742800,
+            'driver_name' => '  Juan  ', 'driver_phone_number' => '09170000000',
+            'proof_of_delivery_list' => ['https://cdn.spx.ph/pod/1.jpg', 'javascript:alert(1)', 'https://cdn.spx.ph/pod/1.jpg', 'ftp://x/y'],
+        ]);
+
+        $this->assertSame('57.50', $event['actual_fee']);
+        $this->assertSame([
+            'tracking_links' => ['delivery' => 'https://uat.spx.ph/track?SPEPH1'],
+            'edd' => ['min' => 1762570000, 'max' => 1762742800, 'source' => 'webhook'],
+            'driver' => ['name' => 'Juan', 'phone' => '09170000000'],
+            'proofs' => ['epod' => ['https://cdn.spx.ph/pod/1.jpg']],
+        ], $event['meta']);
+    }
+
+    public function test_parse_webhook_reads_the_return_fee_on_6003_and_no_actual_fee_when_absent(): void
+    {
+        [$event] = $this->courier()->parseWebhook([
+            'status_code' => '6003', 'tracking_no' => 'SPEPH1', 'timestamp' => 1762570000, 'actual_return_shipping_fee' => 35,
+        ]);
+
+        $this->assertArrayNotHasKey('actual_fee', $event);
+        $this->assertSame(['actual_return_fee' => '35.00'], $event['meta']);
+    }
+
+    public function test_parse_webhook_reads_a_4_2_evidence_push_as_a_statusless_event(): void
+    {
+        $events = $this->courier()->parseWebhook([
+            'tracking_no' => 'SPEPH1', 'customer_order_id' => 'VS000042', 'id' => 'ep-1',
+            'epod_list' => ['https://cdn.spx.ph/epod/a.jpg'], 'epop_list' => ['https://cdn.spx.ph/epop/b.jpg'],
+            'epor_list' => [], 'epooh_list' => null, 'status' => 'Delivered',
+        ]);
+
+        $this->assertSame([[
+            'reference_id' => 'VS000042', 'tracking_number' => 'SPEPH1', 'status' => null,
+            'occurred_at' => null, 'remarks' => null,
+            'meta' => ['proofs' => ['epod' => ['https://cdn.spx.ph/epod/a.jpg'], 'epop' => ['https://cdn.spx.ph/epop/b.jpg']]],
+        ]], $events);
+        $this->assertSame([], $this->courier()->parseWebhook(['tracking_no' => 'SPEPH1', 'epod_list' => []]), 'no proofs, no event');
+    }
+
+    public function test_quote_and_coverage_carry_odz_from_remote_area_fee_when_spx_sends_it(): void
+    {
+        $this->configureAccountCredentials();
+        Http::fakeSequence('*batch_check_order*')
+            ->push(['ret_code' => 0, 'message' => 'success.', 'data' => ['orders' => [['estimated_shipping_fee' => 80, 'remote_area_fee' => 25]], 'fail_list' => []]])
+            ->push(['ret_code' => 0, 'message' => 'success.', 'data' => ['orders' => [['estimated_shipping_fee' => 55, 'remote_area_fee' => 0]], 'fail_list' => []]])
+            ->push(['ret_code' => 0, 'message' => 'success.', 'data' => ['orders' => [['estimated_shipping_fee' => 55]], 'fail_list' => []]])
+            ->push(['ret_code' => 0, 'message' => 'success.', 'data' => ['orders' => [['estimated_shipping_fee' => 80, 'remote_area_fee' => 25]], 'fail_list' => []]])
+            ->push(['ret_code' => 0, 'message' => 'success.', 'data' => ['orders' => [['estimated_shipping_fee' => 55]], 'fail_list' => []]]);
+
+        $order = $this->makeOrder();
+        $opts = $this->opts(['parcel' => 'small']);
+        $remote = $this->courier()->estimateFee($order, $opts);
+        $plain = $this->courier()->estimateFee($order, $opts);
+        $silent = $this->courier()->estimateFee($order, $opts);
+
+        $this->assertSame([true, '25.00'], [$remote->odz, $remote->remote_area_fee]);
+        $this->assertSame([false, '0.00'], [$plain->odz, $plain->remote_area_fee]);
+        $this->assertSame([null, null], [$silent->odz, $silent->remote_area_fee]);
+
+        $this->assertTrue($this->courier()->checkServiceability($order, $this->pickup())->odz);
+        $verdict = $this->courier()->checkServiceability($order, $this->pickup());
+        $this->assertTrue($verdict->isServiceable());
+        $this->assertNull($verdict->odz);
     }
 }

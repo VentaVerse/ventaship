@@ -177,12 +177,20 @@
                                 <span class="sd-mono">{{ $value }}</span>
                             @endif
                         </dd>
-                    @elseif(in_array($label, ['Booked at', 'Fee'], true))
+                    @elseif(in_array($label, ['Booked at', 'Fee', 'Actual fee'], true))
                         <dd class="x-num">{{ $value }}</dd>
                     @else
                         <dd>{{ $value }}</dd>
                     @endif
                 @endforeach
+                @if($proofs = $detail->proofOfDelivery())
+                    <dt>Proof of delivery</dt>
+                    <dd>
+                        @foreach($proofs as $i => $url)
+                            <a class="sd-link" href="{{ $url }}" target="_blank" rel="noopener noreferrer">Photo {{ $i + 1 }}</a>{{ $loop->last ? '' : ' · ' }}
+                        @endforeach
+                    </dd>
+                @endif
             </dl>
         </section>
 

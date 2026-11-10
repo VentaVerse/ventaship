@@ -122,11 +122,14 @@ final class BookingOutcomes
      * resolving it at once book it once. `creating` is cleared so the cancel rules see a fresh booking; a requested
      * cancel is sent to the courier. False when the shipment was no longer waiting.
      *
+     * $meta and $fee are the booked data the immediate path stores (the courier's booking answer and its fee), so a
+     * booking that settled late reads the same as one that settled at once; a null fee keeps what is stored.
+     *
      * @param  array<string, mixed>  $meta
      */
-    public function creationResolved(int $shipmentId, string $trackingNumber, array $meta = []): bool
+    public function creationResolved(int $shipmentId, string $trackingNumber, array $meta = [], ?string $fee = null): bool
     {
-        $cancel = DB::transaction(function () use ($shipmentId, $trackingNumber, $meta) {
+        $cancel = DB::transaction(function () use ($shipmentId, $trackingNumber, $meta, $fee) {
             $s = $this->lock($shipmentId);
             if ($s === null || $s->state !== 'booking' || $s->courier_status !== 'creating') {
                 return null;
@@ -144,6 +147,8 @@ final class BookingOutcomes
                 'tracking_number' => $trackingNumber,
                 'courier_status' => null,
                 'meta' => array_replace($current, $meta),
+                'fee_amount' => $fee ?? $s->fee_amount,
+                'fee_currency' => $fee !== null ? 'PHP' : $s->fee_currency,
                 'booked_at' => now(),
                 'error_code' => null,
                 'error_message' => null,

@@ -852,6 +852,9 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
             'total' => $area->rate,
             'estimate' => true,
             'category' => $area->category,
+            // LBC's own ODZ signal is its serviceability answer (LbcPickupRequestBuilder sends ODZ=false for a
+            // serviceable barangay), and a quote is only given for a serviceable one.
+            'odz' => false,
         ];
     }
 
@@ -873,12 +876,13 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
             return ServiceabilityVerdict::unknown(ServiceabilityVerdict::KIND_UNREACHABLE);
         }
 
+        // ODZ is LBC's serviceability answer itself: the booking sends ODZ=false for a serviceable barangay, true otherwise.
         if ($area->serviceable === true) {
-            return ServiceabilityVerdict::serviceable();
+            return ServiceabilityVerdict::serviceable()->withOdz(false);
         }
 
         if ($area->serviceable === false) {
-            return ServiceabilityVerdict::notServiceable(ServiceabilityVerdict::KIND_DESTINATION, $area->status);
+            return ServiceabilityVerdict::notServiceable(ServiceabilityVerdict::KIND_DESTINATION, $area->status)->withOdz(true);
         }
 
         $problem = $area->problems[0] ?? null;

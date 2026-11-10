@@ -158,7 +158,23 @@ final class ShipmentDetail
             'Tracking' => $s->tracking_number,
             'Booked at' => self::at($s->booked_at),
             'Fee' => $this->peso($s->fee_amount),
+            'Actual fee' => $this->peso($s->actual_fee),
         ], fn ($v) => $v !== null && $v !== '');
+    }
+
+    /**
+     * The courier's proof-of-delivery photos (SPX: the tracking webhook's proof_of_delivery_list and the evidence
+     * webhook's epod_list), stored as http(s) URLs only.
+     *
+     * @return list<string>
+     */
+    public function proofOfDelivery(): array
+    {
+        $urls = data_get($this->shipment->meta, 'proofs.epod');
+
+        return is_array($urls)
+            ? array_values(array_filter($urls, fn ($u) => is_string($u) && preg_match('#^https?://#i', $u) === 1))
+            : [];
     }
 
     /**

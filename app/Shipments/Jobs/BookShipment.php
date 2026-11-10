@@ -11,6 +11,7 @@ use App\Couriers\CourierRegistry;
 use App\Models\Shipment;
 use App\Shipments\BookingOutcomes;
 use App\Shipments\CourierOptions;
+use App\Support\Money;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -179,7 +180,7 @@ class BookShipment implements ShouldQueue
                 $fee = $courier->actualShippingCost($meta);
             }
 
-            return is_numeric($fee) && (float) $fee >= 0 ? sprintf('%.2F', (float) $fee) : null;
+            return Money::decimal($fee);
         } catch (Throwable $e) {
             $this->logException('Booking fee could not be read', $s, $e);
 

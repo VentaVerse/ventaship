@@ -10,6 +10,7 @@ use App\Http\Requests\Api\V1\QuoteRequest;
 use App\Models\Shipment;
 use App\Shipments\CourierOptions;
 use App\Shipments\ShipmentCreator;
+use App\Support\Money;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -40,6 +41,9 @@ class QuotesController extends Controller
             'amount' => number_format((float) $fee->amount, 2, '.', ''),
             'currency' => (string) ($fee->currency ?? 'PHP'),
             'label' => isset($fee->label) ? (string) $fee->label : null,
+            // Information only, from the courier's own answer; null when it said nothing (never a refusal).
+            'odz' => isset($fee->odz) && is_bool($fee->odz) ? $fee->odz : null,
+            'remote_area_fee' => Money::decimal($fee->remote_area_fee ?? null),
         ]]);
     }
 }

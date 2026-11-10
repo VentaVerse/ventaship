@@ -38,6 +38,7 @@ class CoverageController extends Controller
                 'kind' => $verdict->kind,
                 'code' => $verdict->code,
                 'reason' => $verdict->reason,
+                'odz' => $verdict->odz,
             ];
         }
 

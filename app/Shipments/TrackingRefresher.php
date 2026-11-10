@@ -19,7 +19,12 @@ final class TrackingRefresher
 {
     public const PER_SECONDS = 60;
 
-    public function __construct(private readonly StatusRecorder $recorder) {}
+    private readonly CourierFacts $facts;
+
+    public function __construct(private readonly StatusRecorder $recorder, ?CourierFacts $facts = null)
+    {
+        $this->facts = $facts ?? new CourierFacts;
+    }
 
     /** @throws ApiError 409 not_trackable, 429 rate_limited, 502 courier_unavailable */
     public function refresh(Shipment $s): Shipment
@@ -60,7 +65,8 @@ final class TrackingRefresher
     }
 
     /**
-     * Records every dated event of a getTracking() answer; the refresh endpoint and the poller share it.
+     * Records every dated event of a getTracking() answer, then what else it reported (`actual_fee`, `meta`: see
+     * CourierFacts); the refresh endpoint and the poller share it.
      *
      * @param  array<string, mixed>  $result  getTracking()'s answer
      */
@@ -86,6 +92,11 @@ final class TrackingRefresher
         if (! $recorded && is_string($status) && $status !== '' && $status !== $s->refresh()->courier_status) {
             $this->recorder->record($s, $status, now(), $source);
         }
+
+        $this->facts->apply($s, [
+            'actual_fee' => $result['actual_fee'] ?? null,
+            'meta' => is_array($result['meta'] ?? null) ? $result['meta'] : [],
+        ], now(), $source);
     }
 
     private function time(mixed $at): ?CarbonImmutable

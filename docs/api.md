@@ -743,6 +743,7 @@ Response, one entry per destination, in request order:
 | `kind` | when recognised, which kind of problem: `destination`, `origin`, `cod`, `postcode`, `parcel` (these come with `not_serviceable`), or `slot`, `their_side`, `unreachable` (these come with `unknown`); otherwise `null` |
 | `code` | why, when Ventaship itself knows without asking the courier, else `null`. With `unknown`: `missing_province`, `missing_city`, `missing_barangay`, `missing_postcode`, `missing_phone` (the customer's address) or the same with `pickup_` (`missing_pickup_postcode`, ...) for the sender; add the field and ask again. With `not_serviceable` (SPX): `spx_unlisted_province`, `spx_unlisted_city`, `spx_unlisted_barangay` (SPX's location list does not have the customer's place; `spx_unlisted_pickup_*` for the sender), `spx_no_delivery`, `spx_no_cod`, `spx_no_pickup`, `spx_no_cod_pickup`. A missing postcode is first filled from the PSGC city, so `missing_postcode` only appears when the city cannot be matched |
 | `reason` | the courier's own words when it said something (always shown to people when `kind` is `null`; may also accompany a recognised `kind`, e.g. `destination`); otherwise `null` |
+| `odz` | `true` when the courier says the destination is outside its normal delivery zone (a remote-area surcharge applies), `false` when it says it is not, `null` when it gave no signal. Information only: it never changes `verdict`. SPX: `true` when its answer carries a `remote_area_fee` above 0 (SPX does not document that field, so most answers are `null`). LBC: its serviceability answer (`false` for a serviced barangay, `true` for one it does not serve). QuadX: always `null` |
 
 <!-- fixture: coverage.response -->
 ```json
@@ -753,7 +754,8 @@ Response, one entry per destination, in request order:
             "verdict": "serviceable",
             "kind": null,
             "code": null,
-            "reason": null
+            "reason": null,
+            "odz": null
         }
     ]
 }
@@ -762,7 +764,7 @@ Response, one entry per destination, in request order:
 A destination SPX does not list, for example barangay Agtangao of Bangued, Abra:
 
 ```json
-{"ref": "cart-2", "verdict": "not_serviceable", "kind": "destination", "code": "spx_unlisted_barangay", "reason": null}
+{"ref": "cart-2", "verdict": "not_serviceable", "kind": "destination", "code": "spx_unlisted_barangay", "reason": null, "odz": null}
 ```
 
 ---
@@ -804,12 +806,14 @@ Request: `account_id` / `courier`, `pickup` (address), `recipient` (address), `s
     "data": {
         "amount": "145.00",
         "currency": "PHP",
-        "label": "₱145.00"
+        "label": "₱145.00",
+        "odz": null,
+        "remote_area_fee": null
     }
 }
 ```
 
-`amount` is a 2-decimal string, `currency` is `PHP`, `label` is a display string or `null`.
+`amount` is a 2-decimal string, `currency` is `PHP`, `label` is a display string or `null`. `odz` is as in [`POST /coverage`](#post-coverage) (`true`, `false` or `null`). `remote_area_fee` is the remote-area surcharge the courier itemised, a 2-decimal string (`"0.00"` when it said there is none), or `null` when it did not say; only SPX can give one today. Neither field ever blocks a booking.
 
 ---
 
@@ -1521,7 +1525,7 @@ The same object in every answer and in every shipment webhook (`data.shipment`),
 | `method` | string | `pickup` or `dropoff` |
 | `service` | string\|null | the service requested |
 | `pickup_date` | string\|null | `YYYY-MM-DD` requested |
-| `fee` | object\|null | `{amount, currency}`: the fee the courier reported when it booked; `null` if it reported none |
+| `fee` | object\|null | `{amount, currency}`: the fee the courier reported when it booked; `null` if it reported none. SPX: its estimated shipping fee for the booking (after vouchers), also when the booking settled late; the fee SPX finally bills can differ |
 | `payment_method` | string | `cod` or `prepaid` |
 | `payment_state` | string | see [8.3](#83-payment_state) |
 | `cod_amount` | string\|null | what the courier collects (`null` for prepaid) |
@@ -1582,12 +1586,12 @@ Where the parcel is, on one scale shared by every courier. `null` until the cour
 |---|---|
 | `draft` | not booked (reserved; `phase` is `null` before booking) |
 | `booking` | the courier accepted the request but has not issued the tracking number yet: SPX's `creating` status maps here. A shipment waiting on SPX is recognisable by `state` `booking` with `courier_status` `creating`; its `phase` may still be `null`, because that interim status is not recorded as a timeline event |
-| `attention` | reached only when the Ventaship owner maps a courier status to it (a status no one knows becomes `in_transit`) |
+| `attention` | the courier has the parcel but is holding it (SPX `3001` On Hold); also reached when the Ventaship owner maps a courier status to it (a status no one knows becomes `in_transit`). Not final |
 | `to_handover` | booked, waiting for the courier to collect it (or for drop-off) |
 | `in_transit` | the courier has it, on its way (includes out for delivery) |
 | `delivered` | delivered to the recipient |
 | `failed` | a failed attempt or exception (failed pickup, failed delivery, rejected, lost or damaged per some couriers) |
-| `lost_damaged` | lost or damaged. No courier maps to it today: QuadX `lost`/`damaged` and LBC damaged statuses are `failed`; only an owner status mapping produces it |
+| `lost_damaged` | lost or damaged. SPX `5002` Damaged and `5003` Lost map here (final). QuadX `lost`/`damaged` and LBC damaged statuses are still `failed`; an owner status mapping can move them |
 | `returning` | coming back to the sender, or returned |
 | `cancelled` | cancelled |
 
@@ -1607,7 +1611,7 @@ Where the cash stands. Ventaship records it; it never holds money.
 
 It only moves forward: `cod_unpaid → cod_collected → cod_remitted`, and `cod_unpaid → cod_void`. `cod_void` is final, and so is `cod_collected` against later bad news (a delivered parcel stays `cod_collected`). Each change produces a `shipment.payment_state_changed` webhook.
 
-`cod_void` follows the phases `cancelled`, `returning` and `lost_damaged`. Because no courier reports `lost_damaged` today (lost or damaged parcels show as phase `failed`), a lost COD parcel stays `cod_unpaid` until the courier reports it returning or cancelled, or the owner re-maps the status.
+`cod_void` follows the phases `cancelled`, `returning` and `lost_damaged`. A lost or damaged SPX COD parcel becomes `cod_void`. QuadX and LBC report lost or damaged parcels as phase `failed`, so theirs stay `cod_unpaid` until the courier reports them returning or cancelled, or the owner re-maps the status.
 
 ### 8.4 `cancel_state`
 
@@ -1645,7 +1649,7 @@ If the courier times out, cannot be reached, or answers with a server error whil
 
 ### 9.4 Booking error codes
 
-When `state` is `failed`, `error` is `{code, message}`. `message` is for people (often the courier's own words).
+When `state` is `failed`, `error` is `{code, message}`. `message` is for people (often the courier's own words). An SPX refusal reads as a sentence first, then SPX's code and its specific reason in brackets, e.g. `The pickup slot is past SPX's cutoff. Choose another pickup date. (SPX 10080: now_time over cutoff_time)`; show it whole, do not parse it.
 
 | `error.code` | Meaning |
 |---|---|

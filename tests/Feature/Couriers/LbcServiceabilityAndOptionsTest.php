@@ -35,6 +35,7 @@ class LbcServiceabilityAndOptionsTest extends TestCase
         $verdict = $this->lbc()->checkServiceability($this->order(), $this->pickupPoint());
 
         $this->assertSame(ServiceabilityVerdict::SERVICEABLE, $verdict->status);
+        $this->assertFalse($verdict->odz, "LBC's own ODZ flag is its serviceability answer");
         $validate = Http::recorded(fn (Request $r) => str_contains($r->url(), 'validateServicableArea'))->values();
         $this->assertSame(['psgc_code' => 1380300020], $validate[0][0]->data());
         $this->assertSame('common-key', $validate[0][0]->header('lbcOAkey')[0]);
@@ -49,6 +50,7 @@ class LbcServiceabilityAndOptionsTest extends TestCase
         $this->assertSame(ServiceabilityVerdict::NOT_SERVICEABLE, $verdict->status);
         $this->assertSame(ServiceabilityVerdict::KIND_DESTINATION, $verdict->kind);
         $this->assertSame('Not Serviceable', $verdict->reason);
+        $this->assertTrue($verdict->odz);
     }
 
     public function test_an_address_lbc_cannot_find_is_not_a_refusal(): void
@@ -58,6 +60,7 @@ class LbcServiceabilityAndOptionsTest extends TestCase
         $lost = $this->lbc()->checkServiceability($this->order(['barangay' => 'Nowhere']), $this->pickupPoint());
 
         $this->assertSame(ServiceabilityVerdict::UNKNOWN, $lost->status);
+        $this->assertNull($lost->odz);
         $this->assertStringContainsString('found no barangay matching "Nowhere"', (string) $lost->reason);
     }
 
@@ -90,6 +93,7 @@ class LbcServiceabilityAndOptionsTest extends TestCase
         $this->assertSame(250.0, $fee->amount);
         $this->assertSame('PHP', $fee->currency);
         $this->assertSame('₱250.00 (LBC estimate)', $fee->label);
+        $this->assertFalse($fee->odz);
 
         $this->assertNull($this->lbc()->estimateFee($this->order(['barangay' => 'Nowhere']), []));
     }

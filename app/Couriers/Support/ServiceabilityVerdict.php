@@ -33,6 +33,11 @@ namespace App\Couriers\Support;
  * that courier's own parcel value so the booking form can print an exact fee
  * beside each parcel option. Empty is normal: a courier can serve an address
  * without quoting anything.
+ *
+ * `odz` is whether the address is outside the courier's normal delivery zone
+ * (a remote-area surcharge applies), when the courier's own answer says so:
+ * true or false from a real signal, null when it said nothing. It is
+ * information only and never turns a verdict into a refusal.
  */
 final class ServiceabilityVerdict implements \JsonSerializable
 {
@@ -67,7 +72,14 @@ final class ServiceabilityVerdict implements \JsonSerializable
         public readonly string $currency = 'PHP',
         public readonly ?string $kind = null,
         public readonly ?string $code = null,
+        public readonly ?bool $odz = null,
     ) {
+    }
+
+    /** The same verdict with the courier's out-of-delivery-zone signal (null: not known). */
+    public function withOdz(?bool $odz): self
+    {
+        return new self($this->status, $this->reason, $this->fees, $this->currency, $this->kind, $this->code, $odz);
     }
 
     /** @param array<string, float|int|string> $fees */
@@ -114,7 +126,7 @@ final class ServiceabilityVerdict implements \JsonSerializable
         return $this->fees === [] ? null : min($this->fees);
     }
 
-    /** @return array{status:string, kind:?string, code:?string, reason:?string, fees:array<string,float>, currency:string, from:?float} */
+    /** @return array{status:string, kind:?string, code:?string, reason:?string, fees:array<string,float>, currency:string, from:?float, odz:?bool} */
     public function toArray(): array
     {
         return [
@@ -125,6 +137,7 @@ final class ServiceabilityVerdict implements \JsonSerializable
             'fees'     => $this->fees,
             'currency' => $this->currency,
             'from'     => $this->cheapest(),
+            'odz'      => $this->odz,
         ];
     }
 
@@ -136,10 +149,13 @@ final class ServiceabilityVerdict implements \JsonSerializable
     /** Rebuild from toArray(): the session cache stores the array, never the object. */
     public static function fromArray(array $data): self
     {
-        return match ($data['status'] ?? self::UNKNOWN) {
+        $verdict = match ($data['status'] ?? self::UNKNOWN) {
             self::SERVICEABLE     => self::serviceable($data['fees'] ?? [], $data['currency'] ?? 'PHP'),
             self::NOT_SERVICEABLE => self::notServiceable($data['kind'] ?? null, $data['reason'] ?? null, $data['code'] ?? null),
             default               => self::unknown($data['kind'] ?? null, $data['reason'] ?? null, $data['code'] ?? null),
         };
+
+        // A day-old cache entry written before `odz` existed reads as "not known".
+        return $verdict->withOdz(is_bool($data['odz'] ?? null) ? $data['odz'] : null);
     }
 }

@@ -3,6 +3,11 @@
 namespace Tests\Feature\Api;
 
 use App\Couriers\AccountSettings;
+use App\Couriers\CourierOrder;
+use App\Couriers\CourierRegistry;
+use App\Couriers\FakeCourier;
+use App\Couriers\PickupPoint;
+use App\Couriers\Support\ServiceabilityVerdict;
 use App\Models\CourierAccount;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -152,6 +157,53 @@ class ReadEndpointsTest extends TestCase
         ])->assertOk()
             ->assertJsonPath('data.currency', 'PHP')
             ->assertJsonStructure(['data' => ['amount', 'currency', 'label']]);
+    }
+
+    public function test_quotes_and_coverage_carry_odz_and_remote_area_fee_from_the_courier(): void
+    {
+        $account = CourierAccount::factory()->create(['courier' => 'spx', 'is_default' => true, 'default_slot' => 'spx']);
+        CourierRegistry::fake('spx', new class extends FakeCourier
+        {
+            public function estimateFee(CourierOrder $order, array $options): ?object
+            {
+                return (object) ['amount' => 80.0, 'currency' => 'PHP', 'label' => '₱80.00', 'remote_area_fee' => '25.00', 'odz' => true];
+            }
+
+            public function checkServiceability(CourierOrder $order, PickupPoint $from): ServiceabilityVerdict
+            {
+                return ServiceabilityVerdict::serviceable(['estimate' => 80.0])->withOdz(true);
+            }
+        });
+        $body = $this->shipmentBody();
+
+        $this->api('POST', '/api/v1/quotes', [
+            'account_id' => $account->public_id, 'pickup' => $body['pickup'], 'recipient' => $body['recipient'],
+            'parcel' => $body['parcel'], 'payment' => $body['payment'],
+        ])->assertOk()->assertExactJson(['data' => [
+            'amount' => '80.00', 'currency' => 'PHP', 'label' => '₱80.00', 'odz' => true, 'remote_area_fee' => '25.00',
+        ]]);
+
+        $this->api('POST', '/api/v1/coverage', $this->coverageBody(['courier' => 'spx']))
+            ->assertOk()->assertJsonPath('data.0.verdict', 'serviceable')->assertJsonPath('data.0.odz', true);
+    }
+
+    public function test_odz_is_null_when_the_courier_gives_no_signal(): void
+    {
+        Http::fake(['api.staging.quadx.xyz/*' => Http::response($this->quadxFixture('rates'))]);
+        $account = $this->quadxAccount();
+        $body = $this->shipmentBody();
+
+        $quote = $this->api('POST', '/api/v1/quotes', [
+            'account_id' => $account->public_id, 'pickup' => $body['pickup'], 'recipient' => $body['recipient'],
+            'parcel' => $body['parcel'], 'payment' => $body['payment'],
+        ])->assertOk();
+        $this->assertNull($quote->json('data.odz'));
+        $this->assertNull($quote->json('data.remote_area_fee'));
+        $this->assertArrayHasKey('odz', $quote->json('data'));
+
+        $coverage = $this->api('POST', '/api/v1/coverage', $this->coverageBody(['account_id' => $account->public_id]))->assertOk();
+        $this->assertArrayHasKey('odz', $coverage->json('data.0'));
+        $this->assertNull($coverage->json('data.0.odz'));
     }
 
     public function test_pickup_slots(): void

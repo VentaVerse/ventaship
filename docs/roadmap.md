@@ -6,6 +6,7 @@ Status as of 2026-11-09. QuadX works end to end. SPX UAT is done on our side; th
 
 - **VPS deploy.** Own domain with https; `APP_URL`, `APP_ENV=production`, `APP_DEBUG=false`; `TRUSTED_PROXIES` set to the reverse proxy's IP (e.g. `127.0.0.1` for nginx on the same host) so rate limits and logs see real client IPs; cron line from Settings into HestiaCP; same `VENTASHIP_VAULT_KEY` if the database is copied.
 - **SPX go-live.** Send SPX the webhook URL on the VPS domain (`https://<domain>/webhooks/spx`, the same for every SPX account on one app id), place an order, send them the tracking number.
+- **ODZ for VentaCart.** `/coverage` and `/quotes` now carry `odz` (quotes also `remote_area_fee`). SPX's comes from its undocumented `remote_area_fee`: ask SPX whether 2.1 returns it and whether the estimate includes it.
 - **GitHub.** Private repository; push `main`.
 
 ## Email

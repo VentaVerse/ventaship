@@ -13,7 +13,9 @@ use App\Couriers\Support\OrderWeight;
 use App\Couriers\Support\PhPhone;
 use App\Couriers\Support\ServiceabilityVerdict;
 use App\Models\CourierAccount;
+use App\Support\Money;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -52,14 +54,13 @@ use Illuminate\Support\Str;
  *    doesn't collect a pickup-slot choice yet; getPickupSlots() is fully
  *    implemented and createShipment() already switches to collect_type=1
  *    the moment a future UI passes back $opts['pickup_slot'].
- *  - Actual post-booking fee (2.2 batch_get_asf) is fetched inside every
- *    getTracking() call, but PERSISTED at exactly one place:
- *    PollCourierStatus's scheduled loop (courier:poll-status, a T2 file),
- *    which writes it into courier_meta.actual_fee alongside links/timeline —
- *    see that command's docblock and getTracking()'s own. The manual
- *    per-order Refresh button (FulfillmentController::track(), NOT a T2
- *    file) still receives fee_info back but doesn't persist it yet — a
- *    documented follow-up, not silently dropped by design.
+ *  - Fees: the booking's estimated_shipping_fee (1.5) is the shipment's
+ *    fee, on every booking path (createShipment()'s `fee`,
+ *    resolvePendingCreation()'s `fee`, and a webhook-resolved booking, which
+ *    asks 1.5 once through resolvePendingCreation()). The actual fee comes
+ *    from the 4.1 webhook's actual_shipping_fee and, once the parcel is
+ *    delivered or returned, from 2.2 batch_get_asf (getTracking(), at most
+ *    once per parcel per day). App\Shipments\CourierFacts stores it.
  */
 class SpxFulfillment implements Courier
 {
@@ -200,9 +201,13 @@ class SpxFulfillment implements Courier
     private const CANCELLED = ['7001'];
     /** Coming back to the seller — in progress (6001) or completed (6003), mirrors QuadX's 'returned' also living in the 'returning' bucket, not 'delivered'. */
     private const RETURNING_STATUSES = ['6001', '6003'];
-    /** Exceptions that need the seller's attention. 3001/5001 are pre-pickup (legacy step 1); 5002/5003/6002 only happen once SPX already has the parcel (step 2). */
-    private const FAILED_STATUSES = ['3001', '5001', '5002', '5003', '6002'];
-    private const FAILED_PRE_PICKUP = ['3001', '5001'];
+    /** Failed attempts: 5001 Pickup Failed is pre-pickup (step 1); 6002 Return Failed happens once SPX has the parcel (step 2). */
+    private const FAILED_STATUSES = ['5001', '6002'];
+    private const FAILED_PRE_PICKUP = ['5001'];
+    /** 5002 Damaged and 5003 Lost (guide/09): final, and a COD parcel will never be paid for (PaymentState voids it). */
+    private const LOST_DAMAGED_STATUSES = ['5002', '5003'];
+    /** 3001 On Hold: "placed on hold during delivery" (guide/09). SPX has the parcel; not final. */
+    private const ON_HOLD_STATUSES = ['3001'];
     /** Courier has the parcel and it's moving. */
     private const IN_TRANSIT_STATUSES = ['2001', '2006'];
 
@@ -355,9 +360,6 @@ class SpxFulfillment implements Courier
         if ($resultData !== null) {
             $outcome = $this->outcomeFromCreateResult($resultData);
             if ($outcome['ok']) {
-                $meta['booked_response']         = $outcome['order'];
-                $meta['estimated_shipping_fee']  = $outcome['order']['estimated_shipping_fee'] ?? null;
-
                 return [
                     'success'         => true,
                     'tracking_number' => $outcome['order']['tracking_no'],
@@ -365,11 +367,12 @@ class SpxFulfillment implements Courier
                     // poll (courier:poll-status, or a manual Refresh) fills
                     // this in. Null here is deliberate, not a bug.
                     'status'          => null,
-                    'meta'            => $meta,
+                    'meta'            => self::bookedMeta($outcome['order']) + $meta,
+                    'fee'             => Money::decimal($outcome['order']['estimated_shipping_fee'] ?? null),
                 ];
             }
 
-            return ['success' => false, 'error' => "SPX booking failed: {$outcome['error']}"];
+            return ['success' => false, 'error' => $outcome['error']];
         }
 
         // Still pending after the bounded poll window.
@@ -435,9 +438,10 @@ class SpxFulfillment implements Courier
      * tracking number landed in the per-item data.fail_list with that code
      * — so both surfaces are checked before deciding whether to back off and
      * retry (mirrors how cancelShipment() checks both surfaces for 13002).
-     * Also fetches 2.2's actual fee on every call (returned as `fee_info`) —
-     * see this method's dedicated comment below, and courier:poll-status's
-     * docblock, for where that value is actually PERSISTED.
+     * Once the parcel is delivered or returned, also asks 2.2 for the actual
+     * fee (actualFeeInfo()), at most once per parcel per day. Besides the
+     * timeline it reports `actual_fee` and `meta` (tracking link, delivery
+     * estimate, return fee), which App\Shipments\CourierFacts stores.
      */
     public function getTracking(string $trackingNumber): array
     {
@@ -500,36 +504,74 @@ class SpxFulfillment implements Courier
             return ['success' => false, 'error' => 'SPX returned no data for this tracking number.'];
         }
 
-        // 2.2 Get Order Fee (batch_get_asf) — fetched here on every call
-        // since this method is stateless (no access to the Order/
-        // courier_meta to detect "already have it"). PollCourierStatus's
-        // scheduled loop is the ONE place that actually persists the
-        // returned `fee_info` into courier_meta.actual_fee (see that
-        // command's docblock + this task's report) — the manual per-order
-        // Refresh button also receives it back but doesn't persist it yet.
-        // Best-effort — a fee lookup failure (e.g. not yet available
-        // pre-pickup) never breaks tracking itself.
-        $feeInfo = null;
-        try {
-            $feeData = $this->client->getActualFee([$trackingNumber]);
-            foreach (($feeData['orders'] ?? []) as $fo) {
-                if (($fo['tracking_no'] ?? null) === $trackingNumber) {
-                    $feeInfo = $fo['fee_info'] ?? null;
-                    break;
-                }
-            }
-        } catch (\Throwable $e) {
-            // best-effort only — see comment above.
-        }
+        $status = $found['status_code'] ?? $found['status'] ?? null;
+        $status = is_scalar($status) ? (string) $status : null;
+        $feeInfo = $this->actualFeeInfo($trackingNumber, $status);
 
         return [
-            'success'  => true,
-            'status'   => $found['status_code'] ?? $found['status'] ?? null,
-            'raw'      => $found,
-            'links'    => !empty($found['tracking_link']) ? ['delivery' => $found['tracking_link']] : null,
-            'timeline' => self::timelineFromRoutes($found['routes'] ?? null),
-            'fee_info' => $feeInfo,
+            'success'    => true,
+            'status'     => $status,
+            'raw'        => $found,
+            'links'      => !empty($found['tracking_link']) ? ['delivery' => $found['tracking_link']] : null,
+            'timeline'   => self::timelineFromRoutes($found['routes'] ?? null),
+            'fee_info'   => $feeInfo,
+            'actual_fee' => is_array($feeInfo) ? Money::decimal($feeInfo['actual_shipping_fee'] ?? null) : null,
+            'meta'       => array_filter([
+                'tracking_links'    => self::deliveryLink($found['tracking_link'] ?? null),
+                'edd'               => self::edd($found['edd_info']['edd_min'] ?? null, $found['edd_info']['edd_max'] ?? null, 'tracking'),
+                'actual_return_fee' => is_array($feeInfo) ? self::positiveDecimal($feeInfo['return_shipping_fee'] ?? null) : null,
+            ], fn ($v) => $v !== null),
         ];
+    }
+
+    /** Statuses at which SPX's actual fee is final enough to ask 2.2 for it: delivered, returned. */
+    private const ACTUAL_FEE_STATUSES = ['4001', '6003'];
+
+    /** How long one parcel waits before 2.2 is asked again (an unanswered or still-unknown fee). */
+    private const ACTUAL_FEE_RETRY_SECONDS = 86400;
+
+    /**
+     * 2.2 Get Order Fee (batch_get_asf) for one parcel, or null. Asked only
+     * once the parcel is delivered or returned, and at most once per parcel
+     * per day (a cache mark per account and tracking number): the webhook
+     * carries the running fee before that, and a poll used to ask on every
+     * run (227 calls a day for 2 parcels). Best effort: a failure never
+     * breaks tracking.
+     *
+     * @return array<string, mixed>|null SPX's fee_info
+     */
+    private function actualFeeInfo(string $trackingNumber, ?string $status): ?array
+    {
+        if (!in_array($status, self::ACTUAL_FEE_STATUSES, true)) {
+            return null;
+        }
+
+        $key = 'spx:asf:' . $this->account->getKey() . ':' . $trackingNumber;
+        if (!Cache::add($key, now()->getTimestamp(), self::ACTUAL_FEE_RETRY_SECONDS)) {
+            return null;
+        }
+
+        try {
+            $feeData = $this->client->getActualFee([$trackingNumber]);
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        foreach (($feeData['orders'] ?? []) as $fo) {
+            if (is_array($fo) && ($fo['tracking_no'] ?? null) === $trackingNumber) {
+                return is_array($fo['fee_info'] ?? null) ? $fo['fee_info'] : null;
+            }
+        }
+
+        return null;
+    }
+
+    /** A decimal above zero, else null: SPX's documented examples answer 0 for a fee it has not set. */
+    private static function positiveDecimal(mixed $value): ?string
+    {
+        $decimal = Money::decimal($value);
+
+        return $decimal !== null && bccomp($decimal, '0', 2) > 0 ? $decimal : null;
     }
 
     /** Normalize SPX's routes[] history into the same {status,at} timeline shape QuadXFulfillment::timelineFromTat() produces. */
@@ -557,7 +599,7 @@ class SpxFulfillment implements Courier
      */
     public function terminalStatuses(): array
     {
-        return [...self::DELIVERED, '5002', '5003', '6003', ...self::CANCELLED];
+        return [...self::DELIVERED, ...self::LOST_DAMAGED_STATUSES, '6003', ...self::CANCELLED];
     }
 
     /** "Only those orders with pending pickup/dropoff status can be cancelled" (guide.md's 13002 recall in api.md §1.3). */
@@ -599,6 +641,13 @@ class SpxFulfillment implements Courier
         }
         if (in_array($s, self::RETURNING_STATUSES, true)) {
             return ['phase' => 'returning', 'step' => 2, 'failed' => true];
+        }
+        if (in_array($s, self::LOST_DAMAGED_STATUSES, true)) {
+            return ['phase' => 'lost_damaged', 'step' => 2, 'failed' => true];
+        }
+        if (in_array($s, self::ON_HOLD_STATUSES, true)) {
+            // Held mid-delivery: the seller may need to look, but nothing has failed for good.
+            return ['phase' => 'attention', 'step' => 2, 'failed' => false];
         }
         if (in_array($s, self::FAILED_STATUSES, true)) {
             $prePickup = in_array($s, self::FAILED_PRE_PICKUP, true);
@@ -646,10 +695,26 @@ class SpxFulfillment implements Courier
 
         $amount = (float) $first['estimated_shipping_fee'];
         return (object) [
-            'amount'   => $amount,
-            'currency' => 'PHP',
-            'label'    => '₱' . number_format($amount, 2),
+            'amount'          => $amount,
+            'currency'        => 'PHP',
+            'label'           => '₱' . number_format($amount, 2),
+            'remote_area_fee' => Money::decimal($first['remote_area_fee'] ?? null),
+            'odz'             => self::odz($first),
         ];
+    }
+
+    /**
+     * Out of SPX's normal delivery zone: remote_area_fee above zero. The field
+     * is undocumented (seen in the real 1.5 answer, not promised for 2.1), so
+     * an answer without it is "not known", never "no surcharge".
+     *
+     * @param array<string, mixed> $order one 2.1 or 1.5 order entry
+     */
+    private static function odz(array $order): ?bool
+    {
+        $fee = Money::decimal($order['remote_area_fee'] ?? null);
+
+        return $fee === null ? null : bccomp($fee, '0', 2) > 0;
     }
 
     /**
@@ -718,7 +783,7 @@ class SpxFulfillment implements Courier
             return ServiceabilityVerdict::serviceable(
                 ['estimate' => (float) $first['estimated_shipping_fee']],
                 'PHP'
-            );
+            )->withOdz(self::odz($first));
         }
 
         // api.md §2.1: a per-order failure comes back inside data.fail_list
@@ -1109,23 +1174,75 @@ class SpxFulfillment implements Courier
      * returns at most one normalized event. `order_id` is what WE sent as
      * `order_id` at booking time (buildOrderPayload(): the shipment's reference)
      * — SPX's docs call it "customer order id", which is exactly this
-     * interface's `reference_id`. A payload missing `status_code` entirely
-     * (malformed/unexpected) yields no events rather than a guessed one.
+     * interface's `reference_id`.
+     *
+     * Besides the status, an event carries `actual_fee` (actual_shipping_fee,
+     * "refer to the latest one you received") and `meta`: the tracking link,
+     * the delivery estimate (edd_min/edd_max), the driver, the
+     * proof_of_delivery_list photos and, on 6003, the return fee.
+     *
+     * A payload without `status_code` is 4.2 Evidence Proofs when it carries
+     * proof lists: one event with no status and the proofs as `meta`, which
+     * ProcessReceipt keeps on the matching shipment. Anything else without
+     * `status_code` yields no events rather than a guessed one.
      */
     public function parseWebhook(array $payload): array
     {
         if (!isset($payload['status_code'])) {
-            return [];
+            return self::evidenceEvent($payload);
         }
 
         $timestamp = $payload['timestamp'] ?? null;
 
-        return [[
+        return [array_filter([
             'reference_id'    => isset($payload['order_id']) ? (string) $payload['order_id'] : null,
             'tracking_number' => isset($payload['tracking_no']) ? (string) $payload['tracking_no'] : null,
             'status'          => (string) $payload['status_code'],
             'occurred_at'     => is_numeric($timestamp) ? date(DATE_ATOM, (int) $timestamp) : null,
             'remarks'         => isset($payload['message']) ? (string) $payload['message'] : null,
+            'actual_fee'      => Money::decimal($payload['actual_shipping_fee'] ?? null),
+            'meta'            => array_filter([
+                'tracking_links'    => self::deliveryLink($payload['tracking_link'] ?? null),
+                'edd'               => self::edd($payload['edd_min'] ?? null, $payload['edd_max'] ?? null, 'webhook'),
+                'driver'            => array_filter([
+                    'name'  => self::shortText($payload['driver_name'] ?? null, 100),
+                    'phone' => self::shortText($payload['driver_phone_number'] ?? null, 32),
+                ]) ?: null,
+                'proofs'            => array_filter(['epod' => self::urls($payload['proof_of_delivery_list'] ?? null)]) ?: null,
+                'actual_return_fee' => self::positiveDecimal($payload['actual_return_shipping_fee'] ?? null),
+            ], fn ($v) => $v !== null) ?: null,
+        ], fn ($v, $k) => $v !== null || in_array($k, ['reference_id', 'tracking_number', 'occurred_at', 'remarks'], true), ARRAY_FILTER_USE_BOTH)];
+    }
+
+    /** The 4.2 proof lists, by the key each is stored under in meta.proofs. */
+    private const EVIDENCE_LISTS = ['epod' => 'epod_list', 'epop' => 'epop_list', 'epor' => 'epor_list', 'epooh' => 'epooh_list'];
+
+    /**
+     * 4.2 Evidence Proofs: matched by tracking_no, else customer_order_id (our order_id).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function evidenceEvent(array $payload): array
+    {
+        $proofs = [];
+        foreach (self::EVIDENCE_LISTS as $key => $field) {
+            if (($urls = self::urls($payload[$field] ?? null)) !== null) {
+                $proofs[$key] = $urls;
+            }
+        }
+        $tracking = isset($payload['tracking_no']) && is_scalar($payload['tracking_no']) ? (string) $payload['tracking_no'] : null;
+        $reference = isset($payload['customer_order_id']) && is_scalar($payload['customer_order_id']) ? (string) $payload['customer_order_id'] : null;
+        if ($proofs === [] || ($tracking === null && $reference === null)) {
+            return [];
+        }
+
+        return [[
+            'reference_id'    => $reference,
+            'tracking_number' => $tracking,
+            'status'          => null,
+            'occurred_at'     => null,
+            'remarks'         => null,
+            'meta'            => ['proofs' => $proofs],
         ]];
     }
 
@@ -1423,8 +1540,110 @@ class SpxFulfillment implements Courier
         }
 
         $tracking = $outcome['order']['tracking_no'] ?? null;
+        if (!$tracking) {
+            return null;
+        }
 
-        return $tracking ? ['tracking_number' => (string) $tracking] : null;
+        // The same booked data createShipment() stores when SPX settles at once.
+        return [
+            'tracking_number' => (string) $tracking,
+            'meta'            => self::bookedMeta($outcome['order']),
+            'fee'             => Money::decimal($outcome['order']['estimated_shipping_fee'] ?? null),
+        ];
+    }
+
+    /**
+     * What a settled booking keeps in meta, whichever path settled it: SPX's own
+     * 1.5 order entry verbatim (tracking_link, sort codes, the fee breakdown),
+     * its estimated fee and remote-area fee as decimal strings, and the
+     * delivery estimate when SPX gave one.
+     *
+     * @param array<string, mixed> $order one entry of 1.5's data.orders
+     * @return array<string, mixed>
+     */
+    private static function bookedMeta(array $order): array
+    {
+        return array_filter([
+            'booked_response'        => $order,
+            'estimated_shipping_fee' => Money::decimal($order['estimated_shipping_fee'] ?? null),
+            // Undocumented (seen in the real 1.5 answer): absent means not known, never 0.
+            'remote_area_fee'        => Money::decimal($order['remote_area_fee'] ?? null),
+            'tracking_links'         => self::deliveryLink($order['tracking_link'] ?? $order['tracking_no_link'] ?? null),
+            'edd'                    => self::edd($order['edd_min'] ?? $order['edd_info']['edd_min'] ?? null, $order['edd_max'] ?? $order['edd_info']['edd_max'] ?? null, 'booking'),
+        ], fn ($v) => $v !== null);
+    }
+
+    /** @return array{delivery:string}|null an http(s) tracking link as trackingLinks() reads it */
+    private static function deliveryLink(mixed $url): ?array
+    {
+        return self::url($url) !== null ? ['delivery' => self::url($url)] : null;
+    }
+
+    /** An http(s) URL of sane length, or null. */
+    private static function url(mixed $url): ?string
+    {
+        if (!is_string($url)) {
+            return null;
+        }
+        $url = trim($url);
+        if ($url === '' || strlen($url) > 2048 || filter_var($url, FILTER_VALIDATE_URL) === false) {
+            return null;
+        }
+        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+
+        return in_array($scheme, ['http', 'https'], true) ? $url : null;
+    }
+
+    /**
+     * SPX's delivery estimate, kept as SPX gives it (the docs call it days in
+     * 1.2 and leave the unit unsaid in 4.1). Both zero is SPX's "none" (its own
+     * 1.2 example), so it is not stored.
+     *
+     * @return array{min:?int, max:?int, source:string}|null
+     */
+    private static function edd(mixed $min, mixed $max, string $source): ?array
+    {
+        $min = is_numeric($min) ? (int) $min : null;
+        $max = is_numeric($max) ? (int) $max : null;
+        if (($min === null && $max === null) || (($min ?? 0) === 0 && ($max ?? 0) === 0)) {
+            return null;
+        }
+
+        return ['min' => $min, 'max' => $max, 'source' => $source];
+    }
+
+    /**
+     * Proof URLs from a list SPX sends, http(s) only, at most 20, duplicates dropped.
+     *
+     * @return list<string>|null
+     */
+    private static function urls(mixed $list): ?array
+    {
+        if (!is_array($list)) {
+            return null;
+        }
+        $urls = [];
+        foreach ($list as $item) {
+            if (($url = self::url($item)) !== null && !in_array($url, $urls, true)) {
+                $urls[] = $url;
+            }
+            if (count($urls) >= 20) {
+                break;
+            }
+        }
+
+        return $urls === [] ? null : $urls;
+    }
+
+    /** A short display text (a driver's name or phone), trimmed and capped; null when empty. */
+    private static function shortText(mixed $value, int $max): ?string
+    {
+        if (!is_string($value) && !is_int($value)) {
+            return null;
+        }
+        $value = trim((string) $value);
+
+        return $value === '' ? null : mb_substr($value, 0, $max);
     }
 
     // --- Payload builders ---------------------------------------------------
@@ -1928,6 +2147,69 @@ class SpxFulfillment implements Courier
     }
 
     /**
+     * Our sentence for the create failures SPX's guide lists as the most
+     * common (portal/guide/12, meanings from guide/08), so the operator reads
+     * what to fix. Any other code is told in SPX's own words.
+     */
+    private const CREATE_FAILURES = [
+        10001 => 'The parcel is too heavy for SPX.',
+        10003 => 'The COD amount is more than SPX collects.',
+        10018 => "SPX doesn't serve the pickup address.",
+        10019 => "SPX doesn't serve the delivery address.",
+        10021 => 'The delivery address is too far from the pickup address for SPX.',
+        10022 => 'The delivery address is too close to the pickup address for SPX.',
+        10077 => "SPX couldn't place the pickup address on its map.",
+        10078 => "SPX couldn't place the delivery address on its map.",
+        10080 => "The pickup slot is past SPX's cutoff. Choose another pickup date.",
+        10083 => 'The parcel is too heavy for SPX (actual or volumetric weight).',
+        10084 => 'The parcel is too long for SPX.',
+        10085 => 'The parcel is too wide for SPX.',
+        10086 => 'The parcel is too tall for SPX.',
+    ];
+
+    /**
+     * One fail_list entry (1.5) as the shipment's error: a human sentence
+     * first, then SPX's code and its specific reason (debug_msg) in brackets,
+     * e.g. "The pickup slot is past SPX's cutoff. Choose another pickup date.
+     * (SPX 10080: now_time over cutoff_time)".
+     *
+     * @param array<string, mixed> $fail
+     */
+    private static function createFailureText(array $fail): string
+    {
+        $code = is_numeric($fail['ret_code'] ?? null) ? (int) $fail['ret_code'] : null;
+        $message = self::cleanText($fail['message'] ?? null);
+        $debug = self::cleanText($fail['debug_msg'] ?? null);
+
+        $sentence = ($code !== null ? (self::CREATE_FAILURES[$code] ?? null) : null)
+            ?? ($message ?? 'SPX could not create this shipment.');
+        $detail = $debug ?? (isset(self::CREATE_FAILURES[$code ?? -1]) ? $message : null);
+        if ($detail !== null && $detail === $sentence) {
+            $detail = null;
+        }
+
+        $bracket = match (true) {
+            $code !== null && $detail !== null => "SPX {$code}: {$detail}",
+            $code !== null => "SPX {$code}",
+            $detail !== null => "SPX: {$detail}",
+            default => null,
+        };
+
+        return $bracket === null ? $sentence : "{$sentence} ({$bracket})";
+    }
+
+    /** SPX's text on one line, at most 300 characters; null when empty. */
+    private static function cleanText(mixed $text): ?string
+    {
+        if (!is_string($text)) {
+            return null;
+        }
+        $text = trim((string) preg_replace('/\s+/u', ' ', $text));
+
+        return $text === '' ? null : mb_substr($text, 0, 300);
+    }
+
+    /**
      * "Be careful: if all orders failed to be created, the task status is
      * still Done" (api.md §1.5) — success is NEVER inferred from task_status
      * alone, only from fail_list/fail_count, per this task's brief. An
@@ -1945,8 +2227,10 @@ class SpxFulfillment implements Courier
         $orders     = $resultData['orders'] ?? [];
 
         if ($taskFailed || $failCount > 0 || !empty($failList) || empty($orders)) {
-            $reason = $failList[0]['message']
-                ?? ($taskFailed
+            $first = is_array($failList[0] ?? null) ? $failList[0] : null;
+            $reason = $first !== null
+                ? self::createFailureText($first)
+                : ($taskFailed
                     ? ('SPX marked this batch as Failed' . (!empty($resultData['description']) ? ": {$resultData['description']}" : '.'))
                     : 'SPX could not create this shipment.');
             return ['ok' => false, 'error' => $reason];

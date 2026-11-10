@@ -2,6 +2,8 @@
     "data": {
         "amount": "145.00",
         "currency": "PHP",
-        "label": "₱145.00"
+        "label": "₱145.00",
+        "odz": null,
+        "remote_area_fee": null
     }
 }

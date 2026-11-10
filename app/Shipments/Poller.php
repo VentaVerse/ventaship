@@ -8,6 +8,7 @@ use App\Couriers\CourierOrder;
 use App\Couriers\CourierRegistry;
 use App\Models\CourierAccount;
 use App\Models\Shipment;
+use App\Support\Money;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Context;
@@ -113,7 +114,7 @@ final class Poller
         $tracking = $answer['tracking_number'] ?? null;
         if (is_string($tracking) && trim($tracking) !== '') {
             $meta = is_array($answer['meta'] ?? null) ? $answer['meta'] : [];
-            $this->outcomes->creationResolved($s->id, trim($tracking), $meta);
+            $this->outcomes->creationResolved($s->id, trim($tracking), $meta, Money::decimal($answer['fee'] ?? null));
 
             return;
         }

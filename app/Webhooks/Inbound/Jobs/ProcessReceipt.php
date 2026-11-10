@@ -2,13 +2,16 @@
 
 namespace App\Webhooks\Inbound\Jobs;
 
+use App\Couriers\CourierOrder;
 use App\Couriers\CourierRegistry;
 use App\Models\CourierAccount;
 use App\Models\Shipment;
 use App\Models\WebhookReceipt;
 use App\Shipments\BookingOutcomes;
+use App\Shipments\CourierFacts;
 use App\Shipments\StatusRecorder;
 use App\Support\AfterResponse;
+use App\Support\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Bus\Dispatcher;
@@ -16,6 +19,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Log;
 use JsonException;
 use Throwable;
@@ -25,8 +29,11 @@ use Throwable;
  * (parseWebhook), each event is matched within the account:
  *  1. by tracking number;
  *  2. by courier_ref = reference_id, only for a shipment still `booking` (SPX `creating` included).
- * A matched SPX `creating` shipment that the event gives a tracking number is booked through BookingOutcomes.
- * Every matched event is recorded by StatusRecorder (source `webhook`), which drops duplicates.
+ * A matched SPX `creating` shipment that the event gives a tracking number is booked through BookingOutcomes, with
+ * the booked data the courier gives for it (bookedData()).
+ * Every matched event is recorded by StatusRecorder (source `webhook`), which drops duplicates. What else an event
+ * reports (`actual_fee`, `meta`) is kept on the shipment by CourierFacts; an event with no status but such facts
+ * (SPX's evidence-proofs push) is matched and kept the same way.
  *
  * Receipt outcome: `processed` when any event matched (or there were none), `unmatched` when none did, `failed`
  * when the body cannot be read. Any unmatched event relays the raw receipt when the account has a relay URL; if
@@ -58,8 +65,10 @@ class ProcessReceipt implements ShouldQueue
         $this->onQueue('inbound');
     }
 
-    public function handle(StatusRecorder $recorder, BookingOutcomes $outcomes): void
+    public function handle(StatusRecorder $recorder, BookingOutcomes $outcomes, ?CourierFacts $facts = null): void
     {
+        $facts ??= app(CourierFacts::class);
+
         // The reprocess command may queue a receipt whose first job is still running.
         $lock = Cache::lock("receipt:{$this->receiptId}", self::LOCK_SECONDS);
         if (! $lock->get()) {
@@ -67,7 +76,7 @@ class ProcessReceipt implements ShouldQueue
         }
 
         try {
-            $this->process($recorder, $outcomes);
+            $this->process($recorder, $outcomes, $facts);
         } finally {
             $lock->release();
         }
@@ -88,7 +97,7 @@ class ProcessReceipt implements ShouldQueue
         ]);
     }
 
-    private function process(StatusRecorder $recorder, BookingOutcomes $outcomes): void
+    private function process(StatusRecorder $recorder, BookingOutcomes $outcomes, CourierFacts $facts): void
     {
         $receipt = WebhookReceipt::query()->find($this->receiptId);
         if ($receipt === null || $receipt->status !== 'received') {
@@ -129,13 +138,18 @@ class ProcessReceipt implements ShouldQueue
         foreach (is_array($events) ? $events : [] as $event) {
             $shipment = is_array($event) ? $this->match($account, $event) : null;
             $status = is_array($event) ? $this->text($event['status'] ?? null) : null;
-            if ($shipment === null || $status === null) {
+            if ($shipment === null || ($status === null && ! $this->hasFacts($event))) {
                 $unmatched++;
 
                 continue;
             }
 
-            $this->record($recorder, $outcomes, $receipt, $shipment, $event, $status);
+            if ($status === null) {
+                // A push with no status (SPX 4.2 evidence proofs): only its facts are kept.
+                $facts->apply($shipment, $this->facts($event), $this->time($event['occurred_at'] ?? null, $receipt), 'webhook');
+            } else {
+                $this->record($recorder, $outcomes, $facts, $account, $receipt, $shipment, $event, $status);
+            }
             $matched++;
         }
 
@@ -207,23 +221,73 @@ class ProcessReceipt implements ShouldQueue
     }
 
     /** @param  array<string, mixed>  $event */
-    private function record(StatusRecorder $recorder, BookingOutcomes $outcomes, WebhookReceipt $receipt, Shipment $s, array $event, string $status): void
+    private function record(StatusRecorder $recorder, BookingOutcomes $outcomes, CourierFacts $facts, CourierAccount $account, WebhookReceipt $receipt, Shipment $s, array $event, string $status): void
     {
         $tracking = $this->text($event['tracking_number'] ?? null);
         if ($s->state === 'booking' && $s->courier_status === 'creating' && $tracking !== null) {
-            $outcomes->creationResolved($s->id, $tracking);
+            [$meta, $fee] = $this->bookedData($account, $s, $tracking);
+            $outcomes->creationResolved($s->id, $tracking, $meta, $fee);
             $s->refresh();
         }
 
+        $at = $this->time($event['occurred_at'] ?? null, $receipt);
         $recorder->record(
             $s,
             mb_substr($status, 0, self::STATUS_MAX),
-            $this->time($event['occurred_at'] ?? null, $receipt),
+            $at,
             'webhook',
             $this->remarks($event['remarks'] ?? null),
-            $event,
+            // The facts go to the shipment, not into every event's raw copy (they can carry a driver's phone).
+            array_diff_key($event, ['meta' => true, 'actual_fee' => true]),
             $receipt->id,
         );
+
+        $facts->apply($s, $this->facts($event), $at, 'webhook');
+    }
+
+    /**
+     * The booking's own data, for a `creating` booking a webhook just resolved: asked of the courier once (SPX: 1.5
+     * Get Order Create Result), as the poller would have, so a late booking keeps its fee, links and sort codes.
+     * Best effort: any failure, or an answer for another tracking number, books it with the tracking number alone.
+     *
+     * @return array{0: array<string, mixed>, 1: ?string}
+     */
+    private function bookedData(CourierAccount $account, Shipment $s, string $tracking): array
+    {
+        try {
+            $answer = Context::scope(
+                fn () => CourierRegistry::for($account)->resolvePendingCreation(CourierOrder::fromApi($s)),
+                ['account_id' => $account->getKey(), 'shipment_id' => $s->id, 'operation' => 'resolve_pending_creation'],
+            );
+        } catch (Throwable $e) {
+            Log::info('Booked data for a webhook-resolved booking could not be fetched', ['shipment' => $s->public_id, 'exception' => $e::class]);
+
+            return [[], null];
+        }
+
+        if (! is_array($answer) || ($answer['tracking_number'] ?? null) !== $tracking) {
+            return [[], null];
+        }
+
+        return [is_array($answer['meta'] ?? null) ? $answer['meta'] : [], Money::decimal($answer['fee'] ?? null)];
+    }
+
+    /** @param  mixed  $event */
+    private function hasFacts(mixed $event): bool
+    {
+        return is_array($event) && ((is_array($event['meta'] ?? null) && $event['meta'] !== []) || isset($event['actual_fee']));
+    }
+
+    /**
+     * @param  array<string, mixed>  $event
+     * @return array{actual_fee: mixed, meta: array<string, mixed>}
+     */
+    private function facts(array $event): array
+    {
+        return [
+            'actual_fee' => $event['actual_fee'] ?? null,
+            'meta' => is_array($event['meta'] ?? null) ? $event['meta'] : [],
+        ];
     }
 
     private function settle(WebhookReceipt $receipt, string $status, ?string $error): void
