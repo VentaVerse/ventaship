@@ -125,9 +125,10 @@ class ShipmentCourierFieldsTest extends TestCase
         $this->assertStringContainsString('name="payment[shipping_payment]"', $html);
         $this->assertStringContainsString('name="pickup_date"', $html);
         $this->assertStringContainsString('name="note"', $html);
-        foreach (['Cash at pickup', 'Deduct from remittance', 'I pay', 'Receiver pays', 'Drop off myself', 'Pick up', 'Load times', 'Delivery note', 'Item category'] as $text) {
+        foreach (['Cash at pickup', 'Deduct from remittance', 'I pay', 'Receiver pays', 'Drop off myself', 'Pick up', 'Pickup time', 'Delivery note', 'Item category'] as $text) {
             $this->assertStringContainsString($text, $html, $text);
         }
+        $this->assertStringNotContainsString('Load times', $html);
         Http::assertNothingSent();
     }
 
@@ -310,19 +311,20 @@ class ShipmentCourierFieldsTest extends TestCase
         return $s;
     }
 
-    public function test_edit_with_past_spx_slot_shows_load_times(): void
+    public function test_edit_with_past_spx_slot_reloads_times_by_itself(): void
     {
         $this->accounts();
         $future = $this->slot(now()->addDay()->timestamp);
         $s = $this->failed('spx', ['handover' => 'pickup', 'pickup_slot' => $future]);
-        $idle = '/class="sh-slots__row" x-show="slotState !== \'ready\'"\s*>/';
 
+        // A future slot is shown as chosen; a past one is dropped, so the page fetches fresh times on load.
         $html = $this->get(route('shipments.edit', $s->public_id))->assertOk()->getContent();
-        $this->assertDoesNotMatchRegularExpression($idle, $html);
+        $this->assertMatchesRegularExpression('/slotState(?:\\\\u0022|&quot;|\\")\s*:\s*(?:\\\\u0022|&quot;|\\")ready/', $html);
 
         $s->forceFill(['options' => ['pickup_slot' => $this->slot(now()->subDay()->timestamp)] + $s->options])->save();
         $html = $this->get(route('shipments.edit', $s->public_id))->assertOk()->getContent();
-        $this->assertMatchesRegularExpression($idle, $html);
+        $this->assertMatchesRegularExpression('/slotState(?:\\\\u0022|&quot;|\\")\s*:\s*(?:\\\\u0022|&quot;|\\")idle/', $html);
+        $this->assertStringNotContainsString('Load times', $html);
         $this->assertStringNotContainsString('pickup_time_range_id', $html);
     }
 

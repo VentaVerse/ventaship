@@ -6,6 +6,8 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@hasSection('doc_title'){{ trim($__env->yieldContent('doc_title')) }} · @elseif($__env->hasSection('title')){{ trim($__env->yieldContent('title')) }} · @endif{{ config('app.name', 'Ventaship') }}</title>
     @include('partials.theme-boot')
+    {{-- The fonts are fetched with the stylesheet, not after it: no fallback-font frame, no text reflow on each page. --}}
+    <link rel="preload" href="{{ Vite::asset('resources/fonts/Archivo-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="bl-app">
@@ -32,15 +34,15 @@
             @include('partials.nav', ['navGroups' => \App\Support\Navigation::groups()])
         </div>
 
-        <div class="x-side__foot" x-data="{ mode: (window.ventashipTheme && window.ventashipTheme.get()) || 'system' }">
+        <div class="x-side__foot">
             @php $adminName = auth()->user()?->name; @endphp
             @if($adminName)
                 <span class="x-side__user">{{ $adminName }}</span>
             @endif
             <div class="x-theme">
                 @foreach(['light' => 'sun', 'dark' => 'moon', 'system' => 'monitor'] as $mode => $icon)
-                    <button type="button" class="x-theme__btn" :class="{ 'is-on': mode === '{{ $mode }}' }"
-                            @click="mode = '{{ $mode }}'; window.ventashipTheme.set('{{ $mode }}')"
+                    <button type="button" class="x-theme__btn" data-mode="{{ $mode }}"
+                            @click="window.ventashipTheme.set('{{ $mode }}')"
                             aria-label="{{ ucfirst($mode) }} theme">
                         <x-ui.icon :name="$icon" size="13" />
                     </button>

@@ -382,19 +382,21 @@
                     @endforeach
                 </div>
                 <div class="sh-slots" x-show="handover === 'pickup'" {{ $courierState['handover'] === 'pickup' ? '' : 'x-cloak' }}>
-                    <div class="sh-grid" x-show="slotState === 'ready'" {{ $courierState['slotState'] === 'ready' ? '' : 'x-cloak' }}>
+                    <div class="sh-grid">
                         <x-ui.field label="Pickup time" name="pickup_slot" :required="true">
                             <x-ui.select id="f-pickup-slot" name="pickup_slot" x-model="slot" ::disabled="slotState !== 'ready' || handover !== 'pickup'">
+                                <template x-if="slotState !== 'ready'">
+                                    <option value="" x-text="slotState === 'error' ? 'Couldn\'t load' : 'Loading…'"></option>
+                                </template>
                                 <template x-for="o in slots" :key="o.value">
                                     <option :value="o.value" x-text="o.label" :selected="o.value === slot"></option>
                                 </template>
                             </x-ui.select>
                         </x-ui.field>
                     </div>
-                    <div class="sh-slots__row" x-show="slotState !== 'ready'" {{ $courierState['slotState'] === 'ready' ? 'x-cloak' : '' }}>
-                        <x-ui.button size="sm" @click="loadSlots()" ::disabled="slotState === 'loading'" x-show="slotState !== 'error'"><x-ui.icon name="clock" size="14" /> Load times</x-ui.button>
-                        <span class="fm-error" role="alert" x-show="slotState === 'error'" x-cloak><x-ui.icon name="alert-triangle" size="14" /> Couldn't load.</span>
-                        <x-ui.button size="sm" @click="loadSlots()" x-show="slotState === 'error'" x-cloak><x-ui.icon name="refresh-cw" size="14" /> Retry</x-ui.button>
+                    <div class="sh-slots__row" x-show="slotState === 'error'" x-cloak>
+                        <span class="fm-error" role="alert"><x-ui.icon name="alert-triangle" size="14" /> Couldn't load.</span>
+                        <x-ui.button size="sm" @click="loadSlots()"><x-ui.icon name="refresh-cw" size="14" /> Retry</x-ui.button>
                     </div>
                     <span class="x-sr" role="status" x-text="slotState === 'loading' ? 'Loading' : ''"></span>
                     @if(! $courierState['slots'])

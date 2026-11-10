@@ -97,7 +97,7 @@
                     </template>
                 </x-ui.select>
             </div>
-            <div class="ph-addr__free" x-show="isFree('{{ $level }}')">
+            <div class="ph-addr__free" x-show="isFree('{{ $level }}')" x-cloak>
                 <x-ui.input :id="$id.'-text'" :aria-label="$label" x-model="text.{{ $level }}" maxlength="255" autocomplete="off" />
                 <x-ui.button size="sm" x-show="canChoose('{{ $level }}')" x-on:click="choose('{{ $level }}')">Choose from list</x-ui.button>
             </div>

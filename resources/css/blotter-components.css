@@ -206,7 +206,10 @@
         color: var(--bl-side-ink);
     }
 
-    .x-theme__btn.is-on {
+    /* The chosen mode is lit from the first paint: theme-boot sets data-theme-mode on <html> before the page draws. */
+    :root[data-theme-mode="light"] .x-theme__btn[data-mode="light"],
+    :root[data-theme-mode="dark"] .x-theme__btn[data-mode="dark"],
+    :root[data-theme-mode="system"] .x-theme__btn[data-mode="system"] {
         background: var(--bl-side-active);
         color: #fff;
     }
@@ -223,6 +226,9 @@
     }
 
     .x-menu {
+        position: sticky;
+        top: 12px;
+        z-index: 20;
         display: grid;
         place-items: center;
         width: 34px;

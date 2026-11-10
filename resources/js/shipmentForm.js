@@ -103,6 +103,11 @@ export function placeLine(city, state) {
     return [city, state].map((p) => String(p ?? '').trim()).filter((p) => p !== '').join(', ');
 }
 
+/** Whether the SPX pickup-time list should be fetched now: SPX, pickup chosen, and nothing loaded or loading yet. */
+export function shouldAutoLoadSlots(courier, handover, slotState) {
+    return courier === 'spx' && handover === 'pickup' && (slotState ?? 'idle') === 'idle';
+}
+
 export function shipmentForm(config) {
     return {
         account: config.account,
@@ -134,7 +139,18 @@ export function shipmentForm(config) {
             this.$watch('pickupId', () => {
                 this.slotSeq++;
                 Object.assign(this, { slot: '', slots: [], slotState: 'idle' });
+                this.$nextTick(() => this.autoLoadSlots());
             });
+            // Pickup times load by themselves once SPX pickup is chosen: there is no "Load times" step.
+            this.$watch('account', () => this.$nextTick(() => this.autoLoadSlots()));
+            this.$watch('handover', () => this.autoLoadSlots());
+            this.autoLoadSlots();
+        },
+
+        autoLoadSlots() {
+            if (shouldAutoLoadSlots(this.courier, this.handover, this.slotState)) {
+                this.loadSlots();
+            }
         },
 
         get courier() {

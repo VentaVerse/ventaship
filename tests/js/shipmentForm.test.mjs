@@ -134,3 +134,15 @@ test('the summary names the recipient, where it goes and the packaging', async (
     f.lastName = '';
     assert.equal(f.toName, '—');
 });
+
+import { shouldAutoLoadSlots } from '../../resources/js/shipmentForm.js';
+
+test('SPX pickup times load by themselves only for SPX pickup with nothing loaded yet', () => {
+    assert.equal(shouldAutoLoadSlots('spx', 'pickup', 'idle'), true);
+    assert.equal(shouldAutoLoadSlots('spx', 'pickup', undefined), true);
+    assert.equal(shouldAutoLoadSlots('spx', 'pickup', 'loading'), false);
+    assert.equal(shouldAutoLoadSlots('spx', 'pickup', 'ready'), false);
+    assert.equal(shouldAutoLoadSlots('spx', 'pickup', 'error'), false);
+    assert.equal(shouldAutoLoadSlots('spx', 'dropoff', 'idle'), false);
+    assert.equal(shouldAutoLoadSlots('quadx', 'pickup', 'idle'), false);
+});

@@ -123,6 +123,8 @@
 @layer base {
     html {
         background: var(--bl-paper);
+        /* Room for the scrollbar is always kept, so a page growing taller never shifts everything sideways. */
+        scrollbar-gutter: stable;
     }
 
     body {
