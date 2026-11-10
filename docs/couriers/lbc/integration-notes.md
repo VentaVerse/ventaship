@@ -248,8 +248,7 @@ to follow.
 
 ## 2026-08-17: second test booking, this time with OUR data
 
-Submitted with the store's real default pickup address (Paolo, San
-Bartolome, Quezon City), Client NGD (LBC's confirmed value), and a
+Submitted with the store's real default pickup address (redacted), Client NGD (LBC's confirmed value), and a
 date-coded tracking number pre-checked clean on the tracker
 (2026081700001 -> 201 "No Record Found" before booking).
 
