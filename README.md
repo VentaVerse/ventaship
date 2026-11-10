@@ -3,7 +3,7 @@
   <img alt="Ventaship, self-hosted shipping software for Philippine online shops" src="public/brand/ventaship-logo-light.png" height="72">
 </picture>
 
-**Ventaship is self-hosted shipping software for Philippine online shops.** Book parcels with **QuadX**, **SPX Express** and **LBC Express** from one dashboard, print waybills, and track every delivery, without logging in to each courier's portal.
+**Ventaship is open-source, self-hosted shipping software for Philippine online shops.** Book parcels with **QuadX**, **SPX Express** and **LBC Express** from one dashboard, print waybills, and track every delivery, without logging in to each courier's portal.
 
 ![Ventaship shipping dashboard showing shipments booked with QuadX, SPX Express and LBC Express](docs/screenshots/shipments.png)
 
@@ -33,6 +33,10 @@ Ventaship is a Laravel app that runs on any PHP server with MySQL. See the **[in
 - Courier API references are in [docs/couriers](docs/couriers).
 - Run the tests with `php artisan test` and `npm run test:js`.
 - How versions, the changelog and releases work: **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
+## License
+
+Ventaship is open source under the [MIT License](LICENSE).
 
 ## Version
 
