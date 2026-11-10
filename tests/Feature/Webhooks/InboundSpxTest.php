@@ -156,13 +156,23 @@ class InboundSpxTest extends TestCase
             && $c['account'] === $this->account->public_id && $c['reason'] === 'signature mismatch'))->once();
     }
 
-    public function test_rejected_body_is_capped_at_64_kb(): void
+    public function test_rejected_body_is_capped_at_2_kb(): void
     {
         $raw = $this->payload(['message' => str_repeat('x', 70000)]);
 
         $this->postSigned('/webhooks/spx/'.self::TOKEN, $raw, sign: str_repeat('0', 64))->assertOk();
 
-        $this->assertSame(ReceiptIngestor::BODY_CAP, strlen((string) WebhookReceipt::query()->sole()->body));
+        $this->assertSame(ReceiptIngestor::UNVERIFIED_CAP, strlen((string) WebhookReceipt::query()->sole()->body));
+    }
+
+    public function test_unverified_requests_past_the_global_budget_are_answered_but_not_stored(): void
+    {
+        for ($i = 0; $i < CourierWebhookController::UNVERIFIED_GLOBAL_PER_MINUTE; $i++) {
+            RateLimiter::hit('spx-webhook-unverified:all', 60);
+        }
+
+        $this->postSigned('/webhooks/spx/'.self::TOKEN, $this->payload(), sign: str_repeat('0', 64))->assertOk();
+        $this->assertSame(0, WebhookReceipt::query()->count());
     }
 
     public function test_upper_case_check_sign_is_accepted(): void

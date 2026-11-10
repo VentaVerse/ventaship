@@ -24,7 +24,10 @@ final class ReceiptIngestor
 {
     public const BODY_CAP = 65536;
 
-    public const UNROUTED_CAP = 16384;
+    public const UNROUTED_CAP = 2048;
+
+    /** An unverified push is kept only to diagnose a signature mismatch: its first 2 KB is plenty. */
+    public const UNVERIFIED_CAP = 2048;
 
     /** The only request headers kept (and relayed). Lower case. */
     public const HEADERS = ['content-type', 'user-agent', 'app-id', 'check-sign', 'timestamp', 'random-num', 'x-request-id'];
@@ -83,12 +86,12 @@ final class ReceiptIngestor
 
     /**
      * A refused request. With the request (SPX), the allow-listed headers (check-sign is SPX's signature, never our
-     * secret) and at most BODY_CAP of the body are kept, with the reason, so a mismatch can be diagnosed. Never
+     * secret) and at most UNVERIFIED_CAP of the body are kept, with the reason, so a mismatch can be diagnosed. Never
      * processed: only `received` receipts are.
      */
     public function rejected(string $courier, ?CourierAccount $account, ?Request $r = null, ?string $reason = null, string $routedBy = 'none'): WebhookReceipt
     {
-        $body = $r === null ? null : $this->fit($r->getContent(), self::BODY_CAP)[0];
+        $body = $r === null ? null : $this->fit($r->getContent(), self::UNVERIFIED_CAP)[0];
 
         return WebhookReceipt::query()->create([
             'courier' => $courier,

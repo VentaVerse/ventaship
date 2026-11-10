@@ -23,6 +23,9 @@ final class CourierWebhookController extends Controller
     /** Unverified SPX requests stored per IP per minute (diagnostics, not a throttle: the answer is the same). */
     public const UNVERIFIED_PER_MINUTE = 300;
 
+    /** All unverified pushes stored per minute, from every address together; the per-IP cap alone can be spread out. */
+    public const UNVERIFIED_GLOBAL_PER_MINUTE = 600;
+
     public function __construct(private readonly AccountRouter $router, private readonly ReceiptIngestor $ingestor) {}
 
     public function quadx(Request $request): JsonResponse
@@ -93,15 +96,27 @@ final class CourierWebhookController extends Controller
     /** Whether this unverified SPX request is still within its IP's storage budget for the minute. */
     private function storesUnverified(Request $request): bool
     {
-        $key = 'spx-webhook-unverified:ip:'.$request->ip();
-        if (RateLimiter::tooManyAttempts($key, self::UNVERIFIED_PER_MINUTE)) {
+        $key = 'spx-webhook-unverified:ip:'.$this->ipBucket((string) $request->ip());
+        $global = 'spx-webhook-unverified:all';
+        if (RateLimiter::tooManyAttempts($key, self::UNVERIFIED_PER_MINUTE) || RateLimiter::tooManyAttempts($global, self::UNVERIFIED_GLOBAL_PER_MINUTE)) {
             return false;
         }
+        RateLimiter::hit($global, 60);
         if (RateLimiter::hit($key, 60) === self::UNVERIFIED_PER_MINUTE) {
             Log::warning('SPX webhook: unverified requests from one IP over the per-minute limit; further ones this minute are not stored', ['ip' => $request->ip()]);
         }
 
         return true;
+    }
+
+    /** IPv4 as is; IPv6 by its /64 network, since one host can hold a whole /64. */
+    private function ipBucket(string $ip): string
+    {
+        if (! str_contains($ip, ':') || ($packed = @inet_pton($ip)) === false) {
+            return $ip;
+        }
+
+        return bin2hex(substr($packed, 0, 8)).'::/64';
     }
 
     private function answer(int $status): JsonResponse

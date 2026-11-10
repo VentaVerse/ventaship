@@ -129,8 +129,8 @@ class InboundQuadXTest extends TestCase
         $receipt = WebhookReceipt::query()->sole();
         $this->assertSame('unrouted', $receipt->status);
         $this->assertNull($receipt->courier_account_id);
-        $this->assertSame(16384, strlen($receipt->body));
-        $this->assertSame(substr($raw, 0, 16384), $receipt->body);
+        $this->assertSame(\App\Webhooks\Inbound\ReceiptIngestor::UNROUTED_CAP, strlen($receipt->body));
+        $this->assertSame(substr($raw, 0, \App\Webhooks\Inbound\ReceiptIngestor::UNROUTED_CAP), $receipt->body);
     }
 
     public function test_body_over_64_kb_is_stored_truncated_and_still_acked(): void
