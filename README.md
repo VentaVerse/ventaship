@@ -3,8 +3,6 @@
   <img alt="Ventaship" src="public/brand/ventaship-logo-light.png" height="72">
 </picture>
 
-# Ventaship
-
 Ventaship books your parcels with Philippine couriers (**QuadX**, **SPX** and **LBC**) from one place. It runs on your own server.
 
 ![Shipments](docs/screenshots/shipments.png)
