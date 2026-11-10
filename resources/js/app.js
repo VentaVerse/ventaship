@@ -9,6 +9,7 @@ import { customerSearch } from './customerSearch';
 import { focusFirstInvalid, watchInvalid } from './firstInvalid';
 import { phCascade } from './phCascade';
 import { phoneInput } from './phoneInput';
+import { profileMenu } from './profileMenu';
 import { rowMenu } from './rowMenu';
 import { shipmentForm } from './shipmentForm';
 
@@ -25,6 +26,8 @@ Alpine.data('phAddress', (config) => phCascade(config));
 Alpine.data('phoneInput', () => phoneInput());
 
 Alpine.data('rowMenu', () => rowMenu());
+
+Alpine.data('profileMenu', () => profileMenu());
 
 Alpine.data('customerSearch', (config) => customerSearch(config));
 

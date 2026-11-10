@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Ui\AccountController;
 use App\Http\Controllers\Ui\AddressesController;
 use App\Http\Controllers\Ui\ApiController;
 use App\Http\Controllers\Ui\CourierAccountsController;
@@ -86,8 +87,9 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::get('ph/{level}', PhAddressController::class)->where('level', 'provinces|cities|districts|barangays')->name('ph.options');
     Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');
     Route::put('settings', [SettingsController::class, 'update'])->name('settings.update');
-    Route::put('settings/account', [SettingsController::class, 'account'])->name('settings.account');
-    Route::put('settings/password', [SettingsController::class, 'password'])->name('settings.password');
+    Route::get('account', [AccountController::class, 'show'])->name('account');
+    Route::put('account', [AccountController::class, 'profile'])->name('account.profile');
+    Route::put('account/password', [AccountController::class, 'password'])->name('account.password');
     Route::post('shipments/labels', [ShipmentActionsController::class, 'labels'])->name('shipments.labels');
     Route::get('shipments/labels/bundle', [ShipmentActionsController::class, 'bundle'])
         ->middleware('signed:relative')->name('shipments.labels.bundle');

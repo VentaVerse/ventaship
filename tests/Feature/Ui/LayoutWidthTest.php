@@ -64,7 +64,7 @@ class LayoutWidthTest extends TestCase
             '/developers',
             '/settings',
             '/settings?tab=jobs',
-            '/settings?tab=account',
+            '/account',
             route('shipments.create'),
             route('shipments.show', $shipment),
         ];

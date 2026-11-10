@@ -35,37 +35,23 @@
         </div>
 
         <div class="x-side__foot">
-            @php $adminName = auth()->user()?->name; @endphp
-            @if($adminName)
-                <span class="x-side__user">{{ $adminName }}</span>
-            @endif
-            <div class="x-theme">
-                @foreach(['light' => 'sun', 'dark' => 'moon', 'system' => 'monitor'] as $mode => $icon)
-                    <button type="button" class="x-theme__btn" data-mode="{{ $mode }}"
-                            @click="window.ventashipTheme.set('{{ $mode }}')"
-                            aria-label="{{ ucfirst($mode) }} theme">
-                        <x-ui.icon :name="$icon" size="13" />
-                    </button>
-                @endforeach
-            </div>
-            @if(Route::has('logout'))
-                <form method="POST" action="{{ route('logout') }}" class="x-side__out">
-                    @csrf
-                    <button type="submit" class="x-side__signout">
-                        <x-ui.icon name="log-out" size="14" />
-                        Sign out
-                    </button>
-                </form>
-            @endif
+            <span class="x-side__ver">Ventaship {{ \App\Support\AppVersion::current() }}</span>
         </div>
     </aside>
 
     <div class="x-scrim" x-show="nav" x-cloak @click="closeNav()" aria-hidden="true"></div>
 
     <div class="x-main">
-        <button type="button" class="x-menu" x-ref="navOpen" @click="openNav()" aria-label="Open navigation" aria-controls="x-nav" aria-expanded="false" :aria-expanded="nav.toString()">
-            <x-ui.icon name="menu" size="16" />
-        </button>
+        <div class="x-top">
+            <div class="x-top__in">
+                <button type="button" class="x-menu" x-ref="navOpen" @click="openNav()" aria-label="Open navigation" aria-controls="x-nav" aria-expanded="false" :aria-expanded="nav.toString()">
+                    <x-ui.icon name="menu" size="16" />
+                </button>
+                @auth
+                    @include('partials.profile-menu', ['admin' => auth()->user()])
+                @endauth
+            </div>
+        </div>
         <main id="main" tabindex="-1" class="x-content">
             <header class="x-page">
                 <div>

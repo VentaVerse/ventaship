@@ -157,61 +157,14 @@
     }
 
     .x-side__foot {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 8px;
         margin: 10px 12px 0;
         padding: 12px 8px 14px;
         border-top: 1px solid var(--bl-side-rule);
     }
 
-    .x-side__user {
-        flex: 1 1 100%;
-        font-size: 12.5px;
-        font-weight: 600;
-        color: #c9d1e2;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .x-side__out {
-        margin-left: auto;
-    }
-
-    .x-side__signout {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 12.5px;
-        color: var(--bl-side-ink);
-    }
-
-    .x-side__signout:hover {
-        color: #fff;
-    }
-
-    .x-theme {
-        display: flex;
-        gap: 2px;
-    }
-
-    .x-theme__btn {
-        display: grid;
-        place-items: center;
-        width: 26px;
-        height: 24px;
-        border-radius: 7px;
-        color: var(--bl-side-ink);
-    }
-
-    /* The chosen mode is lit from the first paint: theme-boot sets data-theme-mode on <html> before the page draws. */
-    :root[data-theme-mode="light"] .x-theme__btn[data-mode="light"],
-    :root[data-theme-mode="dark"] .x-theme__btn[data-mode="dark"],
-    :root[data-theme-mode="system"] .x-theme__btn[data-mode="system"] {
-        background: var(--bl-side-active);
-        color: #fff;
+    .x-side__ver {
+        font-size: 11.5px;
+        color: var(--bl-side-group);
     }
 
     .x-scrim {
@@ -225,24 +178,145 @@
         min-width: 0;
     }
 
-    .x-menu {
+    /* The thin bar above the page title: the navigation button (under 1024px) on the left, the profile menu on the
+       right edge of the content column. Under 1024px it stays at the top while the page scrolls; only its buttons
+       take clicks. */
+    .x-top {
         position: sticky;
-        top: 12px;
+        top: 0;
         z-index: 20;
+        pointer-events: none;
+    }
+
+    .x-top__in {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        max-width: calc(var(--bl-page-max) + 2 * var(--bl-gutter));
+        margin-inline: auto;
+        padding: 12px var(--bl-gutter) 0;
+    }
+
+    .x-top__in > * {
+        pointer-events: auto;
+    }
+
+    .x-menu {
         display: grid;
         place-items: center;
         width: 34px;
         height: 34px;
-        margin: 12px 0 0 var(--bl-gutter);
         border: 1px solid var(--bl-rule-2);
         border-radius: var(--bl-r-ctrl);
         background: var(--bl-sheet);
     }
 
+    .x-prof {
+        margin-left: auto;
+    }
+
+    .x-prof__btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 36px;
+        max-width: 280px;
+        padding: 3px 8px 3px 4px;
+        border: 1px solid var(--bl-rule-2);
+        border-radius: var(--bl-r-pill);
+        background: var(--bl-sheet);
+        color: var(--bl-ink-2);
+    }
+
+    .x-prof__btn:hover,
+    .x-prof__btn[aria-expanded='true'] {
+        border-color: var(--bl-field-edge);
+        color: var(--bl-ink);
+    }
+
+    .x-prof__avatar {
+        display: grid;
+        flex: none;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--bl-brand-w);
+        color: var(--bl-brand-link);
+        font-size: 11.5px;
+        font-weight: 700;
+        letter-spacing: .02em;
+    }
+
+    .x-prof__name {
+        min-width: 0;
+        overflow: hidden;
+        color: var(--bl-ink);
+        font-size: 13px;
+        font-weight: 600;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .x-prof__pop {
+        width: 224px;
+    }
+
+    .x-prof__item {
+        gap: 9px;
+    }
+
+    .x-prof__item svg {
+        flex: none;
+        color: var(--bl-ink-3);
+    }
+
+    .x-prof__theme {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 2px;
+        margin: 4px 5px;
+        padding: 2px;
+        border-radius: 9px;
+        background: var(--bl-chrome-2);
+    }
+
+    .x-prof__mode {
+        min-height: 30px;
+        border: 0;
+        border-radius: 7px;
+        background: none;
+        color: var(--bl-ink-2);
+        font: 500 12.5px var(--font-sans);
+    }
+
+    .x-prof__mode:hover {
+        color: var(--bl-ink);
+    }
+
+    .x-prof__mode:focus-visible {
+        outline: 2px solid var(--bl-brand-btn);
+        outline-offset: 0;
+    }
+
+    /* The chosen mode is lit from the first paint: theme-boot sets data-theme-mode on <html> before the page draws. */
+    :root[data-theme-mode="light"] .x-prof__mode[data-mode="light"],
+    :root[data-theme-mode="dark"] .x-prof__mode[data-mode="dark"],
+    :root[data-theme-mode="system"] .x-prof__mode[data-mode="system"] {
+        background: var(--bl-brand-btn);
+        color: #fff;
+    }
+
+    .x-prof__sep {
+        height: 1px;
+        margin: 5px 0;
+        background: var(--bl-rule-2);
+    }
+
     .x-content {
         max-width: calc(var(--bl-page-max) + 2 * var(--bl-gutter));
         margin-inline: auto;
-        padding: 22px var(--bl-gutter) 40px;
+        padding: 14px var(--bl-gutter) 40px;
     }
 
     .x-page {
@@ -289,6 +363,21 @@
             height: 44px;
         }
 
+        .x-prof__btn {
+            min-height: 44px;
+            min-width: 44px;
+            padding-right: 10px;
+        }
+
+        .x-prof__name {
+            display: none;
+        }
+
+        .x-prof__item,
+        .x-prof__mode {
+            min-height: 44px;
+        }
+
         .x-page__actions .x-btn {
             min-height: 44px;
         }
@@ -306,6 +395,10 @@
             display: flex;
             height: 100vh;
             padding-top: 0;
+        }
+
+        .x-top {
+            position: static;
         }
 
         .x-side__close,

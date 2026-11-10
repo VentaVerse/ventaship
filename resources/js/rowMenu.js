@@ -6,6 +6,9 @@
 const GAP = 4;
 const MARGIN = 8;
 
+// What the arrow keys move between: plain items and the choices of a radio group (the profile menu's theme).
+export const MENU_ITEMS = '[role="menuitem"], [role="menuitemradio"]';
+
 export function menuPosition(trigger, menu, viewport) {
     const maxLeft = viewport.width - MARGIN - menu.width;
     const left = Math.max(MARGIN, Math.min(trigger.right - menu.width, maxLeft));
@@ -109,7 +112,7 @@ export function rowMenu() {
         },
 
         items() {
-            return [...this.$refs.menu.querySelectorAll('[role="menuitem"]')];
+            return [...this.$refs.menu.querySelectorAll(MENU_ITEMS)];
         },
 
         onTriggerKey(event) {

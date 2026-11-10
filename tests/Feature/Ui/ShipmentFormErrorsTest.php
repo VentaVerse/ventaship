@@ -188,18 +188,18 @@ class ShipmentFormErrorsTest extends TestCase
         $this->get(route('shipments.edit', $s->public_id))->assertRedirect();
         $this->assertSame(['Only unbooked manual shipments can be changed.'], $this->flashErrors($this->get(route('shipments.show', $s->public_id))->getContent()));
 
-        // A settings field error shows under the field only.
-        $this->from(route('settings.edit', ['tab' => 'account']))
-            ->put(route('settings.account'), ['name' => 'Ana', 'email' => 'not an email'])
+        // An account field error shows under the field only.
+        $this->from(route('account'))
+            ->put(route('account.profile'), ['name' => 'Ana', 'email' => 'not an email'])
             ->assertSessionHasErrors(['email' => 'Not a valid email.']);
         $errors = session('errors');
-        $html = $this->get(route('settings.edit', ['tab' => 'account']))->getContent();
+        $html = $this->get(route('account'))->getContent();
         $x = $this->xpath($html);
         $this->assertSame([], $this->flashErrors($html));
         $this->assertSame('Not a valid email.', trim($x->query('//*[@id="f-email-error"]')->item(0)?->textContent ?? ''));
         $this->assertSame('f-email-error', $x->query('//*[@id="f-email"]')->item(0)?->getAttribute('aria-describedby'));
 
-        // The same error on a tab that does not render its field still shows, in the flash.
+        // The same error on a page that does not render its field still shows, in the flash.
         $html = $this->withSession(['errors' => $errors])->get(route('settings.edit', ['tab' => 'general']))->getContent();
         $this->assertSame(['Not a valid email.'], $this->flashErrors($html));
     }
@@ -252,7 +252,7 @@ class ShipmentFormErrorsTest extends TestCase
         $this->assertLabelsMatch($this->failedForm(), 'add with errors');
 
         foreach ([route('addresses.customers.create'), route('addresses.pickup.create'), route('settings.edit', ['tab' => 'general']),
-            route('settings.edit', ['tab' => 'account']), route('accounts.show', 'quadx'), route('accounts.show', 'spx'), route('accounts.show', 'lbc'),
+            route('account'), route('accounts.show', 'quadx'), route('accounts.show', 'spx'), route('accounts.show', 'lbc'),
             route('developers.index', ['tab' => 'keys', 'create' => 1])] as $url) {
             $this->assertLabelsMatch($this->get($url)->assertOk()->getContent(), $url);
         }

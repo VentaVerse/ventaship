@@ -3,6 +3,7 @@
 namespace Tests\Feature\Ui;
 
 use App\Models\Admin;
+use App\Support\AppVersion;
 use App\Support\Navigation;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -85,15 +86,18 @@ class NavigationTest extends TestCase
         $this->assertMatchesRegularExpression('/aria-current="page"[^>]*>\s*<svg.*?<span>Failed jobs<\/span>/s', $html);
     }
 
-    public function test_footer_shows_admin_name_and_sign_out(): void
+    public function test_sidebar_foot_shows_only_the_version(): void
     {
         $this->registerRoute('fulfillment', fn () => view('layouts.app'));
         $admin = Admin::create(['name' => 'Rosa Admin', 'email' => 'rosa@example.test', 'password' => 'secret-pass']);
 
-        $this->actingAs($admin)->get('/_nav/fulfillment')
-            ->assertOk()
-            ->assertSee('Rosa Admin')
-            ->assertSee('Sign out')
-            ->assertSee('action="'.route('logout').'"', false);
+        $html = $this->actingAs($admin)->get('/_nav/fulfillment')->assertOk()->getContent();
+
+        preg_match('#<div class="x-side__foot">(.*?)</div>#s', $html, $m);
+        $this->assertNotEmpty($m, 'the sidebar foot is there');
+        $this->assertSame('Ventaship '.AppVersion::current(), trim(strip_tags($m[1])));
+        $this->assertStringNotContainsString('Rosa Admin', $m[1]);
+        $this->assertStringNotContainsString('Sign out', $m[1]);
+        $this->assertStringNotContainsString('x-theme', $html, 'the theme switch moved to the profile menu');
     }
 }
