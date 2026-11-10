@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
  * Daily: deletes logs past their keep window.
  *
  *  - idempotency_keys     completed: 7 days. `processing` rows older than an hour are counted, never deleted.
- *  - webhook_receipts     unrouted: 7 days; all: 90 days
+ *  - webhook_receipts     unrouted and rejected: 7 days; all: 90 days
  *  - api_requests         30 days
  *  - courier_calls        90 days
  *  - outgoing_attempts    90 days
@@ -29,6 +29,7 @@ class LogsPrune extends Command
         $deleted = [];
         $deleted['idempotency_keys'] = $this->prune('idempotency_keys', 'created_at', $now->copy()->subDays(7), ['status' => 'completed']);
         $deleted['unrouted receipts'] = $this->prune('webhook_receipts', 'received_at', $now->copy()->subDays(7), ['status' => 'unrouted']);
+        $deleted['rejected receipts'] = $this->prune('webhook_receipts', 'received_at', $now->copy()->subDays(7), ['status' => 'rejected']);
         $deleted['webhook_receipts'] = $this->prune('webhook_receipts', 'received_at', $now->copy()->subDays(90));
         $deleted['api_requests'] = $this->prune('api_requests', 'created_at', $now->copy()->subDays(30));
         $deleted['courier_calls'] = $this->prune('courier_calls', 'created_at', $now->copy()->subDays(90));

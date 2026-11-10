@@ -141,7 +141,7 @@
             <div class="st-sec">
                 <h2 class="st-h">Webhook</h2>
                 <div class="st-row">
-                    <x-ui.webhook-url label="Address" context="Webhook" :masked="$webhook" :revealUrl="route('accounts.reveal', [$courier, 'webhook_url'])" />
+                    <x-ui.webhook-url label="Address" context="Webhook" :masked="$webhook" :revealUrl="route('accounts.reveal', [$courier, 'webhook_url'])" :plain="$courier === 'spx'" />
                 </div>
             </div>
         @endif

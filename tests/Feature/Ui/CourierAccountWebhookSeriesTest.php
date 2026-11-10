@@ -42,12 +42,16 @@ class CourierAccountWebhookSeriesTest extends TestCase
 
         $this->actingAs($this->admin())->get(route('accounts.show', $q->courier))->assertOk()
             ->assertSee('for="f-webhook-url"', false)->assertDontSee('Address for')
-            ->assertSee('aria-label="Copy Webhook Address"', false)
+            ->assertSee('aria-label="Copy Webhook Address"', false)->assertSee('aria-label="View Webhook Address"', false)
             ->assertSee(self::BASE.'/webhooks/quadx?token=••••••••••••••••', false)
             ->assertDontSee('Public address');
+        // SPX binds one URL per app id: the tokenless address, in full, with Copy only.
         $this->get(route('accounts.show', $s->courier))->assertOk()
             ->assertSee('for="f-webhook-url"', false)->assertDontSee('Address for SPX')
-            ->assertSee(self::BASE.'/webhooks/spx/••••••••••••••••', false);
+            ->assertSee('value="'.self::BASE.'/webhooks/spx"', false)
+            ->assertDontSee('/webhooks/spx/', false)
+            ->assertSee('aria-label="Copy Webhook Address"', false)
+            ->assertDontSee('aria-label="View Webhook Address"', false);
     }
 
     public function test_no_webhook_section_without_app_url(): void
@@ -71,7 +75,7 @@ class CourierAccountWebhookSeriesTest extends TestCase
             ->assertOk()->assertExactJson(['value' => self::BASE.'/webhooks/quadx?token='.$a->webhook_token]);
         $this->assertStringContainsString('no-store', (string) $res->headers->get('Cache-Control'));
         $this->postJson(route('accounts.reveal', [$s->courier, 'webhook_url']))
-            ->assertExactJson(['value' => self::BASE.'/webhooks/spx/'.$s->webhook_token]);
+            ->assertExactJson(['value' => self::BASE.'/webhooks/spx']);
 
         $entry = AuditEntry::query()->where('action', 'courier_account.webhook_viewed')->where('subject_id', $a->public_id)->sole();
         $this->assertSame([], $entry->changes);

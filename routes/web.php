@@ -93,12 +93,14 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
         ->middleware('signed:relative')->name('shipments.labels.bundle');
 });
 
-// Courier webhooks: no session, cookies or CSRF (the whole `web` group is dropped), throttled per IP.
+// Courier webhooks: no session, cookies or CSRF (the whole `web` group is dropped), throttled per IP. SPX has its own
+// far higher limit: it counts a 429 as a rejection and stops pushing after repeated ones.
 Route::withoutMiddleware('web')
-    ->middleware('throttle:courier-webhooks')
     ->prefix('webhooks')
     ->group(function () {
-        Route::post('quadx', [CourierWebhookController::class, 'quadx'])->name('webhooks.quadx');
-        Route::post('spx/{token}', [CourierWebhookController::class, 'spx'])->name('webhooks.spx.token');
-        Route::post('spx', [CourierWebhookController::class, 'spx'])->name('webhooks.spx');
+        Route::post('quadx', [CourierWebhookController::class, 'quadx'])->middleware('throttle:courier-webhooks')->name('webhooks.quadx');
+        Route::middleware('throttle:spx-webhooks')->group(function () {
+            Route::post('spx/{token}', [CourierWebhookController::class, 'spx'])->name('webhooks.spx.token');
+            Route::post('spx', [CourierWebhookController::class, 'spx'])->name('webhooks.spx');
+        });
     });

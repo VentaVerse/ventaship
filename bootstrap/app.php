@@ -32,6 +32,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(fn () => route('login'));
         $middleware->redirectUsersTo('/');
         $middleware->api(prepend: [LogApiRequest::class]);
+        // Trusted reverse proxies come from config/trustedproxy.php (TRUSTED_PROXIES), read by the global TrustProxies
+        // middleware at request time, so they survive config:cache.
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // Courier secrets typed into the account form never go back into the session as old input.

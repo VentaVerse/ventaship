@@ -420,23 +420,28 @@ class CourierAccounts
     public const WEBHOOK_KEY = 'webhook_url';
 
     /**
-     * The address a courier posts status updates to: APP_URL, the webhook path and the account's token. Null for a
-     * courier without a per-account webhook, or while APP_URL is empty. With $masked the token part is dots, so the
-     * result is safe to render.
+     * The address a courier posts status updates to. QuadX: APP_URL, the webhook path and the account's token (with
+     * $masked the token part is dots, so the result is safe to render). SPX: the tokenless APP_URL/webhooks/spx, since
+     * SPX binds one URL per app id and pushes are routed by the `app-id` header and signature (the token route still
+     * works for an address given out earlier). Null for a courier without webhooks, or while APP_URL is empty.
      */
     public function webhookAddress(CourierAccount $account, bool $masked = false): ?string
     {
         $base = trim((string) config('app.url'));
+        if ($base === '' || ! in_array($account->courier, ['quadx', 'spx'], true)) {
+            return null;
+        }
+        if ($account->courier === 'spx') {
+            return rtrim($base, '/').route('webhooks.spx', absolute: false);
+        }
+
         $token = $account->webhook_token;
-        if ($base === '' || ! in_array($account->courier, ['quadx', 'spx'], true) || ! is_string($token) || $token === '') {
+        if (! is_string($token) || $token === '') {
             return null;
         }
         $token = $masked ? str_repeat('•', 16) : $token;
-        $path = $account->courier === 'quadx'
-            ? route('webhooks.quadx', absolute: false).'?token='.$token
-            : str_replace('TOKEN', $token, route('webhooks.spx.token', 'TOKEN', absolute: false));
 
-        return rtrim($base, '/').$path;
+        return rtrim($base, '/').route('webhooks.quadx', absolute: false).'?token='.$token;
     }
 
     /** @param  array{type: string, id: mixed, ip: ?string}  $actor */

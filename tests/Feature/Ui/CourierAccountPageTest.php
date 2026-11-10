@@ -393,13 +393,20 @@ class CourierAccountPageTest extends TestCase
     public function test_webhook_label_is_address_and_its_buttons_share_a_width(): void
     {
         config(['app.url' => 'https://ship.example.com']);
+        $this->account('quadx', ['webhook_token' => str_repeat('t', 40)]);
         $this->account('spx', ['webhook_token' => str_repeat('t', 40)]);
 
-        $html = $this->actingAs($this->admin())->get(route('accounts.show', 'spx'))->assertOk()->assertDontSee('Address for')->getContent();
+        $html = $this->actingAs($this->admin())->get(route('accounts.show', 'quadx'))->assertOk()->assertDontSee('Address for')->getContent();
 
         $this->assertMatchesRegularExpression('/<label class="fm-label"\s+for="f-webhook-url"\s*>\s*Address\s*<\/label>/', $html);
         $this->assertStringContainsString('class="ac-cred__acts ac-cred__acts--even"', $html);
         $this->assertStringContainsString('aria-label="View Webhook Address"', $html);
+
+        // SPX's tokenless address has nothing to hide: Copy only.
+        $spx = $this->get(route('accounts.show', 'spx'))->assertOk()->assertDontSee('Address for')->getContent();
+        $this->assertMatchesRegularExpression('/<label class="fm-label"\s+for="f-webhook-url"\s*>\s*Address\s*<\/label>/', $spx);
+        $this->assertStringNotContainsString('aria-label="View Webhook Address"', $spx);
+        $this->assertStringContainsString('aria-label="Copy Webhook Address"', $spx);
 
         $css = file_get_contents(resource_path('css/pages/accounts.css'));
         $this->assertMatchesRegularExpression('/\.ac-cred__acts--even\s*\{[^}]*grid-auto-columns:\s*minmax\(0, 1fr\)/', $css);

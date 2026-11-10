@@ -210,6 +210,23 @@ class SpxClientTest extends TestCase
         $this->assertFalse($this->client($this->webhookAccount())->verifyWebhookSignature($payload, '999999', $spoofedSign, '1677918414', '926611981'));
     }
 
+    public function test_verify_webhook_signature_without_an_app_id_header_uses_our_own_app_id(): void
+    {
+        $payload = '{"user_id":239404781503925,"user_secret":"85f0d570-a265-4d9d-857e-b30aa57c4fbe","service_type":1}';
+        $expectedSign = '97e21b23940e4ddc96fb4d2474f02425353d2b0e23aee384f3f94c3d0b9ba17d';
+        $client = $this->client($this->webhookAccount());
+
+        $this->assertTrue($client->verifyWebhookSignature($payload, null, $expectedSign, '1677918414', '926611981'));
+        $this->assertTrue($client->verifyWebhookSignature($payload, '', $expectedSign, '1677918414', '926611981'));
+    }
+
+    public function test_verify_webhook_signature_compares_hex_case_insensitively(): void
+    {
+        $payload = '{"user_id":239404781503925,"user_secret":"85f0d570-a265-4d9d-857e-b30aa57c4fbe","service_type":1}';
+
+        $this->assertTrue($this->client($this->webhookAccount())->verifyWebhookSignature($payload, '100000', '97E21B23940E4DDC96FB4D2474F02425353D2B0E23AEE384F3F94C3D0B9BA17D', '1677918414', '926611981'));
+    }
+
     public function test_verify_webhook_signature_rejects_missing_headers(): void
     {
         $client = $this->client($this->webhookAccount());

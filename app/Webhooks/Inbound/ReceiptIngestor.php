@@ -17,7 +17,8 @@ use Illuminate\Http\Request;
  *
  * - accepted: the raw body exactly as received (getContent(), capped at 64 KB) plus the allow-listed headers.
  * - unrouted: no account found; at most 16 KB of the body, pruned after 7 days.
- * - rejected: the token or signature failed; nothing of the request is kept.
+ * - rejected: the token or signature failed. QuadX keeps nothing of the request; SPX keeps the allow-listed headers
+ *   and at most 64 KB of the body, with the reason. Rejected and unrouted receipts are pruned after 7 days.
  */
 final class ReceiptIngestor
 {
@@ -65,7 +66,7 @@ final class ReceiptIngestor
         return $receipt;
     }
 
-    public function unrouted(string $courier, Request $r): WebhookReceipt
+    public function unrouted(string $courier, Request $r, ?string $reason = null): WebhookReceipt
     {
         [$body] = $this->fit($r->getContent(), self::UNROUTED_CAP);
 
@@ -76,17 +77,28 @@ final class ReceiptIngestor
             'headers' => $this->headers($r),
             'body' => $body,
             'received_at' => now(),
+            'error' => $reason === null ? null : mb_substr($reason, 0, 255),
         ]);
     }
 
-    public function rejected(string $courier, ?CourierAccount $account): WebhookReceipt
+    /**
+     * A refused request. With the request (SPX), the allow-listed headers (check-sign is SPX's signature, never our
+     * secret) and at most BODY_CAP of the body are kept, with the reason, so a mismatch can be diagnosed. Never
+     * processed: only `received` receipts are.
+     */
+    public function rejected(string $courier, ?CourierAccount $account, ?Request $r = null, ?string $reason = null, string $routedBy = 'none'): WebhookReceipt
     {
+        $body = $r === null ? null : $this->fit($r->getContent(), self::BODY_CAP)[0];
+
         return WebhookReceipt::query()->create([
             'courier' => $courier,
             'courier_account_id' => $account?->id,
-            'routed_by' => 'none',
+            'routed_by' => $routedBy,
             'status' => 'rejected',
+            'headers' => $r === null ? null : $this->headers($r),
+            'body' => $body === '' ? null : $body,
             'received_at' => now(),
+            'error' => $reason === null ? null : mb_substr($reason, 0, 255),
         ]);
     }
 

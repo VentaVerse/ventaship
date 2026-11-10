@@ -332,7 +332,7 @@ class AfterResponseTest extends TestCase
 
     private function postSpx(string $uri, string $raw): TestResponse
     {
-        $timestamp = 1762570000;
+        $timestamp = now()->getTimestamp();
         $random = 55;
 
         return $this->call('POST', $uri, [], [], [], [

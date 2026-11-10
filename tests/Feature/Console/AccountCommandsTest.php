@@ -81,12 +81,14 @@ class AccountCommandsTest extends TestCase
         $this->assertMatchesRegularExpression('#https://ship\.example\.test/webhooks/quadx\?token=[A-Za-z0-9]{40}#', Artisan::output());
     }
 
-    public function test_create_prints_the_spx_path_token_url_and_none_for_lbc(): void
+    public function test_create_prints_the_tokenless_spx_url_and_none_for_lbc(): void
     {
         config(['app.url' => 'https://ship.example.test']);
 
         Artisan::call('ventaship:account-create', ['courier' => 'spx', 'label' => 'Main SPX']);
-        $this->assertMatchesRegularExpression('#https://ship\.example\.test/webhooks/spx/[A-Za-z0-9]{40}\s#', Artisan::output());
+        $output = Artisan::output();
+        $this->assertMatchesRegularExpression('#Webhook URL: https://ship\.example\.test/webhooks/spx\s#', $output);
+        $this->assertStringNotContainsString('secret token', $output);
 
         Artisan::call('ventaship:account-create', ['courier' => 'lbc', 'label' => 'Main LBC']);
         $this->assertStringNotContainsString('Webhook URL', Artisan::output());

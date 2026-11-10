@@ -16,6 +16,9 @@ use Laravel\Sanctum\Sanctum;
 
 class AppServiceProvider extends ServiceProvider
 {
+    /** Per IP, on the SPX webhook routes. */
+    public const SPX_WEBHOOKS_PER_MINUTE = 6000;
+
     /**
      * Register any application services.
      */
@@ -60,6 +63,10 @@ class AppServiceProvider extends ServiceProvider
 
         // Courier webhooks carry no API token: per IP.
         RateLimiter::for('courier-webhooks', fn (Request $request) => Limit::perMinute(300)->by('courier-webhooks:ip:' . $request->ip()));
+        // SPX: a flood guard only (100 a second from one IP). SPX treats a 429 as a rejection and stops pushing, and a
+        // sort centre can change hundreds of parcels a minute. What an unverified request may store is capped in
+        // CourierWebhookController::UNVERIFIED_PER_MINUTE instead.
+        RateLimiter::for('spx-webhooks', fn (Request $request) => Limit::perMinute(self::SPX_WEBHOOKS_PER_MINUTE)->by('spx-webhooks:ip:' . $request->ip()));
 
         // Viewing a courier secret: per admin.
         RateLimiter::for('secret-reveals', fn (Request $request) => Limit::perMinute(10)

@@ -295,6 +295,9 @@ class SpxClient
      * gives an early explicit rejection instead of a signature mismatch on a
      * spoofed app-id that happens to guess right (defense in depth, appears
      * first so a malformed/missing header never reaches sign()'s int casts).
+     * A missing app-id header falls back to our own app id. Freshness of the
+     * `timestamp` header is checked by the caller (AccountRouter), so a
+     * stale push can be told apart from a bad signature.
      */
     public function verifyWebhookSignature(
         string $rawBody,
@@ -306,7 +309,12 @@ class SpxClient
         if (!$this->isConfigured()) {
             return false;
         }
-        if ($appIdHeader === null || $checkSignHeader === null || $timestampHeader === null || $randomNumHeader === null) {
+        // The 4.1 webhook doc never says SPX sends `app-id` on a push: without it, the signature is checked with
+        // this account's own app id (the one SPX signs with if it signs as documented).
+        if ($appIdHeader === null || $appIdHeader === '') {
+            $appIdHeader = (string) $this->appId();
+        }
+        if ($checkSignHeader === null || $timestampHeader === null || $randomNumHeader === null) {
             return false;
         }
         if (!ctype_digit($appIdHeader) || !ctype_digit($timestampHeader) || !ctype_digit(ltrim($randomNumHeader, '-'))) {
@@ -318,7 +326,8 @@ class SpxClient
 
         $expected = self::sign((int) $appIdHeader, (int) $timestampHeader, (int) $randomNumHeader, $rawBody, (string) $this->appSecret());
 
-        return hash_equals($expected, $checkSignHeader);
+        // Hex is case-insensitive: an upper-case check-sign is the same signature.
+        return hash_equals($expected, strtolower(trim($checkSignHeader)));
     }
 
     // --- HTTP core --------------------------------------------------------

@@ -7,17 +7,22 @@ use App\Webhooks\Inbound\AccountRouter;
 use App\Webhooks\Inbound\ReceiptIngestor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * Courier webhooks (base plan §3). Stateless, CSRF-free, throttled per IP. Authenticate, store the receipt, answer:
- * the courier's payload is processed later on the `inbound` queue, so even SPX's 3 second limit is met.
+ * the courier's payload is processed after the response (AfterResponse), so even SPX's 3 second limit is met.
  *
- * Answers: 200 for a known account (matched, unmatched, duplicate or truncated alike: a courier must not see
- * failures it did not cause); unrouted 404 (QuadX) / 401 (SPX); a missing token, another courier's token, or a
- * failed SPX signature 403 (QuadX) / 401 (SPX).
+ * QuadX answers: 200 for a known account (matched, unmatched, duplicate or truncated alike: a courier must not see
+ * failures it did not cause); unrouted 404; a missing token or another courier's token 403.
+ * SPX answers 200 to everything that is JSON (see spx()), and 400 otherwise.
  */
 final class CourierWebhookController extends Controller
 {
+    /** Unverified SPX requests stored per IP per minute (diagnostics, not a throttle: the answer is the same). */
+    public const UNVERIFIED_PER_MINUTE = 300;
+
     public function __construct(private readonly AccountRouter $router, private readonly ReceiptIngestor $ingestor) {}
 
     public function quadx(Request $request): JsonResponse
@@ -48,25 +53,55 @@ final class CourierWebhookController extends Controller
         return $this->answer(200);
     }
 
+    /**
+     * SPX stops pushing after repeated rejections (4.1 "Web Hook response"), so anything that could be SPX is answered
+     * 200: a verified push is stored and processed; an unverified one (bad signature, stale timestamp, unknown token
+     * or app id) is stored as rejected or unrouted for diagnosis and never processed. Only a body that is not JSON at
+     * all is answered 400. Unverified requests are stored at most UNVERIFIED_PER_MINUTE per IP; past that they are
+     * answered the same but not kept.
+     */
     public function spx(Request $request, ?string $token = null): JsonResponse
     {
         $route = $this->router->routeSpx($token, $request);
 
-        if ($route['account'] === null) {
-            $this->ingestor->unrouted('spx', $request);
+        if ($route['verified']) {
+            $this->ingestor->accept($route['account'], $request, $route['routed_by']);
 
-            return $this->answer(401);
+            return $this->answer(200);
         }
 
-        if (! $route['verified']) {
-            $this->ingestor->rejected('spx', $route['account']);
+        $json = is_array(json_decode($request->getContent(), true));
+        $account = $route['account'];
+        $reason = $json ? $route['problem'] : 'body is not JSON';
 
-            return $this->answer(401);
+        if ($this->storesUnverified($request)) {
+            $receipt = $account === null && $json
+                ? $this->ingestor->unrouted('spx', $request, $reason)
+                : $this->ingestor->rejected('spx', $account, $request, $reason, $route['routed_by']);
+
+            Log::warning($receipt->status === 'unrouted' ? 'SPX webhook unrouted' : 'SPX webhook rejected', [
+                'receipt' => $receipt->id,
+                'account' => $account?->public_id,
+                'reason' => $reason,
+            ]);
         }
 
-        $this->ingestor->accept($route['account'], $request, $route['routed_by']);
+        // The same 200 as a processed push: the answer tells a sender nothing about why.
+        return $this->answer($json ? 200 : 400);
+    }
 
-        return $this->answer(200);
+    /** Whether this unverified SPX request is still within its IP's storage budget for the minute. */
+    private function storesUnverified(Request $request): bool
+    {
+        $key = 'spx-webhook-unverified:ip:'.$request->ip();
+        if (RateLimiter::tooManyAttempts($key, self::UNVERIFIED_PER_MINUTE)) {
+            return false;
+        }
+        if (RateLimiter::hit($key, 60) === self::UNVERIFIED_PER_MINUTE) {
+            Log::warning('SPX webhook: unverified requests from one IP over the per-minute limit; further ones this minute are not stored', ['ip' => $request->ip()]);
+        }
+
+        return true;
     }
 
     private function answer(int $status): JsonResponse

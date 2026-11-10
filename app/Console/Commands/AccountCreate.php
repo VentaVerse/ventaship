@@ -29,7 +29,9 @@ class AccountCreate extends Command
         $this->line("Account:     {$account->public_id}");
         if ($url !== null) {
             $this->line("Webhook URL: {$url}");
-            $this->warn('The webhook URL carries a secret token. Give it only to the courier.');
+            if ($account->courier === 'quadx') {
+                $this->warn('The webhook URL carries a secret token. Give it only to the courier.');
+            }
         }
 
         return self::SUCCESS;
