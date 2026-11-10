@@ -22,7 +22,7 @@ use Tests\Concerns\BuildsCourierAccounts;
 use Tests\TestCase;
 
 /**
- * SPX money and status (review findings #2, #3, #8, #9, #11, #18, #19), end to end through the real adapter with
+ * SPX money and status, end to end through the real adapter with
  * only HTTP faked: the booking fee on every booking path, the actual fee from webhooks and 2.2, lost/damaged and
  * on-hold mapping, the create-failure reason, late-resolved booked data, and the proofs/driver/EDD kept in meta.
  */
@@ -34,7 +34,7 @@ class SpxMoneyAndStatusTest extends TestCase
 
     private const APP_SECRET = 'fake-app-secret-not-real';
 
-    private const TRACKING = 'SPEPH06048584367B';
+    private const TRACKING = 'SPEPH00000001234B';
 
     private CourierAccount $account;
 
@@ -328,7 +328,7 @@ class SpxMoneyAndStatusTest extends TestCase
         return Admin::query()->create(['name' => 'Ana', 'email' => 'ana@example.com', 'password' => 'correct-horse-battery']);
     }
 
-    /** @return array<string, mixed> SPX's 1.5 answer as seen for VS000002 (review "Real-data facts") */
+    /** @return array<string, mixed> An SPX 1.5 answer in the shape SPX actually sends */
     private function createResult(): array
     {
         return ['ret_code' => 0, 'message' => 'success.', 'data' => [

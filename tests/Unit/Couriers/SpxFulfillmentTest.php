@@ -20,7 +20,7 @@ use Tests\TestCase;
 
 /**
  * SpxFulfillment's booking, cancellation, tracking, label and fee methods, for one account. Ground truth for every
- * request/response shape is SPX's api.md and integration brief. Http::fake only, and tests/TestCase.php refuses
+ * request/response shape is SPX's api.md and guide.md. Http::fake only, and tests/TestCase.php refuses
  * stray requests, so nothing here reaches SPX.
  *
  * A no-op sleeper is injected into every SpxFulfillment below so the bounded-poll/backoff logic (createShipment()'s
@@ -206,7 +206,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // Phone normalization (T2 review, CRITICAL 1).
+    // Phone normalization.
     // ------------------------------------------------------------------
 
     public function test_create_shipment_normalizes_a_bare_10_digit_mobile_number(): void
@@ -527,7 +527,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     /**
-     * T2 review, IMPORTANT 3: task_status 5 (Failed) is a SETTLED outcome,
+     * task_status 5 (Failed) is a SETTLED outcome,
      * exactly as final as 4 (Done) — polling further gains nothing.
      * pollCreateResult() must stop at the FIRST poll that returns it
      * (asserted via the exact HTTP call count: 1 create + 1 poll, not the
@@ -628,7 +628,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     /**
-     * T2 review, IMPORTANT 3: without recognizing task_status 5 as settled,
+     * Without recognizing task_status 5 as settled,
      * this shipment would stay in courier_status='creating' forever, and
      * every scheduled poll would re-poll a batch that will never become Done.
      */
@@ -838,7 +838,7 @@ class SpxFulfillmentTest extends TestCase
             '6002 Return Failed'    => ['6002', 'failed'],
             '6003 Returned'         => ['6003', 'returning'],
             '7001 Cancelled'        => ['7001', 'cancelled'],
-            // Final-review fix (Finding 1): the literal statuses the admin
+            // The literal statuses the admin
             // Cancel action stamps (the shared cancel writes
             // 'canceled' for every courier) bucket to cancelled too — an
             // admin-cancelled SPX order must not read as 'to_handover'
@@ -1008,7 +1008,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // Option lists (getParcelOptions honors T1's spx_pouch_presets-or-default carry-forward).
+    // Option lists (getParcelOptions honors spx_pouch_presets, or the defaults).
     // ------------------------------------------------------------------
 
     public function test_get_parcel_options_falls_back_to_default_presets_plus_a_custom_sentinel(): void
@@ -1030,7 +1030,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // Task T3: printLabel() — 1.6 Get AWB V2, download+store, serve cached.
+    // printLabel() — 1.6 Get AWB V2, download+store, serve cached.
     // ------------------------------------------------------------------
 
     private function makeSpxOrder(string $trackingNumber, ?int $batchNo = 207982800897461): Shipment
@@ -1043,8 +1043,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     /**
-     * Round 2 of the live-UAT gate finding requires the DOCUMENTED v2
-     * endpoint to still short-circuit the whole flow when it settles on its
+     * The DOCUMENTED v2 endpoint must still short-circuit the whole flow when it settles on its
      * first attempt — no v1 fallback call at all. Fakes ONLY the v2 URL
      * (not v1) so a v1 call, if one wrongly happened, would hit an
      * unfaked/default response and this test's exact-count assertion would
@@ -1076,7 +1075,7 @@ class SpxFulfillmentTest extends TestCase
         Storage::disk('local')->assertExists('labels/spx/SPEPH000000000001.pdf');
         $stored = Storage::disk('local')->get('labels/spx/SPEPH000000000001.pdf');
         $this->assertSame('%PDF-1.4 fake label bytes', $stored);
-        // Live-UAT gate finding, round 3: only real PDF bytes ever get
+        // Only real PDF bytes ever get
         // stored — this is the magic-number check's happy path.
         $this->assertTrue(str_starts_with($stored, '%PDF'));
 
@@ -1157,7 +1156,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     /**
-     * Final-review fix (Finding 1): api.md §1.6 — a cancelled order's AWB
+     * api.md §1.6 — a cancelled order's AWB
      * cannot be printed. The guard must fire server-side AND before the
      * cache check: a PDF cached while the booking was live must not keep
      * serving after the shipment is cancelled (that AWB is void).
@@ -1226,18 +1225,16 @@ class SpxFulfillmentTest extends TestCase
     }
 
     /**
-     * Round 2 of the live-UAT gate finding: v2 sits at task_status=3
+     * v2 sits at task_status=3
      * ("Running") for BOTH short-window attempts, so the flow falls
      * through to the v1 fallback — which, in THIS test, is EXPLICITLY
      * faked to return a well-formed but unsettled array (`ret_code: 0`,
      * empty `data`: no `awb_link`/`fail_list`/`task_status`), so this
      * genuinely exercises the "v1 responded, but nothing in it settles"
      * branch of pollLabelResult()/labelResultSettled(), hermetically — see
-     * this class's setUp() for why an unfaked URL is no longer an option
-     * (a prior version of this test left v1 unmatched, which — without
-     * Http::preventStrayRequests() — silently fell through to a REAL
-     * outbound call to live SPX UAT on every run, per this task's own
-     * final review). Neither phase ever settles -> printLabel must fail
+     * this class's setUp() for why an unfaked URL is not an option
+     * (without Http::preventStrayRequests() an unmatched v1 would fall
+     * through to a REAL outbound call to SPX UAT). Neither phase ever settles -> printLabel must fail
      * cleanly rather than hang or crash.
      */
     public function test_print_label_fails_when_neither_v2_nor_the_v1_fallback_ever_settles(): void
@@ -1267,7 +1264,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     /**
-     * Round 2 of the live-UAT gate finding, THE core scenario: v2 (the
+     * THE core scenario: v2 (the
      * DOCUMENTED endpoint) reliably sits at `task_status: 3` ("Running",
      * `progress: "0.00%"`) indefinitely on real UAT — live-probed 8+
      * minutes with no change — so after its short window elapses without
@@ -1275,8 +1272,8 @@ class SpxFulfillmentTest extends TestCase
      * endpoint (absent from api.md; batch_no + tracking_no_list), which
      * live-probing found returns `{awb_link, fail_list}` SYNCHRONOUSLY.
      * That response is run through the exact same settled/parse logic as
-     * v2's (round 1's shape-handling fix), so the label still downloads and
-     * stores normally. See docs/spx/index.md's quirks list.
+     * v2's, so the label still downloads and
+     * stores normally.
      */
     public function test_print_label_falls_back_to_v1_when_v2_stalls_at_running_and_stores_the_awb(): void
     {
@@ -1325,7 +1322,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     /**
-     * Live-UAT gate finding: a per-tracking-number entry in `fail_list` is a
+     * Observed on UAT: a per-tracking-number entry in `fail_list` is a
      * definitive failure to stop on immediately — reached here via the v1
      * fallback (the endpoint that actually returns fail_list on UAT),
      * after v2's short window stalls at Running exactly as in the success
@@ -1362,12 +1359,11 @@ class SpxFulfillmentTest extends TestCase
     }
 
     /**
-     * T3 minor, ledgered and now fixed by the live-UAT gate finding: a
-     * well-formed SpxApiException (SPX rejecting the request itself — bad
-     * batch_no, auth, etc.) used to be swallowed by the poll's generic
-     * `catch (\Throwable)`, producing the same misleading "still in
-     * progress" message as a genuinely pending label. It must now surface
-     * the actual SPX error instead. Round 2: v2 throws immediately (no
+     * A well-formed SpxApiException (SPX rejecting the request itself — bad
+     * batch_no, auth, etc.) must not be swallowed by the poll's generic
+     * `catch (\Throwable)`, which would produce the same misleading "still
+     * in progress" message as a genuinely pending label. It must surface
+     * the actual SPX error instead. v2 throws immediately (no
      * pointless 2nd v2 attempt against the same batch_no), the v1 fallback
      * is still given its own chance — and, faked identically here, throws
      * too, so ITS error (the more recent, more specific one) is what
@@ -1391,13 +1387,12 @@ class SpxFulfillmentTest extends TestCase
         $this->assertStringNotContainsString('still in progress', $result['error']);
         // v2 throws on its FIRST attempt (no 2nd v2 attempt burned on a
         // well-formed API error) + one v1 fallback attempt (also throws,
-        // same faked ret_code) — 2 total, never the old 1-attempt-only
-        // count from round 1 (there was no fallback to try back then).
+        // same faked ret_code) — 2 total.
         Http::assertSentCount(2);
     }
 
     /**
-     * Live-UAT gate finding, round 3 (final label finding): the v1
+     * The v1
      * fallback's `awb_link` itself can respond HTTP 200 with a JSON error
      * body instead of a PDF — SPX's UAT label RENDERER failing
      * server-side, downstream of an otherwise valid `awb_link` (observed
@@ -1439,7 +1434,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // Task T3: parseWebhook() — api.md §4.1 payload shapes, verbatim.
+    // parseWebhook() — api.md §4.1 payload shapes, verbatim.
     // ------------------------------------------------------------------
 
     public function test_parse_webhook_normalizes_the_documented_pending_pickup_payload(): void
@@ -1473,7 +1468,7 @@ class SpxFulfillmentTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // Task T3: verifyWebhookSignature() — same HMAC scheme as outbound
+    // verifyWebhookSignature() — same HMAC scheme as outbound
     // calls (see SpxClientTest for the low-level SpxClient::
     // verifyWebhookSignature() coverage); this proves SpxFulfillment wires
     // the RAW request bytes + all four headers through correctly.
@@ -1510,8 +1505,8 @@ class SpxFulfillmentTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // Owner task (2026-08-08, "SPX status from code to their actual
-    // meaning"): the documented status vocabulary (docs/spx/guide.md,
+    // SPX status from code to its actual meaning: the documented status
+    // vocabulary (docs/couriers/spx/guide.md,
     // "Order status code" table) exposed two ways — refreshStatusLabels()
     // (the existing "Refresh from SPX" button's contract) and statusLabels()
     // (available without that click). No Http::fake needed: neither method
@@ -1720,12 +1715,12 @@ class SpxFulfillmentTest extends TestCase
         // Shape of a real UAT booking's stored response (1.5 Get Order Create Result): SPX names it tracking_link.
         $order = \App\Couriers\CourierOrder::make(['courier_meta' => ['booked_response' => [
             'order_id' => 'VS000002',
-            'tracking_no' => 'SPEPH06048584367B',
-            'tracking_link' => 'https://uat.spx.ph/track?SPEPH06048584367B',
+            'tracking_no' => 'SPEPH00000001234B',
+            'tracking_link' => 'https://uat.spx.ph/track?SPEPH00000001234B',
             'order_id_link' => 'https://uat.spx.ph/track?VS000002',
         ]]]);
 
-        $this->assertSame([['label' => 'Track', 'url' => 'https://uat.spx.ph/track?SPEPH06048584367B']], $this->courier()->trackingLinks($order));
+        $this->assertSame([['label' => 'Track', 'url' => 'https://uat.spx.ph/track?SPEPH00000001234B']], $this->courier()->trackingLinks($order));
     }
 
     // ------------------------------------------------------------------

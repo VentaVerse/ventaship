@@ -27,7 +27,7 @@ use Tests\Concerns\BuildsCourierAccounts;
 use Tests\TestCase;
 
 /**
- * SPX booking (review findings #4, #5, #12, #14, #16), end to end through the real adapter with only HTTP faked:
+ * SPX booking, end to end through the real adapter with only HTTP faked:
  * a pickup without a slot books SPX's earliest window, a stale or past-cutoff window is replaced once, 13103 on a
  * retry finds the existing order, SPX webhooks repair a failed or unknown shipment, and SPX's coverage codes.
  */
@@ -39,7 +39,7 @@ class SpxBookingTest extends TestCase
 
     private const APP_SECRET = 'fake-app-secret-not-real';
 
-    private const TRACKING = 'SPEPH06048584367B';
+    private const TRACKING = 'SPEPH00000001234B';
 
     private CourierAccount $account;
 

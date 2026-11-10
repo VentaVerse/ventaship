@@ -11,7 +11,7 @@ class PhPhoneTest extends TestCase
     {
         $this->assertSame('0917 123 4567', PhPhone::shown('09171234567'));
         $this->assertSame('0917 123 4567', PhPhone::shown('0917-123-4567'));
-        $this->assertSame('+63 917 621 0807', PhPhone::shown('+63 917 621 0807'));
+        $this->assertSame('+63 917 123 4567', PhPhone::shown('+63 917 123 4567'));
         $this->assertSame('028123456', PhPhone::shown('028123456'));
         $this->assertNull(PhPhone::shown(null));
         $this->assertNull(PhPhone::shown('  '));

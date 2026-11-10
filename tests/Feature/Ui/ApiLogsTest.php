@@ -135,7 +135,7 @@ class ApiLogsTest extends TestCase
         $this->apiCall($app, ['path' => '/api/v1/invalid', 'status' => 422, 'created_at' => now()->subMinutes(7)]);
         $this->apiCall($app, ['path' => '/api/v1/ok-with-code', 'status' => 200, 'error' => 'not_shown_when_ok', 'created_at' => now()->subMinutes(6)]);
         $this->event($app, 'failed', ['type' => 'evt.refused', 'created_at' => now()->subMinutes(5),
-            'last_error' => 'Illuminate\\Http\\Client\\ConnectionException: cURL error 7: Failed to connect to 192.168.0.224 port 8032: Connection refused']);
+            'last_error' => 'Illuminate\\Http\\Client\\ConnectionException: cURL error 7: Failed to connect to 192.0.2.10 port 8032: Connection refused']);
         $this->event($app, 'failed', ['type' => 'evt.answered', 'created_at' => now()->subMinutes(4), 'last_error' => 'HTTP 503: BODY-OF-THE-RECEIVER']);
         $this->event($app, 'failed', ['type' => 'evt.markup', 'created_at' => now()->subMinutes(3), 'last_error' => 'RuntimeException: <script>alert(1)</script>']);
         $this->event($app, 'pending', ['type' => 'evt.retrying', 'created_at' => now()->subMinutes(2), 'last_error' => 'RuntimeException: still trying']);
@@ -144,7 +144,7 @@ class ApiLogsTest extends TestCase
         $all = $this->page()->getContent();
         $this->assertMatchesRegularExpression('#Failed<span class="api-seg__count x-num">5</span>#', $all);
         $this->assertStringContainsString('<p class="api-why">Rate limited</p>', $all);
-        $this->assertStringContainsString('<p class="api-why">cURL error 7: Failed to connect to 192.168.0.224 port 8032: Connection refused</p>', $all);
+        $this->assertStringContainsString('<p class="api-why">cURL error 7: Failed to connect to 192.0.2.10 port 8032: Connection refused</p>', $all);
         $this->assertStringContainsString('<p class="api-why">&lt;script&gt;alert(1)&lt;/script&gt;</p>', $all);
         $this->assertStringNotContainsString('<script>alert(1)', $all);
         $this->assertStringNotContainsString('BODY-OF-THE-RECEIVER', $all);

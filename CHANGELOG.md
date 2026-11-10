@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Some minor improvements.
+
 ## 1.0.0 (2026-11-10)
 
 ### New features
