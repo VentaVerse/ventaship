@@ -391,6 +391,7 @@ class SpxMoneyAndStatusTest extends TestCase
             'active_reference' => '4211',
             'courier_ref' => 'VS000042',
             'state' => 'queued',
+            'method' => 'dropoff',
             'payment_method' => 'prepaid',
             'pickup' => [
                 'contact_name' => 'Juan Shop', 'contact_phone' => '09181234567', 'address_1' => '5 Shaw Blvd',

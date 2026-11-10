@@ -303,7 +303,7 @@ class ShipmentsController extends Controller
                 'method' => $s->payment_method === 'cod' ? 'cod' : 'prepaid',
                 'shipping_payment' => $options['shipping_payment'] ?? null,
             ],
-            'handover' => ($options['pickup_slot'] ?? null) !== null && $s->courier === 'spx' ? 'pickup' : 'dropoff',
+            'handover' => $s->courier === 'spx' && ($s->method === 'pickup' || ($options['pickup_slot'] ?? null) !== null) ? 'pickup' : 'dropoff',
             'pickup_slot' => $options['pickup_slot'] ?? null,
             'pickup_date' => $options['pickup_date'] ?? null,
             'note' => $s->courier_note,

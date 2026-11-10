@@ -28,6 +28,7 @@ use Illuminate\Support\Collection;
  * @property-read string|null $shipping_last_name
  * @property-read string|null $shipping_phone
  * @property-read string|null $shipping_address_1
+ * @property-read string|null $shipping_address_2
  * @property-read string|null $shipping_barangay
  * @property-read string|null $shipping_barangay_code
  * @property-read string|null $shipping_district
@@ -111,6 +112,7 @@ final class CourierOrder
             'shipping_last_name' => $last,
             'shipping_phone' => $to['phone'] ?? null,
             'shipping_address_1' => $to['address_1'] ?? null,
+            'shipping_address_2' => $to['address_2'] ?? null,
             'shipping_barangay' => $to['barangay'] ?? null,
             'shipping_barangay_code' => $codes['barangay'] ?? null,
             'shipping_district' => $to['district'] ?? null,

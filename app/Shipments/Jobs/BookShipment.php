@@ -135,7 +135,7 @@ class BookShipment implements ShouldQueue
         if (($result['success'] ?? false) !== true && ($result['outcome_unknown'] ?? false) === true) {
             // The request may have reached the courier: not a refusal, so the reference is kept.
             Log::error('Booking outcome unknown: the courier could not confirm', ['shipment' => $s->public_id]);
-            $outcomes->unknown($s->id);
+            $outcomes->unknown($s->id, reason: $this->text($result['attention_reason'] ?? null));
 
             return;
         }
@@ -161,7 +161,8 @@ class BookShipment implements ShouldQueue
 
         try {
             $outcomes->booked($s->id, $tracking, $status, $meta, $this->fee($courier, $result, $meta, $s),
-                $this->text($result['notice'] ?? null), $this->text($result['attention_reason'] ?? null));
+                $this->text($result['notice'] ?? null), $this->text($result['attention_reason'] ?? null),
+                $this->slot($result['pickup_slot'] ?? null));
         } catch (Throwable $e) {
             // Booked at the courier but not written here: the tracking number must not be lost.
             Log::critical('Courier booked the shipment but the result could not be saved', [
@@ -186,6 +187,12 @@ class BookShipment implements ShouldQueue
 
             return null;
         }
+    }
+
+    /** The pickup slot the courier booked (SPX may choose or move it), as stored in options.pickup_slot. */
+    private function slot(mixed $value): ?string
+    {
+        return is_string($value) && $value !== '' && strlen($value) <= 255 ? $value : null;
     }
 
     private function text(mixed $value): ?string

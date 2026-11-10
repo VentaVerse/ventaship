@@ -22,6 +22,7 @@ final readonly class PickupPoint
         public ?string $state_code,
         public ?string $postcode,
         public string $country,
+        public ?string $address_2 = null,
     ) {}
 
     /** @param  array<string, mixed>  $pickup */
@@ -42,6 +43,7 @@ final readonly class PickupPoint
             state_code: self::text($codes['state'] ?? $pickup['state_code'] ?? null),
             postcode: self::text($pickup['postcode'] ?? null),
             country: strtoupper(self::text($pickup['country'] ?? null) ?? PickupOrigin::COUNTRY),
+            address_2: self::text($pickup['address_2'] ?? null),
         );
     }
 

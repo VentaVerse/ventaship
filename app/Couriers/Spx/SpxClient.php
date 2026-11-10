@@ -376,8 +376,8 @@ class SpxClient
                 ])
                 ->withBody($payload, 'application/json')
                 // Both halves are bounded by the caller's budget when it
-                // sets one: SPX's UAT host stopped resolving in DNS, and an
-                // unresolvable host has to fail inside the same window a
+                // sets one: a host that does not resolve or connect (an
+                // outage, a DNS fault) has to fail inside the same window a
                 // slow response does.
                 ->connectTimeout($timeout ?? 40)
                 ->timeout($timeout ?? 40)

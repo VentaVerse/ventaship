@@ -4,10 +4,13 @@ namespace App\Http\Requests\Api\V1;
 
 use App\Http\Requests\Api\V1\Concerns\ValidatesShipmentParts;
 use App\Couriers\AccountResolver;
+use App\Couriers\Spx\SpxFieldLimits;
+use App\Couriers\Spx\SpxFulfillment;
 use App\Shipments\CourierFormFields;
 use App\Api\ApiError;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /** POST /shipments (base plan §2 "Create a shipment"). Authorization is the signed request itself. */
 class CreateShipmentRequest extends FormRequest
@@ -48,6 +51,53 @@ class CreateShipmentRequest extends FormRequest
             'note' => ['nullable', 'string', 'max:500'],
             'metadata' => ['nullable', 'array', 'max:'.self::METADATA_MAX_KEYS, $this->flatMetadata()],
         ] + $this->parcelRules() + $this->paymentRules() + $this->pickupRules() + $this->recipientRules();
+    }
+
+    /** SPX's field limits, for an SPX account: see SpxFieldLimits. A pickup_slot that is not an SPX slot is refused too. */
+    public function after(): array
+    {
+        return [function (Validator $validator) {
+            if ($this->courierOfAccount() !== 'spx') {
+                return;
+            }
+
+            $recipient = $this->input('recipient');
+            $pickup = $this->input('pickup');
+            $note = $this->input('note');
+            $messages = [
+                'recipient_name' => ['recipient.first_name', 'For SPX, the first_name and last_name together may not be longer than '.SpxFieldLimits::NAME_MAX.' characters.'],
+                'recipient_address' => ['recipient.address_1', 'For SPX, the address_1 and address_2 together may not be longer than '.SpxFieldLimits::DETAIL_ADDRESS_MAX.' characters.'],
+                'pickup_name' => ['pickup.contact_name', 'For SPX, the contact_name may not be longer than '.SpxFieldLimits::NAME_MAX.' characters.'],
+                'pickup_address' => ['pickup.address_1', 'For SPX, the address_1 and address_2 together may not be longer than '.SpxFieldLimits::DETAIL_ADDRESS_MAX.' characters.'],
+                'note' => ['note', 'For SPX, the note may not be longer than '.SpxFieldLimits::INSTRUCTION_MAX.' characters.'],
+            ];
+            $problems = SpxFieldLimits::problems(is_array($recipient) ? $recipient : null, is_array($pickup) ? $pickup : null, is_string($note) ? $note : null);
+            foreach ($problems as $problem) {
+                [$field, $message] = $messages[$problem];
+                if (! $validator->errors()->has($field)) {
+                    $validator->errors()->add($field, $message);
+                }
+            }
+
+            $slot = $this->input('pickup_slot');
+            if (is_string($slot) && $slot !== '' && $this->input('method') !== 'dropoff' && SpxFulfillment::describeSlot($slot) === null
+                && ! $validator->errors()->has('pickup_slot')) {
+                $validator->errors()->add('pickup_slot', 'For SPX, the pickup_slot must be a value from POST /pickup-slots.');
+            }
+        }];
+    }
+
+    /** The courier of the account the request names; null when it names none that exists (its own rule says so). */
+    private function courierOfAccount(): ?string
+    {
+        try {
+            $id = $this->input('account_id');
+            $courier = $this->input('courier');
+
+            return AccountResolver::resolve(is_string($id) ? $id : null, is_string($courier) ? $courier : null)->courier;
+        } catch (ApiError) {
+            return null;
+        }
     }
 
     /** For an LBC account the date must be one LBC takes: a business day from the first bookable one, within the range the form offers. */

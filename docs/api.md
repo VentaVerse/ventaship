@@ -741,7 +741,7 @@ Response, one entry per destination, in request order:
 | `ref` | your `ref` |
 | `verdict` | `serviceable`, `not_serviceable`, or `unknown` (the courier could not be asked or gave no clear answer: it is **not** a refusal) |
 | `kind` | when recognised, which kind of problem: `destination`, `origin`, `cod`, `postcode`, `parcel` (these come with `not_serviceable`), or `slot`, `their_side`, `unreachable` (these come with `unknown`); otherwise `null` |
-| `code` | why, when Ventaship itself knows without asking the courier, else `null`. With `unknown`: `missing_province`, `missing_city`, `missing_barangay`, `missing_postcode`, `missing_phone` (the customer's address) or the same with `pickup_` (`missing_pickup_postcode`, ...) for the sender; add the field and ask again. With `not_serviceable` (SPX): `spx_unlisted_province`, `spx_unlisted_city`, `spx_unlisted_barangay` (SPX's location list does not have the customer's place; `spx_unlisted_pickup_*` for the sender), `spx_no_delivery`, `spx_no_cod`, `spx_no_pickup`, `spx_no_cod_pickup`. A missing postcode is first filled from the PSGC city, so `missing_postcode` only appears when the city cannot be matched |
+| `code` | why, when Ventaship itself knows without asking the courier, else `null`. With `unknown`: `missing_province`, `missing_city`, `missing_barangay`, `missing_postcode`, `missing_phone` (the customer's address) or the same with `pickup_` (`missing_pickup_postcode`, ...) for the sender; add the field and ask again. With `not_serviceable` (SPX): `spx_unlisted_province`, `spx_unlisted_city`, `spx_unlisted_barangay` (SPX's location list does not have the customer's place; `spx_unlisted_pickup_*` for the sender), `spx_no_delivery`, `spx_no_cod`, `spx_no_pickup`, `spx_no_cod_pickup`, and, when SPX itself answers, also `spx_no_route` (SPX has no route to the address), `spx_invalid_postcode`, `spx_invalid_pickup_postcode`. With `unknown` (SPX's answer, still bookable): `spx_too_far`, `spx_too_near` (SPX's distance limit between pickup and delivery), `spx_unmapped_address`, `spx_unmapped_pickup` (SPX could not place the address on its map; check the street and barangay). A missing postcode is first filled from the PSGC city, so `missing_postcode` only appears when the city cannot be matched |
 | `reason` | the courier's own words when it said something (always shown to people when `kind` is `null`; may also accompany a recognised `kind`, e.g. `destination`); otherwise `null` |
 | `odz` | `true` when the courier says the destination is outside its normal delivery zone (a remote-area surcharge applies), `false` when it says it is not, `null` when it gave no signal. Information only: it never changes `verdict`. SPX: `true` when its answer carries a `remote_area_fee` above 0 (SPX does not document that field, so most answers are `null`). LBC: its serviceability answer (`false` for a serviced barangay, `true` for one it does not serve). QuadX: always `null` |
 
@@ -819,7 +819,7 @@ Request: `account_id` / `courier`, `pickup` (address), `recipient` (address), `s
 
 ### `POST /pickup-slots`
 
-When an account can collect from a pickup point. Pass a slot's `value` back unchanged as `pickup_slot` when you create the shipment. `date` is the slot's calendar day (`YYYY-MM-DD`) when known, else `null`. Couriers without slots (QuadX) answer an empty list; so does a courier that cannot be reached.
+When an account can collect from a pickup point. Pass a slot's `value` back unchanged as `pickup_slot` when you create the shipment. SPX answers every pickup window it offers, earliest first (its "Now" first within a day); its `label` reads like `Tue, Nov 10 · 2:00pm-4:00pm`. `date` is the slot's calendar day (`YYYY-MM-DD`) when known, else `null`. Couriers without slots (QuadX) answer an empty list; so does a courier that cannot be reached.
 
 Request: `account_id` / `courier`, `pickup` (address), `parcel` (optional).
 
@@ -872,9 +872,9 @@ Request fields:
 | `client_reference` | **required**, string ≤ 64, no control characters. Your id for this shipment; see [9.2](#92-client_reference) |
 | `order_label` | optional, string ≤ 64, a display label (e.g. `#4211`) |
 | `submit` | optional boolean, default `true`. `false` saves a **draft** (`201`), booked later with `POST /shipments/{id}/submit` |
-| `method` | optional, `pickup` (default) or `dropoff`. **SPX** decides by `pickup_slot`: with a slot SPX collects the parcel; without one it is booked as a **drop-off**, whatever `method` says. QuadX and LBC always collect |
+| `method` | optional, `pickup` (default) or `dropoff`. **SPX** books exactly this. A `pickup` without a `pickup_slot` is booked on the earliest pickup time SPX offers when it books (SPX 1.1), and that slot is stored on the shipment (`pickup_slot`); when SPX offers none the booking fails `courier_refused` "SPX has no pickup time available for this address." A pickup is never booked as a drop-off. With `dropoff`, `pickup_slot` is ignored. QuadX and LBC always collect |
 | `pickup_date` | optional, `YYYY-MM-DD`, today or later (Manila). Anything else (`11/12/2026`, an impossible date, a past date) is refused with `422`; it is never replaced by another date. **LBC** books its pickup on this date when no `pickup_slot` is sent. For an LBC account the date must also be a Monday to Saturday, no earlier than the next business day and no later than the 10th business day from it; a Sunday, today, or a date outside that range is refused with `422` on `pickup_date`. When omitted, LBC books the next business day. Other couriers ignore it |
-| `pickup_slot` | optional string ≤ 255: a `value` from `POST /pickup-slots` |
+| `pickup_slot` | optional string ≤ 255: a `value` from `POST /pickup-slots`. For **SPX** anything else is refused with `422`. A slot whose day is over, or one SPX refuses as past its cutoff (SPX 10080), is replaced by the next pickup time SPX offers (SPX is asked again once after a cutoff refusal); the shipment then shows the slot it was booked on. When SPX refuses that one too, the booking fails `courier_refused` |
 | `service` | optional string ≤ 64: a `service_types` value from `GET /couriers`; the account's default when omitted |
 | `insure` | optional boolean, default `false`. `true` asks the courier to insure the parcel at `payment.declared_value` (or `total`). `false` sends no insurance, except at **LBC**, which always insures a COD parcel |
 | `parcel` | optional object |
@@ -888,13 +888,15 @@ Request fields:
 | `payment.shipping_payment` | optional string ≤ 32: a `shipping_payment_options` value (who pays the courier's fee, and how) |
 | `pickup` | **required**: `contact_name` (required, ≤ 255), `contact_phone` (required, [PH mobile](#phone-numbers)) and an [address](#addresses) |
 | `recipient` | **required**: `first_name` (required, ≤ 255), `last_name` (≤ 255), `phone` (required, [PH mobile](#phone-numbers)), `email` (valid email, ≤ 255) and an [address](#addresses). |
+
+**SPX field limits.** For an SPX account these are also refused with `422`: `recipient.first_name` and `recipient.last_name` together (joined with a space) longer than 64 characters (error on `recipient.first_name`); `pickup.contact_name` longer than 64; `address_1` and `address_2` together (joined with ", ") longer than 256, for either party (error on its `address_1`). SPX receives `address_2` after `address_1` in its detail address.
 | `items` | **required** list, 1 to 100 |
 | `items[].name` | required string ≤ 255 |
 | `items[].quantity` | required integer, 1 to 100000 |
 | `items[].price` | optional money ≥ 0 (per unit, informational) |
 | `items[].weight_kg` | optional number > 0, ≤ 1000 |
 | `total`, `subtotal` | optional money ≥ 0 (the order's amounts; `total` is the fallback declared value). QuadX requires `total` ≥ 1 on prepaid, otherwise the booking fails `courier_refused` "Parcel value is required." |
-| `note` | optional string ≤ 500, passed to the courier as delivery instructions |
+| `note` | optional string ≤ 500 (≤ 256 for **SPX**), passed to the courier as delivery instructions |
 | `metadata` | optional object of up to 20 keys; keys are strings ≤ 40 characters; values are strings, numbers, booleans or null (no nesting); ≤ 4096 bytes as JSON. Echoed back unchanged on every answer and webhook |
 
 **QuadX items.** QuadX receives the items with their prices when every `items[].price` is present and the lines add up to `total`. When a price is missing, or the lines do not add up, QuadX receives one consolidated item line. The items are compared to, and that line's amount is, `total` on prepaid or `payment.cod_amount` on COD, so QuadX's order total always matches.
@@ -986,6 +988,7 @@ Response `202 Accepted`:
         "method": "pickup",
         "service": "next_day",
         "pickup_date": null,
+        "pickup_slot": null,
         "fee": null,
         "payment_method": "cod",
         "payment_state": "cod_unpaid",
@@ -1068,6 +1071,7 @@ For reconciliation (say, after your webhook endpoint was down), list with `updat
             "method": "pickup",
             "service": "next_day",
             "pickup_date": null,
+            "pickup_slot": null,
             "fee": {
                 "amount": "77.00",
                 "currency": "PHP"
@@ -1138,6 +1142,7 @@ One shipment. `?include=parties` adds the personal data: `pickup`, `recipient`, 
         "method": "pickup",
         "service": "next_day",
         "pickup_date": null,
+        "pickup_slot": null,
         "fee": {
             "amount": "77.00",
             "currency": "PHP"
@@ -1191,6 +1196,7 @@ With `?include=parties`:
         "method": "pickup",
         "service": "next_day",
         "pickup_date": null,
+        "pickup_slot": null,
         "fee": {
             "amount": "77.00",
             "currency": "PHP"
@@ -1345,6 +1351,7 @@ You rarely need this: couriers' webhooks and Ventaship's polling keep shipments 
         "method": "pickup",
         "service": "next_day",
         "pickup_date": null,
+        "pickup_slot": null,
         "fee": {
             "amount": "77.00",
             "currency": "PHP"
@@ -1449,6 +1456,7 @@ Cancelling is idempotent by state: asking again returns the shipment unchanged. 
         "method": "pickup",
         "service": "next_day",
         "pickup_date": null,
+        "pickup_slot": null,
         "fee": {
             "amount": "77.00",
             "currency": "PHP"
@@ -1523,6 +1531,7 @@ The same object in every answer and in every shipment webhook (`data.shipment`),
 | `tracking_url` | string\|null | the courier's public tracking page, when it has one |
 | `label_available` | bool | `true` when `GET /shipments/{id}/label` can answer a PDF (state `booked` with a tracking number) |
 | `method` | string | `pickup` or `dropoff` |
+| `pickup_slot` | string\|null | the pickup slot the shipment is booked on: the `value` you sent, or for SPX the one Ventaship chose or moved to (see `pickup_slot` in [`POST /shipments`](#post-shipments)) |
 | `service` | string\|null | the service requested |
 | `pickup_date` | string\|null | `YYYY-MM-DD` requested |
 | `fee` | object\|null | `{amount, currency}`: the fee the courier reported when it booked; `null` if it reported none. SPX: its estimated shipping fee for the booking (after vouchers), also when the booking settled late; the fee SPX finally bills can differ |
@@ -1647,6 +1656,8 @@ If the courier times out, cannot be reached, or answers with a server error whil
 - found at the courier: state `booked` with its tracking number;
 - not found: state `failed` with `error.code` `not_booked`; the reference is released and you may create it again.
 
+**SPX settles some of these itself.** When an SPX booking is retried and SPX answers that it already has the order (its error 13103), Ventaship looks the order up and books the shipment with it (`shipment.booked`, with `needs_attention` asking the owner to check its details at SPX); when it cannot be found the shipment is `unknown` with the reason "SPX already has order VS…: find its tracking number in the SPX portal and record it". And when SPX reports a parcel (by webhook) for a shipment that is `failed` or `unknown` here, the shipment becomes `booked` with that tracking number and `shipment.booked` is sent: a client must accept `shipment.booked` after `shipment.booking_failed` or `shipment.unknown`. If another live shipment holds the reference by then, both are kept and the recovered one gets `needs_attention`.
+
 ### 9.4 Booking error codes
 
 When `state` is `failed`, `error` is `{code, message}`. `message` is for people (often the courier's own words). An SPX refusal reads as a sentence first, then SPX's code and its specific reason in brackets, e.g. `The pickup slot is past SPX's cutoff. Choose another pickup date. (SPX 10080: now_time over cutoff_time)`; show it whole, do not parse it.
@@ -1768,6 +1779,7 @@ For every `shipment.*` type, `data` is:
             "method": "pickup",
             "service": "next_day",
             "pickup_date": null,
+            "pickup_slot": null,
             "fee": {
                 "amount": "77.00",
                 "currency": "PHP"
@@ -1827,6 +1839,7 @@ For every `shipment.*` type, `data` is:
             "method": "pickup",
             "service": "next_day",
             "pickup_date": null,
+            "pickup_slot": null,
             "fee": {
                 "amount": "77.00",
                 "currency": "PHP"

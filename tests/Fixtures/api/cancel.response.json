@@ -21,6 +21,7 @@
         "method": "pickup",
         "service": "next_day",
         "pickup_date": null,
+        "pickup_slot": null,
         "fee": {
             "amount": "77.00",
             "currency": "PHP"

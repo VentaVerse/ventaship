@@ -48,6 +48,7 @@ final class BookingOutcomes
      * (no attention) and the poller finishes it. A requested cancel is sent to the courier once booked.
      *
      * A courier `attention_reason` (LBC did not confirm the pickup) flags the shipment; its `notice` is stored.
+     * $pickupSlot is the slot the courier booked when it chose or moved it (SPX), stored as options.pickup_slot.
      *
      * @param  array<string, mixed>  $meta  the courier's booking meta
      */
@@ -59,10 +60,11 @@ final class BookingOutcomes
         ?string $fee,
         ?string $notice = null,
         ?string $attentionReason = null,
+        ?string $pickupSlot = null,
     ): void {
         $creating = $status === 'creating';
 
-        $cancel = DB::transaction(function () use ($shipmentId, $trackingNumber, $status, $meta, $fee, $creating, $notice, $attentionReason) {
+        $cancel = DB::transaction(function () use ($shipmentId, $trackingNumber, $status, $meta, $fee, $creating, $notice, $attentionReason, $pickupSlot) {
             $s = $this->lock($shipmentId);
             if ($s === null) {
                 return false;
@@ -80,6 +82,10 @@ final class BookingOutcomes
                 ])->save();
 
                 return false;
+            }
+
+            if ($pickupSlot !== null) {
+                $s->forceFill(['options' => array_replace(is_array($s->options) ? $s->options : [], ['pickup_slot' => $pickupSlot])]);
             }
 
             $s->forceFill([
@@ -203,12 +209,13 @@ final class BookingOutcomes
      * The outcome is not known: `unknown` plus attention, reference kept. Never retried; an operator resolves it.
      * With $staleBefore (the sweep), only a booking started before then and not waiting on SPX `creating`.
      * A tracking number and meta the courier did return (its answer could not be saved) are kept on the row.
+     * $reason replaces the generic attention reason when the courier said why it cannot tell (SPX 13103).
      *
      * @param  array<string, mixed>  $meta
      */
-    public function unknown(int $shipmentId, ?CarbonInterface $staleBefore = null, ?string $trackingNumber = null, array $meta = []): ?Shipment
+    public function unknown(int $shipmentId, ?CarbonInterface $staleBefore = null, ?string $trackingNumber = null, array $meta = [], ?string $reason = null): ?Shipment
     {
-        return DB::transaction(function () use ($shipmentId, $staleBefore, $trackingNumber, $meta) {
+        return DB::transaction(function () use ($shipmentId, $staleBefore, $trackingNumber, $meta, $reason) {
             $s = $this->lock($shipmentId);
             if ($s === null || $s->state !== 'booking') {
                 return null;
@@ -224,13 +231,92 @@ final class BookingOutcomes
                 'tracking_number' => $trackingNumber ?? $s->tracking_number,
                 'meta' => $meta === [] ? $s->meta : array_replace(is_array($s->meta) ? $s->meta : [], $meta),
                 'needs_attention' => true,
-                'attention_reason' => self::UNKNOWN_REASON,
+                'attention_reason' => mb_substr($reason ?? self::UNKNOWN_REASON, 0, 255),
             ])->save();
 
             Outbox::record($s->clientApp, 'shipment.unknown', ['event' => null], $s);
 
             return $s;
         });
+    }
+
+    /**
+     * The courier reports a parcel for a shipment marked `failed` or `unknown` here (SPX: a webhook carrying its
+     * order_id after a timeout, or a refusal that was not one). The parcel exists, so the shipment is booked with
+     * its tracking number and `shipment.booked` is sent, as from a normal booking.
+     *
+     * A failed shipment takes its client reference back when no live shipment holds it; when one does, both stay
+     * and the shipment is flagged, because two parcels may now exist. A failed shipment whose cancel was already
+     * settled stays failed, keeps the tracking number and is flagged: the parcel must be cancelled at the courier.
+     * A cancel requested while `unknown` is sent to the courier once booked. Null when nothing changed.
+     *
+     * @param  array<string, mixed>  $meta
+     */
+    public function recovered(int $shipmentId, string $trackingNumber, array $meta = []): ?Shipment
+    {
+        $cancel = false;
+        $s = DB::transaction(function () use ($shipmentId, $trackingNumber, $meta, &$cancel) {
+            $s = $this->lock($shipmentId);
+            if ($s === null || ! in_array($s->state, ['failed', 'unknown'], true)) {
+                return null;
+            }
+
+            $current = is_array($s->meta) ? $s->meta : [];
+            if ($s->state === 'failed' && $s->cancel_state !== null) {
+                Log::critical('Courier reports a parcel for a cancelled failed shipment', ['shipment' => $s->public_id, 'tracking_number' => $trackingNumber]);
+                $s->forceFill([
+                    'tracking_number' => $s->tracking_number ?: $trackingNumber,
+                    'meta' => array_replace($current, $meta),
+                    'needs_attention' => true,
+                    'attention_reason' => mb_substr("The courier booked this shipment after it was cancelled here (tracking {$trackingNumber}) — cancel it at the courier portal", 0, 255),
+                ])->save();
+
+                return null;
+            }
+
+            $attention = null;
+            if ($s->state === 'failed') {
+                $holder = Shipment::query()
+                    ->where('client_app_id', $s->client_app_id)
+                    ->where('active_reference', $s->client_reference)
+                    ->whereKeyNot($s->getKey())
+                    ->lockForUpdate()
+                    ->first();
+                if ($holder !== null && in_array($holder->state, ShipmentCreator::RELEASED_STATES, true)) {
+                    $holder->forceFill(['active_reference' => null])->save();
+                    $holder = null;
+                }
+                if ($holder === null) {
+                    $s->forceFill(['active_reference' => $s->client_reference]);
+                } else {
+                    $name = $holder->courier_ref ?: $holder->public_id;
+                    $attention = "The courier booked this shipment after it failed, and {$name} now uses its reference — cancel one of them";
+                }
+            }
+
+            $s->forceFill([
+                'state' => 'booked',
+                'tracking_number' => $trackingNumber,
+                'courier_status' => $s->courier_status === 'creating' ? null : $s->courier_status,
+                'meta' => array_replace($current, $meta),
+                'booked_at' => now(),
+                'error_code' => null,
+                'error_message' => null,
+                'needs_attention' => $attention !== null,
+                'attention_reason' => $attention === null ? null : mb_substr($attention, 0, 255),
+            ])->save();
+
+            Outbox::record($s->clientApp, 'shipment.booked', ['event' => null], $s);
+            $cancel = $s->cancel_state === 'requested';
+
+            return $s;
+        });
+
+        if ($cancel) {
+            CancelAtCourier::dispatch($shipmentId);
+        }
+
+        return $s;
     }
 
     /** Operator: the courier portal shows no booking. */

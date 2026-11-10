@@ -59,6 +59,9 @@ class ProcessReceipt implements ShouldQueue
 
     private const REMARKS_MAX = 2000;
 
+    /** The states a courier_ref (SPX order_id) match may find: see match(). */
+    private const REFERENCE_STATES = ['booking', 'failed', 'unknown'];
+
     /** @param  bool  $inline  run after the response, not by a queue worker: the relay runs the same way */
     public function __construct(public int $receiptId, public bool $inline = false)
     {
@@ -212,10 +215,12 @@ class ProcessReceipt implements ShouldQueue
             return null;
         }
 
+        // A booking still waiting for its tracking number, or one marked failed or unknown here although the courier
+        // has the parcel (a timeout, then a refusal of the retry): the courier's own report settles it.
         return Shipment::query()
             ->where('courier_account_id', $account->id)
             ->where('courier_ref', $reference)
-            ->where('state', 'booking')
+            ->whereIn('state', self::REFERENCE_STATES)
             ->orderByDesc('id')
             ->first();
     }
@@ -227,6 +232,10 @@ class ProcessReceipt implements ShouldQueue
         if ($s->state === 'booking' && $s->courier_status === 'creating' && $tracking !== null) {
             [$meta, $fee] = $this->bookedData($account, $s, $tracking);
             $outcomes->creationResolved($s->id, $tracking, $meta, $fee);
+            $s->refresh();
+        } elseif (in_array($s->state, ['failed', 'unknown'], true) && $tracking !== null && ! $this->cancelledReport($account, $status)) {
+            Log::warning('Courier webhook reports a parcel for a shipment marked '.$s->state, ['shipment' => $s->public_id, 'receipt' => $receipt->id]);
+            $outcomes->recovered($s->id, $tracking);
             $s->refresh();
         }
 
@@ -243,6 +252,16 @@ class ProcessReceipt implements ShouldQueue
         );
 
         $facts->apply($s, $this->facts($event), $at, 'webhook');
+    }
+
+    /** A report that the parcel is cancelled at the courier: it books nothing (a failed shipment stays failed). */
+    private function cancelledReport(CourierAccount $account, string $status): bool
+    {
+        try {
+            return CourierRegistry::for($account)->statusPhase($status)['phase'] === 'cancelled';
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**

@@ -284,7 +284,7 @@ class BookingPayloadTest extends TestCase
         ]));
         $this->app->instance(SpxLocations::class, new SpxLocations("$dir/l.json", "$dir/c"));
         $account = $this->spxAccount();
-        $slot = json_encode(['pickup_time' => 1767225600, 'pickup_time_range_id' => 1, 'pickup_time_range' => '09:00-12:00']);
+        $slot = json_encode(['pickup_time' => 1893456000, 'pickup_time_range_id' => 1, 'pickup_time_range' => '09:00-12:00']);
 
         $cod = $this->spxShipment($account, ['parcel' => ['type' => 'small', 'weight_kg' => 1]], [
             'payment_method' => 'cod', 'total' => '500.00', 'cod_amount' => '500.00',
@@ -427,6 +427,8 @@ class BookingPayloadTest extends TestCase
             'courier_account_id' => $account->id,
             'courier' => 'spx',
             'courier_ref' => 'VS000001',
+            // A pickup needs a window; without one these book a drop-off, as the payload tests expect.
+            'method' => isset($options['pickup_slot']) ? 'pickup' : 'dropoff',
             'payment_method' => 'prepaid',
             'recipient' => $this->recipient(),
             'pickup' => $this->pickupArray(),

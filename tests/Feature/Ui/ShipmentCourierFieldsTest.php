@@ -362,6 +362,23 @@ class ShipmentCourierFieldsTest extends TestCase
         $this->assertSame('pickup', $this->latest()->method);
     }
 
+    public function test_spx_field_limits_show_under_their_fields(): void
+    {
+        $this->accounts();
+
+        $this->post('/shipments', $this->form('spx', ['recipient' => ['first_name' => str_repeat('a', 40), 'last_name' => str_repeat('b', 24)]]));
+        $this->assertSame('First and last name: 64 characters at most for SPX.', session('errors')->first('recipient.first_name'));
+        $this->post('/shipments', $this->form('spx', ['recipient' => ['address_1' => str_repeat('a', 255), 'address_2' => 'Unit 4']]));
+        $this->assertSame('256 characters at most for SPX.', session('errors')->first('recipient.address_1'));
+
+        $long = $this->savedPickup(['label' => 'Long', 'contact_name' => str_repeat('c', 65)]);
+        $this->post('/shipments', $this->form('spx', ['pickup_address_id' => $long->public_id]));
+        $this->assertSame('Contact name: 64 characters at most for SPX.', session('errors')->first('pickup_address_id'));
+
+        $this->post('/shipments', $this->form('spx', ['recipient' => ['first_name' => str_repeat('a', 40), 'last_name' => str_repeat('b', 23)]]))->assertSessionHasNoErrors();
+        $this->post('/shipments', $this->form('quadx', ['recipient' => ['first_name' => str_repeat('a', 100)]]))->assertSessionHasNoErrors();
+    }
+
     public function test_edit_with_stale_lbc_date_selects_nothing(): void
     {
         $this->accounts();

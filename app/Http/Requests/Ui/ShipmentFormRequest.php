@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Ui;
 
+use App\Couriers\Spx\SpxFieldLimits;
 use App\Http\Requests\Api\V1\Concerns\ValidatesShipmentParts;
 use App\Models\CourierAccount;
 use App\Models\Customer;
@@ -248,7 +249,10 @@ class ShipmentFormRequest extends FormRequest
         return $value;
     }
 
-    /** A posted address whose codes do not chain, or whose names are not the codes' names, is refused. */
+    /**
+     * A posted address whose codes do not chain, or whose names are not the codes' names, is refused. For SPX, so are
+     * values longer than SPX takes (SpxFieldLimits); the pickup's are named on the pickup address, its only field.
+     */
     public function after(): array
     {
         return [function (Validator $validator) {
@@ -257,6 +261,25 @@ class ShipmentFormRequest extends FormRequest
                 $field = is_array($address) ? app(PhAddress::class)->postedMismatch($address) : null;
                 if ($field !== null) {
                     $validator->errors()->add("{$prefix}.{$field}", 'Choose from the list.');
+                }
+            }
+
+            if ($this->courier() !== 'spx') {
+                return;
+            }
+            $messages = [
+                'recipient_name' => ['recipient.first_name', 'First and last name: '.SpxFieldLimits::NAME_MAX.' characters at most for SPX.'],
+                'recipient_address' => ['recipient.address_1', SpxFieldLimits::DETAIL_ADDRESS_MAX.' characters at most for SPX.'],
+                'pickup_name' => ['pickup_address_id', 'Contact name: '.SpxFieldLimits::NAME_MAX.' characters at most for SPX.'],
+                'pickup_address' => ['pickup_address_id', 'Street: '.SpxFieldLimits::DETAIL_ADDRESS_MAX.' characters at most for SPX.'],
+                'note' => ['note', SpxFieldLimits::INSTRUCTION_MAX.' characters at most for SPX.'],
+            ];
+            $recipient = $this->input('recipient');
+            $pickup = $this->input('pickup');
+            foreach (SpxFieldLimits::problems(is_array($recipient) ? $recipient : null, is_array($pickup) ? $pickup : null, $this->input('note')) as $problem) {
+                [$field, $message] = $messages[$problem];
+                if (! $validator->errors()->has($field)) {
+                    $validator->errors()->add($field, $message);
                 }
             }
         }];

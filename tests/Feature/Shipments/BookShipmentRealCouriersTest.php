@@ -195,6 +195,8 @@ class BookShipmentRealCouriersTest extends TestCase
         return Shipment::factory()->create($attributes + [
             'courier_account_id' => $account->id,
             'courier' => $account->courier,
+            // SPX books a pickup with a window from 1.1; these tests are about the create call, so they drop off.
+            'method' => $account->courier === 'spx' ? 'dropoff' : 'pickup',
             'client_reference' => '4211',
             'active_reference' => '4211',
             'courier_ref' => 'VS000001',

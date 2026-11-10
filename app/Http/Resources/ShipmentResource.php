@@ -56,6 +56,7 @@ class ShipmentResource extends JsonResource
             'method' => $s->method,
             'service' => $s->service,
             'pickup_date' => data_get($s->options, 'pickup_date'),
+            'pickup_slot' => is_string(data_get($s->options, 'pickup_slot')) ? data_get($s->options, 'pickup_slot') : null,
             'fee' => $s->fee_amount === null ? null : ['amount' => $s->fee_amount, 'currency' => $s->fee_currency ?? 'PHP'],
             'payment_method' => $s->payment_method,
             'payment_state' => $s->payment_state,

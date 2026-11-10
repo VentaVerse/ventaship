@@ -119,6 +119,14 @@ final class Poller
             return;
         }
 
+        if (($answer['outcome_unknown'] ?? false) === true) {
+            // The courier cannot say whether this booking exists (SPX: the order_id is taken, the order not found).
+            $reason = is_string($answer['attention_reason'] ?? null) && trim($answer['attention_reason']) !== '' ? trim($answer['attention_reason']) : null;
+            $this->outcomes->unknown($s->id, reason: $reason);
+
+            return;
+        }
+
         if (($answer['courier_status'] ?? null) === 'creation_failed') {
             $error = data_get($answer, 'meta.creation_error');
             $message = is_string($error) && trim($error) !== '' ? 'The courier refused the booking: '.trim($error) : 'The courier refused the booking.';

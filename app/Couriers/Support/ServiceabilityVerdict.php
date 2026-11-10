@@ -25,8 +25,8 @@ namespace App\Couriers\Support;
  * left NULL for a transport failure, where the message would be curl's or
  * ours and never the courier's.
  *
- * `code` is the machine-readable WHY (`missing_postcode`, `spx_unlisted_barangay`, ...) when our own check knows it,
- * for API clients; null when the courier itself answered.
+ * `code` is the machine-readable WHY (`missing_postcode`, `spx_unlisted_barangay`, ...) for API clients: from our own
+ * check, or from a courier answer we recognise (SPX's area codes, e.g. `spx_no_delivery`); null otherwise.
  *
  * `fees` is the price map the same call happened to return (QuadX's
  * /orders/estimates/rates answers with a fee per parcel category), keyed by

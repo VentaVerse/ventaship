@@ -2,6 +2,7 @@
 
 namespace App\Fulfillment;
 
+use App\Couriers\Spx\SpxFulfillment;
 use App\Models\Shipment;
 use App\Models\ShipmentEvent;
 use App\Shipments\BookingOutcomes;
@@ -155,6 +156,7 @@ final class ShipmentDetail
             'Courier' => $courier,
             'Service' => $s->service ? Str::title(str_replace('_', ' ', $s->service)) : null,
             'Pickup' => $pickup,
+            'Pickup time' => $s->courier === 'spx' && $s->method === 'pickup' ? SpxFulfillment::describeSlot($s->options['pickup_slot'] ?? null) : null,
             'Tracking' => $s->tracking_number,
             'Booked at' => self::at($s->booked_at),
             'Fee' => $this->peso($s->fee_amount),
@@ -241,6 +243,18 @@ final class ShipmentDetail
             ];
         }
 
+        // Pickup times SPX's booking chose or moved (an API order without one, a time past SPX's cutoff).
+        $changes = data_get($s->meta, 'pickup_changes');
+        foreach (is_array($changes) ? $changes : [] as $change) {
+            $at = is_array($change) && is_string($change['at'] ?? null) ? self::parseTime($change['at']) : null;
+            $label = is_array($change) && is_string($change['label'] ?? null) ? $change['label'] : null;
+            if ($at === null || $label === null) {
+                continue;
+            }
+            $verb = ($change['reason'] ?? null) === 'chosen' ? 'Pickup time set' : 'Pickup time moved';
+            $rows[] = ['t' => $at->getTimestamp(), 'rank' => 2, 'at' => self::at($at) ?? '', 'label' => "{$verb} · {$label}", 'phase' => null];
+        }
+
         if ($s->booked_at !== null) {
             $rows[] = ['t' => $s->booked_at->getTimestamp(), 'rank' => 1, 'at' => self::at($s->booked_at), 'label' => 'Booked · '.$this->courierName(), 'phase' => null];
         }
@@ -251,6 +265,15 @@ final class ShipmentDetail
         $rows[] = ['at' => self::at($s->created_at) ?? '', 'label' => $this->arrival(), 'phase' => null];
 
         return array_map(fn ($r) => ['at' => $r['at'], 'label' => $r['label'], 'phase' => $r['phase']], $rows);
+    }
+
+    private static function parseTime(string $at): ?CarbonInterface
+    {
+        try {
+            return \Carbon\CarbonImmutable::parse($at);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /** @return array{print: bool, edit: bool, delete: bool, book: bool, retry: bool, cancel: bool, resolve: bool} */

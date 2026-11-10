@@ -906,16 +906,23 @@ class SpxFulfillmentTest extends TestCase
         Http::assertNothingSent();
     }
 
-    /** Date-based picker (owner call: no time-window picker, one option per date): a single date with "Now" offered collapses to one option carrying that "Now" slot, labeled as a readable date (not a time window). */
-    public function test_get_pickup_slots_returns_one_dated_option_preferring_now(): void
+    /** Every window SPX offers is an option, "Now" first within its day, labelled with the day and SPX's window. */
+    public function test_get_pickup_slots_offers_every_window_with_now_first(): void
     {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2022-02-17 08:00', 'Asia/Manila'));
         $this->configureAccountCredentials();
         Http::fake(['*get_pickup_time*' => Http::response([
             'ret_code' => 0, 'message' => 'success.',
             'data' => [[
                 'date' => '2022-02-17', 'pickup_time' => 1645088400,
                 'slots' => [
+                    ['pickup_time_range_id' => 2, 'pickup_time_range' => '2:00pm-4:00pm'],
                     ['pickup_time_range_id' => 0, 'pickup_time_range' => 'Now'],
+                ],
+            ], [
+                'date' => '2022-02-18', 'pickup_time' => 1645174800,
+                'slots' => [
+                    ['pickup_time_range_id' => 1, 'pickup_time_range' => '10:00am-12:00am'],
                     ['pickup_time_range_id' => 2, 'pickup_time_range' => '2:00pm-4:00pm'],
                 ],
             ]],
@@ -923,67 +930,24 @@ class SpxFulfillmentTest extends TestCase
 
         $slots = $this->courier()->getPickupSlots($this->makeOrder());
 
-        $this->assertCount(1, $slots);
-        $decoded = json_decode($slots[0]['value'], true);
-        $this->assertSame(1645088400, $decoded['pickup_time']);
-        $this->assertSame(0, $decoded['pickup_time_range_id']);
-        $this->assertSame('Now', $decoded['pickup_time_range']);
-        // Readable date label, e.g. "Thu, Feb 17" — no time window in the label.
-        $this->assertMatchesRegularExpression('/^[A-Za-z]{3}, [A-Za-z]{3} \d{2}$/', $slots[0]['label']);
-        $this->assertStringNotContainsString('Now', $slots[0]['label']);
+        $this->assertSame(['Thu, Feb 17 · Now', 'Thu, Feb 17 · 2:00pm-4:00pm', 'Fri, Feb 18 · 10:00am-12:00am', 'Fri, Feb 18 · 2:00pm-4:00pm'], array_column($slots, 'label'));
+        $this->assertSame(['pickup_time' => 1645088400, 'pickup_time_range_id' => 0, 'pickup_time_range' => 'Now'], json_decode($slots[0]['value'], true));
+        $this->assertSame(['pickup_time' => 1645174800, 'pickup_time_range_id' => 2, 'pickup_time_range' => '2:00pm-4:00pm'], json_decode($slots[3]['value'], true));
     }
 
-    /** Collapse-by-date: 2 dates x 2 windows each yields exactly 2 options (one per date), not 4. */
-    public function test_get_pickup_slots_collapses_multiple_windows_per_date(): void
+    /** A day with no usable slots, or a day already over in Manila, is skipped, never a phantom option. */
+    public function test_get_pickup_slots_skips_empty_and_past_days(): void
     {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2022-02-18 08:00', 'Asia/Manila'));
         $this->configureAccountCredentials();
         Http::fake(['*get_pickup_time*' => Http::response([
             'ret_code' => 0, 'message' => 'success.',
             'data' => [
+                ['date' => '2022-02-17', 'pickup_time' => 1645088400, 'slots' => [['pickup_time_range_id' => 0, 'pickup_time_range' => 'Now']]],
+                ['date' => '2022-02-18', 'pickup_time' => 1645174800, 'slots' => []],
                 [
-                    'date' => '2022-02-17', 'pickup_time' => 1645088400,
-                    'slots' => [
-                        ['pickup_time_range_id' => 1, 'pickup_time_range' => '10:00am-12:00am'],
-                        ['pickup_time_range_id' => 2, 'pickup_time_range' => '2:00pm-4:00pm'],
-                    ],
-                ],
-                [
-                    'date' => '2022-02-18', 'pickup_time' => 1645174800,
-                    'slots' => [
-                        ['pickup_time_range_id' => 1, 'pickup_time_range' => '10:00am-12:00am'],
-                        ['pickup_time_range_id' => 2, 'pickup_time_range' => '2:00pm-4:00pm'],
-                    ],
-                ],
-            ],
-        ])]);
-
-        $slots = $this->courier()->getPickupSlots($this->makeOrder());
-
-        $this->assertCount(2, $slots);
-
-        // No range id 0 offered on either date -> earliest falls back to the
-        // FIRST slot in that date's own slots[] array (SPX's own ordering).
-        $first = json_decode($slots[0]['value'], true);
-        $this->assertSame(1645088400, $first['pickup_time']);
-        $this->assertSame(1, $first['pickup_time_range_id']);
-        $this->assertSame('10:00am-12:00am', $first['pickup_time_range']);
-
-        $second = json_decode($slots[1]['value'], true);
-        $this->assertSame(1645174800, $second['pickup_time']);
-        $this->assertSame(1, $second['pickup_time_range_id']);
-    }
-
-    /** A date with no usable slots (empty slots[]) is skipped entirely, never a phantom/blocked date. */
-    public function test_get_pickup_slots_skips_dates_with_no_slots(): void
-    {
-        $this->configureAccountCredentials();
-        Http::fake(['*get_pickup_time*' => Http::response([
-            'ret_code' => 0, 'message' => 'success.',
-            'data' => [
-                ['date' => '2022-02-17', 'pickup_time' => 1645088400, 'slots' => []],
-                [
-                    'date' => '2022-02-18', 'pickup_time' => 1645174800,
-                    'slots' => [['pickup_time_range_id' => 0, 'pickup_time_range' => 'Now']],
+                    'date' => '2022-02-19', 'pickup_time' => 1645261200,
+                    'slots' => [['pickup_time_range_id' => 1, 'pickup_time_range' => '10:00am-12:00am']],
                 ],
             ],
         ])]);
@@ -991,8 +955,7 @@ class SpxFulfillmentTest extends TestCase
         $slots = $this->courier()->getPickupSlots($this->makeOrder());
 
         $this->assertCount(1, $slots);
-        $decoded = json_decode($slots[0]['value'], true);
-        $this->assertSame(1645174800, $decoded['pickup_time']);
+        $this->assertSame(1645261200, json_decode($slots[0]['value'], true)['pickup_time']);
     }
 
     public function test_get_pickup_slots_is_empty_without_user_credentials(): void
@@ -1005,6 +968,7 @@ class SpxFulfillmentTest extends TestCase
     /** createShipment still sends the three pickup fields exactly as returned by a chosen date option (collapsed pickup_slot value flows through unchanged), switching collect_type to pickup. */
     public function test_create_shipment_sends_pickup_fields_from_a_chosen_date_option(): void
     {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2022-02-17 08:00', 'Asia/Manila'));
         $this->configureAccountCredentials();
 
         Http::fake([

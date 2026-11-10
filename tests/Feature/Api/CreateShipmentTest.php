@@ -362,6 +362,37 @@ class CreateShipmentTest extends TestCase
         }
     }
 
+    public function test_spx_field_limits_are_422_with_clear_messages(): void
+    {
+        $this->fakeDefaultAccount('spx');
+        $spx = fn (array $over) => $this->shipmentBody(['courier' => 'spx', 'client_reference' => Str::random(8), 'parcel' => ['type' => 'small']] + $over);
+
+        $this->create($spx(['recipient' => ['first_name' => str_repeat('a', 40), 'last_name' => str_repeat('b', 24)]]))
+            ->assertStatus(422)->assertJsonPath('errors', fn (array $e) => ($e['recipient.first_name'][0] ?? null)
+                === 'For SPX, the first_name and last_name together may not be longer than 64 characters.');
+        $this->create($spx(['recipient' => ['address_1' => str_repeat('a', 200), 'address_2' => str_repeat('b', 55)]]))
+            ->assertStatus(422)->assertJsonValidationErrors(['recipient.address_1'], 'errors');
+        $this->create($spx(['pickup' => ['contact_name' => str_repeat('c', 65)]]))
+            ->assertStatus(422)->assertJsonValidationErrors(['pickup.contact_name'], 'errors');
+        $this->create($spx(['pickup' => ['address_2' => str_repeat('d', 255)]]))
+            ->assertStatus(422)->assertJsonValidationErrors(['pickup.address_1'], 'errors');
+        $this->create($spx(['note' => str_repeat('n', 257)]))
+            ->assertStatus(422)->assertJsonValidationErrors(['note'], 'errors');
+        $this->create($spx(['pickup_slot' => 'tomorrow']))
+            ->assertStatus(422)->assertJsonValidationErrors(['pickup_slot'], 'errors');
+
+        // Exactly at the limits (multibyte counted as characters) passes; other couriers keep their own limits.
+        $this->create($spx([
+            'recipient' => ['first_name' => str_repeat('ñ', 40), 'last_name' => str_repeat('b', 23), 'address_1' => str_repeat('a', 200), 'address_2' => str_repeat('b', 54)],
+            'pickup' => ['contact_name' => str_repeat('c', 64)],
+            'note' => str_repeat('n', 256),
+            'method' => 'dropoff', 'pickup_slot' => 'ignored for a drop-off',
+        ]))->assertStatus(202);
+        $this->fakeDefaultAccount('quadx');
+        $this->create($this->shipmentBody(['client_reference' => Str::random(8), 'recipient' => ['first_name' => str_repeat('a', 200)], 'note' => str_repeat('n', 400)]))
+            ->assertStatus(202);
+    }
+
     public function test_item_quantity_below_one_and_bad_pickup_date_refused(): void
     {
         $this->fakeDefaultAccount();
