@@ -8,6 +8,7 @@
     $id = $shipment->public_id;
     $title = $detail->title();
     $act = $detail->actions();
+    $left = \App\Shipments\SpxBookingEdits::left($shipment);
     $alert = $detail->alert();
     $trackingUrl = $detail->trackingUrl();
     $name = $detail->name();
@@ -38,6 +39,9 @@
             </span>
         @endif
         <span class="sd-ref"><span class="sd-ref__k">From</span> <span>{{ $detail->source() }}</span></span>
+        @if($act['edit_booking'])
+            <span class="sd-ref sd-edits-left">{{ $left }} {{ $left === 1 ? 'edit' : 'edits' }} left</span>
+        @endif
         @if($shipment->created_at)
             <span class="sd-ref"><span class="sd-ref__k">Created</span> <span class="x-num">{{ ShipmentDetail::at($shipment->created_at) }}</span></span>
         @endif
@@ -59,11 +63,14 @@
     <a class="sd-crumb" href="{{ route('fulfillment') }}"><x-ui.icon name="chevron-left" size="14" /> Shipments</a>
 @endsection
 
-@if(in_array(true, [$act['print'], $act['retry'], $act['book'], $act['edit'], $act['cancel'], $act['delete']], true))
+@if(in_array(true, [$act['print'], $act['edit_booking'], $act['retry'], $act['book'], $act['edit'], $act['cancel'], $act['delete']], true))
 @section('actions')
     <div class="sd-actions">
         @if($act['print'])
             <x-ui.button variant="primary" type="submit" class="sd-print" form="sd-labels">Print waybill</x-ui.button>
+        @endif
+        @if($act['edit_booking'])
+            <x-ui.button class="sd-edit-booking" :href="route('shipments.booking.edit', $id)">Edit</x-ui.button>
         @endif
         @if($act['retry'])
             <x-ui.button variant="primary" type="submit" class="sd-retry" form="sd-retry">Retry</x-ui.button>
@@ -75,7 +82,7 @@
             <x-ui.button class="sd-edit" :href="route('shipments.edit', $id)">Edit</x-ui.button>
         @endif
         @if($act['cancel'])
-            @if(in_array(true, [$act['print'], $act['retry'], $act['book'], $act['edit']], true))
+            @if(in_array(true, [$act['print'], $act['edit_booking'], $act['retry'], $act['book'], $act['edit']], true))
                 <span class="sd-actions__sep" aria-hidden="true"></span>
             @endif
             <x-ui.button variant="danger-outline" class="sd-cancel" @click="$dispatch('confirm', {{ Js::from(['title' => 'Cancel shipment '.$title.'?', 'confirm' => 'Cancel shipment', 'dismiss' => 'Keep shipment', 'form' => 'sd-cancel', 'tone' => 'danger']) }})">Cancel shipment</x-ui.button>
@@ -95,6 +102,16 @@
             <x-ui.button :href="route('fulfillment')">Go to shipments</x-ui.button>
             <x-ui.button variant="primary" :href="route('shipments.create')">Add another shipment</x-ui.button>
         </div>
+    </div>
+@endif
+@if(session('booking_updated') === true)
+    <div class="sd-booked" role="status">
+        <p class="sd-booked__msg"><x-ui.icon name="check" size="16" /> Booking updated</p>
+        @if($act['print'])
+            <div class="sd-booked__actions">
+                <x-ui.button variant="primary" type="submit" form="sd-labels">Print new waybill</x-ui.button>
+            </div>
+        @endif
     </div>
 @endif
 @if($alert)

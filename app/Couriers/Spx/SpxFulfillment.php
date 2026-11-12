@@ -1024,6 +1024,70 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
     }
 
     /**
+     * 1.7 Update Order: the whole order again, built exactly as createShipment()
+     * builds it (so the fields that cannot change, service_type, collect_type,
+     * payment_role and the COD, go back with their booked values), plus its
+     * tracking_no. SPX allows 3 updates while the order is still Pending
+     * Pickup; the caller enforces both. Nothing here writes the shipment.
+     *
+     * @return array{ok:true}|array{ok:false, refusal:CourierRefusal, raw:?string}
+     */
+    public function updateBooking(CourierOrder $order, array $opts): array
+    {
+        $tracking = trim((string) $order->courier_tracking_number);
+        if (!$this->client->hasAccountCredentials() || $tracking === '' || trim((string) $order->reference) === '') {
+            return ['ok' => false, 'refusal' => self::updateRefusal(SpxRefusals::generic()), 'raw' => null];
+        }
+
+        if (($problem = $order->paymentProblem($opts)) !== null) {
+            return ['ok' => false, 'refusal' => new CourierRefusal("SPX can't update this booking", $problem), 'raw' => null];
+        }
+        $built = $this->buildOrderPayload($order, $opts);
+        if (!$built['ok']) {
+            return ['ok' => false, 'refusal' => new CourierRefusal("SPX can't update this booking", (string) ($built['error'] ?? SpxRefusals::GENERIC_DETAIL)), 'raw' => null];
+        }
+        if (($problem = $this->limitProblem($order, $opts)) !== null) {
+            return ['ok' => false, 'refusal' => new CourierRefusal("SPX can't update this booking", $problem), 'raw' => null];
+        }
+
+        $context = self::parcelContext($opts);
+        try {
+            $data = $this->client->updateOrders([['tracking_no' => $tracking] + $built['payload']]);
+        } catch (SpxApiException $e) {
+            $raw = self::rawText($e->retCode, $e->getMessage(), null);
+
+            return ['ok' => false, 'raw' => $raw, 'refusal' => $e->httpStatus < 500 && SpxRefusals::isRefusal($e->retCode)
+                ? self::updateRefusal(SpxRefusals::explain($e->retCode, $e->getMessage(), $context))
+                : new CourierRefusal("SPX couldn't update this booking", 'Try again in a moment.')];
+        } catch (\Throwable $e) {
+            Log::warning('SPX update order could not reach SPX', ['order' => $order->id, 'exception' => $e::class]);
+
+            return ['ok' => false, 'refusal' => new CourierRefusal("SPX couldn't update this booking", 'Try again in a moment.'), 'raw' => null];
+        }
+
+        $failed = ($data['fail_list'] ?? [])[0] ?? null;
+        if (is_array($failed)) {
+            $code = is_numeric($failed['ret_code'] ?? null) ? (int) $failed['ret_code'] : null;
+            $text = trim(((string) ($failed['message'] ?? '')) . ' ' . ((string) ($failed['debug_msg'] ?? '')));
+
+            return ['ok' => false, 'refusal' => self::updateRefusal(SpxRefusals::explain($code, $text, $context)), 'raw' => self::createFailure($failed, $context)['raw']];
+        }
+
+        $updated = ($data['orders'] ?? [])[0] ?? null;
+        if (!is_array($updated)) {
+            return ['ok' => false, 'refusal' => new CourierRefusal("SPX couldn't update this booking", 'Try again in a moment.'), 'raw' => null];
+        }
+
+        return ['ok' => true];
+    }
+
+    /** SPX's generic sentence says "book"; an update says "update". */
+    private static function updateRefusal(CourierRefusal $refusal): CourierRefusal
+    {
+        return $refusal->title === SpxRefusals::GENERIC_TITLE ? new CourierRefusal("SPX couldn't update this booking", $refusal->detail) : $refusal;
+    }
+
+    /**
      * Out of SPX's normal delivery zone: remote_area_fee above zero. The field
      * is undocumented (seen in the real 1.5 answer, not promised for 2.1), so
      * an answer without it is "not known", never "no surcharge".

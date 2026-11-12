@@ -207,6 +207,19 @@ class SpxClient
         ], $timeout);
     }
 
+    /**
+     * 1.7 Update Order (batch_update_order): the whole order again, with its tracking_no, while SPX still has it as
+     * created (1001 Pending Pickup). SPX allows 3 updates per order; the waybill must be printed again after one.
+     */
+    public function updateOrders(array $orders): array
+    {
+        return $this->post('/open/api/v1/order/batch_update_order', [
+            'user_id'     => (int) $this->userId(),
+            'user_secret' => (string) $this->userSecret(),
+            'orders'      => $orders,
+        ]);
+    }
+
     /** 2.2 Get Order Fee (batch_get_asf), ACTUAL fee AFTER order creation. */
     public function getActualFee(array $trackingNumbers): array
     {

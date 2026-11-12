@@ -12,6 +12,7 @@ use App\Http\Controllers\Ui\SettingsController;
 use App\Http\Controllers\Ui\ShipmentActionsController;
 use App\Http\Controllers\Ui\ShipmentOptionsController;
 use App\Http\Controllers\Ui\ShipmentsController;
+use App\Http\Controllers\Ui\SpxBookingController;
 use App\Http\Controllers\Webhooks\CourierWebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -34,6 +35,8 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::get('shipments/{shipment:public_id}', [ShipmentsController::class, 'show'])->name('shipments.show');
     Route::get('shipments/{shipment:public_id}/edit', [ShipmentsController::class, 'edit'])->name('shipments.edit');
     Route::put('shipments/{shipment:public_id}', [ShipmentsController::class, 'update'])->name('shipments.update');
+    Route::get('shipments/{shipment:public_id}/booking', [SpxBookingController::class, 'edit'])->name('shipments.booking.edit');
+    Route::put('shipments/{shipment:public_id}/booking', [SpxBookingController::class, 'update'])->name('shipments.booking.update');
     Route::delete('shipments/{shipment:public_id}', [ShipmentsController::class, 'destroy'])->name('shipments.destroy');
     Route::post('shipments/book', [ShipmentActionsController::class, 'book'])->name('shipments.book');
     Route::post('shipments/cancel', [ShipmentActionsController::class, 'cancel'])->name('shipments.cancel');

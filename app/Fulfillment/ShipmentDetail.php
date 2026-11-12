@@ -10,6 +10,7 @@ use App\Shipments\BookingOutcomes;
 use App\Shipments\Canceller;
 use App\Shipments\CourierFormFields;
 use App\Shipments\ItemsText;
+use App\Shipments\SpxBookingEdits;
 use App\Shipments\TrackingLink;
 use App\Support\Money;
 use App\Couriers\Support\PhPhone;
@@ -291,6 +292,15 @@ final class ShipmentDetail
             $rows[] = ['t' => $at->getTimestamp(), 'rank' => 2, 'at' => self::at($at) ?? '', 'label' => "{$verb} · {$label}", 'phase' => null];
         }
 
+        // SPX booking updates (Edit booking).
+        $updates = data_get($s->meta, 'booking_updates');
+        foreach (is_array($updates) ? $updates : [] as $update) {
+            $at = is_array($update) && is_string($update['at'] ?? null) ? self::parseTime($update['at']) : null;
+            if ($at !== null) {
+                $rows[] = ['t' => $at->getTimestamp(), 'rank' => 2, 'at' => self::at($at) ?? '', 'label' => 'Booking updated', 'phase' => null];
+            }
+        }
+
         if ($s->booked_at !== null) {
             $rows[] = ['t' => $s->booked_at->getTimestamp(), 'rank' => 1, 'at' => self::at($s->booked_at), 'label' => 'Booked · '.$this->courierName(), 'phase' => null];
         }
@@ -312,7 +322,7 @@ final class ShipmentDetail
         }
     }
 
-    /** @return array{print: bool, edit: bool, delete: bool, book: bool, retry: bool, cancel: bool, resolve: bool} */
+    /** @return array{print: bool, edit_booking: bool, edit: bool, delete: bool, book: bool, retry: bool, cancel: bool, resolve: bool} */
     public function actions(): array
     {
         $s = $this->shipment;
@@ -320,6 +330,8 @@ final class ShipmentDetail
 
         return [
             'print' => $s->state === 'booked' && Route::has('shipments.labels'),
+            // An SPX booking still Pending Pickup, with SPX 1.7 updates left.
+            'edit_booking' => SpxBookingEdits::allowed($s) && Route::has('shipments.booking.edit'),
             'edit' => $editable && Route::has('shipments.edit'),
             'delete' => $editable && Route::has('shipments.destroy'),
             'book' => $s->state === 'draft' && Route::has('shipments.book'),

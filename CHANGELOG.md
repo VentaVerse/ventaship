@@ -7,6 +7,7 @@
 - Book shipment now shows the shipment and the courier's shipping fee for a final check before anything is booked.
 - After booking, the shipment page lets you go back to your shipments or add another shipment.
 - Book on a draft's page and Book on the shipments list now run the same final check, and a shipment the courier refuses stays a draft with the reason.
+- Edit an SPX booking that is still waiting for pickup, up to 3 times: the recipient, the parcel, the note and the pickup time, then print the new waybill.
 
 ### Updates
 
