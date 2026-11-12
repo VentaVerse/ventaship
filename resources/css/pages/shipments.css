@@ -939,20 +939,6 @@
         background: var(--bl-rule-2);
     }
 
-    .sd-crumb {
-        display: inline-flex;
-        gap: 2px;
-        align-items: center;
-        color: var(--bl-brand-link);
-        font-weight: 600;
-        text-decoration: none;
-    }
-
-    .sd-crumb:hover {
-        text-decoration: underline;
-        text-underline-offset: 2px;
-    }
-
     /* Right after a booking: what to do next. */
     .sd-booked {
         display: flex;
@@ -1186,7 +1172,6 @@
             justify-content: center;
         }
 
-        .sd-crumb,
         .sd-ref > a.sd-link,
         .sd-list a.sd-link {
             display: inline-flex;

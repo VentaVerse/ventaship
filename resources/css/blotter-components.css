@@ -328,6 +328,28 @@
         color: var(--bl-ink-3);
     }
 
+    /* The back link of a second-level page. */
+    .x-back {
+        display: inline-flex;
+        gap: 2px;
+        align-items: center;
+        font-size: 13px;
+        color: var(--bl-brand-link);
+        font-weight: 600;
+        text-decoration: none;
+    }
+
+    .x-back:hover {
+        text-decoration: underline;
+        text-underline-offset: 2px;
+    }
+
+    @media (max-width: 640px) {
+        .x-back {
+            min-height: 44px;
+        }
+    }
+
     .x-page > div:first-child {
         min-width: 0;
     }
@@ -520,6 +542,12 @@
     .x-btn:disabled {
         opacity: .5;
         pointer-events: none;
+    }
+
+    /* Working (the final check before booking): dimmed, and a second click does nothing. */
+    .x-btn[aria-busy="true"] {
+        opacity: .7;
+        cursor: progress;
     }
 
     /* Badges */

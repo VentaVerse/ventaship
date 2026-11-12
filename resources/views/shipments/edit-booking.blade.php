@@ -57,7 +57,7 @@
 @endsection
 
 @section('crumb')
-    <a class="sd-crumb" href="{{ route('shipments.show', $id) }}"><x-ui.icon name="chevron-left" size="14" /> {{ $shipment->client_reference ?: $shipment->courier_ref }}</a>
+    <x-ui.back :href="route('shipments.show', $id)">{{ $shipment->client_reference ?: $shipment->courier_ref }}</x-ui.back>
 @endsection
 
 @section('content')

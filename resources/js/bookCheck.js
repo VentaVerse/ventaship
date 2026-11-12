@@ -100,6 +100,8 @@ export function bookCheck(config) {
         checkSeq: 0,
         checkOpener: null,
         checkPassed: false,
+        // True while the check runs: the dialog stays shut until the answer is in, so a form with errors never flashes it.
+        checking: false,
 
         // The form's submit: Book shipment (a button marked data-book) opens the check instead, once.
         submitted(event) {
@@ -112,15 +114,18 @@ export function bookCheck(config) {
                 return;
             }
             event.preventDefault();
-            this.openCheck(submitter);
+            if (!this.checking) {
+                this.openCheck(submitter);
+            }
         },
 
         openCheck(submitter) {
             this.checkOpener = submitter;
             // A stored draft's rows come from the server (config.rows); the form builds them from its fields.
             this.checkRows = Array.isArray(config.rows) ? config.rows : bookingSummary(this.summaryState());
-            this.check = { open: true, state: 'loading', label: '', title: '', detail: '', busy: false };
-            this.$nextTick(() => this.$refs.checkBack?.focus());
+            this.check = { open: false, state: 'loading', label: '', title: '', detail: '', busy: false };
+            this.checking = true;
+            submitter?.setAttribute?.('aria-busy', 'true');
             this.runCheck();
         },
 
@@ -168,20 +173,19 @@ export function bookCheck(config) {
             } catch (e) {
                 status = 0;
             }
-            if (seq !== this.checkSeq || !this.check.open) {
+            if (seq !== this.checkSeq) {
                 return;
             }
+            this.checking = false;
+            this.checkOpener?.removeAttribute?.('aria-busy');
             const result = checkResult(status, body);
             if (result.state === 'invalid') {
-                // The server shows the field errors on the page, exactly as a booking would.
-                this.check.open = false;
+                // The server shows the field errors on the page, exactly as a booking would; the dialog never opens.
                 this.submitBooking();
                 return;
             }
-            Object.assign(this.check, { label: '', title: '', detail: '' }, result);
-            if (result.state === 'refused') {
-                this.$nextTick(() => this.$refs.checkBack?.focus());
-            }
+            Object.assign(this.check, { label: '', title: '', detail: '' }, result, { open: true });
+            this.$nextTick(() => this.$refs.checkBack?.focus());
         },
 
         get canBook() {

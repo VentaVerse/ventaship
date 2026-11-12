@@ -35,7 +35,7 @@
     </span>
 @endsection
 
-@section('crumb')<a href="{{ route('accounts.index') }}">Courier accounts</a>@endsection
+@section('crumb')<x-ui.back :href="route('accounts.index')">Courier accounts</x-ui.back>@endsection
 
 @if($account)
 @section('actions')

@@ -2,9 +2,11 @@
 
 @section('title', $editing ? 'Edit shipment' : 'Add shipment')
 
-@section('crumb')
-    <a href="{{ route('fulfillment') }}">Shipments</a>
-@endsection
+@if($editing)
+    @section('crumb')
+        <x-ui.back :href="route('shipments.show', $shipment)">{{ $shipment->client_reference ?: $shipment->courier_ref }}</x-ui.back>
+    @endsection
+@endif
 
 @section('content')
 @php

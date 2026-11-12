@@ -355,7 +355,7 @@ class ShipmentShowTest extends TestCase
         $html = $this->get(route('shipments.show', $s->public_id))->assertOk()->getContent();
 
         // Back to the list, with the icon (never a text arrow).
-        $this->assertMatchesRegularExpression('#<a class="sd-crumb" href="'.preg_quote(route('fulfillment'), '#').'"><svg[^>]*>.*?</svg>\s*Shipments</a>#s', $html);
+        $this->assertMatchesRegularExpression('#<a class="x-back" href="'.preg_quote(route('fulfillment'), '#').'"><svg[^>]*>.*?</svg>\s*Shipments</a>#s', $html);
         // Cancel shipment is red-outlined, after a divider that sets it apart from Print waybill.
         $this->assertMatchesRegularExpression('#Print waybill</button>\s*<span class="sd-actions__sep" aria-hidden="true"></span>\s*<button type="button"\s+class="x-btn x-btn--danger-outline x-btn--md sd-cancel"[^>]*>Cancel shipment</button>#', $html);
         $this->assertDoesNotMatchRegularExpression('#>\s*Cancel\s*</button>#', $html);

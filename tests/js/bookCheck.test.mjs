@@ -172,4 +172,39 @@ test('a stored draft uses the server rows instead of the form fields', () => {
     c.openCheck({ dataset: { book: '' } });
     assert.deepEqual(c.checkRows, rows);
     assert.equal(c.check.state, 'loading');
+    assert.equal(c.check.open, false, 'the dialog stays shut while the check runs');
+    assert.equal(c.checking, true);
+});
+
+test('the dialog opens only with the answer, and never for a form with errors', async () => {
+    const realFetch = globalThis.fetch;
+    const realFormData = globalThis.FormData;
+    globalThis.FormData = class { delete() {} };
+    const submits = [];
+    const book = { isConnected: true, dataset: { book: '' }, setAttribute() {}, removeAttribute() {} };
+    const run = async (status, body) => {
+        globalThis.fetch = async () => ({ status, json: async () => body });
+        const c = bookCheck({ rows: [], checkUrl: '/x' });
+        c.$nextTick = (fn) => fn();
+        c.$refs = {};
+        c.$root = { requestSubmit: (s) => submits.push(s) };
+        globalThis.document ??= { querySelector: () => null };
+        c.openCheck(book);
+        assert.equal(c.check.open, false);
+        await c.runCheck.call(c);
+        return c;
+    };
+    try {
+        const invalid = await run(422, { errors: {} });
+        assert.equal(invalid.check.open, false);
+        assert.deepEqual(submits, [book]);
+        const refused = await run(200, { error: 'Too long for SPX', title: 'Too long for SPX', detail: 'Length is 35 cm.' });
+        assert.equal(refused.check.open, true);
+        assert.equal(refused.check.state, 'refused');
+        assert.equal(refused.checking, false);
+        assert.equal(submits.length, 1, 'a refusal is not submitted');
+    } finally {
+        globalThis.fetch = realFetch;
+        globalThis.FormData = realFormData;
+    }
 });

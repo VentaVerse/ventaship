@@ -60,7 +60,7 @@
 @endsection
 
 @section('crumb')
-    <a class="sd-crumb" href="{{ route('fulfillment') }}"><x-ui.icon name="chevron-left" size="14" /> Shipments</a>
+    <x-ui.back :href="route('fulfillment')">Shipments</x-ui.back>
 @endsection
 
 @if(in_array(true, [$act['print'], $act['edit_booking'], $act['retry'], $act['book'], $act['edit'], $act['cancel'], $act['delete']], true))

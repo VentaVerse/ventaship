@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('title', $pickup ? 'Edit pickup address' : 'Add pickup address')
-@section('crumb')<a href="{{ route('addresses.index', ['tab' => 'pickup']) }}">Addresses</a>@endsection
+@section('crumb')<x-ui.back :href="route('addresses.index', ['tab' => 'pickup'])">Addresses</x-ui.back>@endsection
 
 @section('content')
 <section class="x-panel addr-page">

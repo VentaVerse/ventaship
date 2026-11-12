@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('title', $customer ? 'Edit customer' : 'Add customer')
-@section('crumb')<a href="{{ route('addresses.index', ['tab' => 'customers']) }}">Addresses</a>@endsection
+@section('crumb')<x-ui.back :href="route('addresses.index', ['tab' => 'customers'])">Addresses</x-ui.back>@endsection
 
 @section('content')
 <section class="x-panel addr-page">
