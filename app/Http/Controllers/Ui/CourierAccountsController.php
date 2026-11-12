@@ -47,7 +47,8 @@ class CourierAccountsController extends Controller
             'fields' => array_map($withValue, array_values(array_filter($plain, fn (array $f) => ($f['section'] ?? null) !== 'account'))),
             'environments' => $this->environments($courier, $account, $accounts, $settings),
             'webhook' => $account ? $accounts->webhookAddress($account, true) : null,
-            'blocks' => $account?->courier === 'lbc' ? app(TrackingNumberSeriesService::class)->blockRows($account) : null,
+            // LBC's assigned series shows from the first visit, so it can be entered with the keys at set up.
+            'blocks' => $courier === 'lbc' ? ($account ? app(TrackingNumberSeriesService::class)->blockRows($account) : []) : null,
         ]);
     }
 
@@ -106,6 +107,13 @@ class CourierAccountsController extends Controller
         };
 
         $attempt('mode', fn () => $accounts->setMode($account, $data['mode'], $actor));
+
+        // An assigned series typed on the page (at set up, before the account exists) is added with the save.
+        $first = trim((string) ($data['series']['first'] ?? ''));
+        $last = trim((string) ($data['series']['last'] ?? ''));
+        if ($account->courier === 'lbc' && $first !== '' && $last !== '') {
+            $attempt('series.first', fn () => $accounts->addLbcSeries($account, $first, $last, $actor));
+        }
 
         // Plain fields only: booking defaults, account details and both environments' plain IDs. Secrets have their own
         // masked controls below.

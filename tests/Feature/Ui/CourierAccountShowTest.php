@@ -72,7 +72,7 @@ class CourierAccountShowTest extends TestCase
         $lbc = $this->account('lbc');
         $html = $this->actingAs($admin)->get(route('accounts.show', $lbc->courier))->assertOk()
             ->assertDontSee('Allow live booking')->assertSee('Client code')->assertSee('Shipper Account No')->assertSee('API gateway')
-            ->assertSeeInOrder(['Sandbox keys', 'Production keys', 'Account', 'API gateway', 'Number blocks'])
+            ->assertSeeInOrder(['Sandbox keys', 'Production keys', 'Account', 'API gateway', 'Assigned series'])
             ->getContent();
         $this->assertStringNotContainsString('lbc_mode', $html);
         $this->assertStringNotContainsString('Key set', $html);

@@ -148,9 +148,9 @@
 
         @if($blocks !== null)
             <div class="st-sec">
-                <h2 class="st-h">Number blocks</h2>
+                <h2 class="st-h">Assigned series</h2>
                 @if($blocks === [])
-                    <x-ui.empty title="No blocks" />
+                    <x-ui.empty title="No assigned series" />
                 @else
                     <div class="ac-blocks-wrap">
                         <table class="ac-blocks">
@@ -168,15 +168,27 @@
                         </table>
                     </div>
                 @endif
-                <div class="st-row ac-block-add">
-                    <x-ui.field label="First" name="first" for="f-block-first">
-                        <x-ui.input id="f-block-first" name="first" form="series-form" class="st-ctl" value="{{ old('first') }}" inputmode="numeric" maxlength="20" autocomplete="off" />
-                    </x-ui.field>
-                    <x-ui.field label="Last" name="last" for="f-block-last">
-                        <x-ui.input id="f-block-last" name="last" form="series-form" class="st-ctl" value="{{ old('last') }}" inputmode="numeric" maxlength="20" autocomplete="off" />
-                    </x-ui.field>
-                    <x-ui.button type="submit" form="series-form">Add block</x-ui.button>
-                </div>
+                @if($account)
+                    <div class="st-row ac-block-add">
+                        <x-ui.field label="First" name="first" for="f-block-first">
+                            <x-ui.input id="f-block-first" name="first" form="series-form" class="st-ctl" value="{{ old('first') }}" inputmode="numeric" maxlength="20" autocomplete="off" />
+                        </x-ui.field>
+                        <x-ui.field label="Last" name="last" for="f-block-last">
+                            <x-ui.input id="f-block-last" name="last" form="series-form" class="st-ctl" value="{{ old('last') }}" inputmode="numeric" maxlength="20" autocomplete="off" />
+                        </x-ui.field>
+                        <x-ui.button type="submit" form="series-form">Add series</x-ui.button>
+                    </div>
+                @else
+                    {{-- Before set up the series is part of the main form and is added by Save. --}}
+                    <div class="st-row ac-block-add">
+                        <x-ui.field label="First" name="series.first" for="f-block-first">
+                            <x-ui.input id="f-block-first" name="series[first]" class="st-ctl" value="{{ old('series.first') }}" inputmode="numeric" maxlength="20" autocomplete="off" />
+                        </x-ui.field>
+                        <x-ui.field label="Last" name="series.last" for="f-block-last">
+                            <x-ui.input id="f-block-last" name="series[last]" class="st-ctl" value="{{ old('series.last') }}" inputmode="numeric" maxlength="20" autocomplete="off" />
+                        </x-ui.field>
+                    </div>
+                @endif
             </div>
         @endif
 
@@ -190,7 +202,7 @@
         <button type="submit" id="account-save-confirmed" hidden tabindex="-1" aria-hidden="true"></button>
         <button type="submit" id="account-save-test-confirmed" name="after" value="test" hidden tabindex="-1" aria-hidden="true"></button>
     </form>
-    @if($blocks !== null)
+    @if($blocks !== null && $account)
         <form id="series-form" method="POST" action="{{ route('accounts.series', $courier) }}" novalidate>@csrf</form>
     @endif
 </section>

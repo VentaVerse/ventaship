@@ -116,14 +116,14 @@ class CourierAccountWebhookSeriesTest extends TestCase
     {
         $l = $this->account('lbc');
         $this->actingAs($this->admin())->get(route('accounts.show', $l->courier))->assertOk()
-            ->assertSee('No blocks')->assertSee('Add block');
+            ->assertSee('No assigned series')->assertSee('Add series');
 
         $this->post(route('accounts.series', $l->courier), ['first' => '1000', 'last' => '1099'])
             ->assertRedirect(route('accounts.show', $l->courier))->assertSessionHas('status', 'Added');
         $block = TrackingNumberSeries::query()->where('courier_account_id', $l->id)->sole();
         $block->update(['last_issued_number' => 1039]);
 
-        $html = $this->get(route('accounts.show', $l->courier))->assertOk()->assertDontSee('No blocks')->getContent();
+        $html = $this->get(route('accounts.show', $l->courier))->assertOk()->assertDontSee('No assigned series')->getContent();
         $this->assertMatchesRegularExpression('/1000.*1099.*1040.*60/s', $html);
         $this->assertSame(1, AuditEntry::query()->where('action', 'tracking_series.added')->count());
     }
@@ -151,7 +151,7 @@ class CourierAccountWebhookSeriesTest extends TestCase
         $this->actingAs($this->admin())->get(route('accounts.show', 'lbc'))->assertOk()
             ->assertDontSee('Webhook')->assertDontSee('Public address');
         $this->get(route('accounts.show', 'quadx'))->assertOk()
-            ->assertSee('Webhook')->assertDontSee('Add block')->assertDontSee('No blocks');
+            ->assertSee('Webhook')->assertDontSee('Add series')->assertDontSee('No assigned series');
     }
 
     public function test_block_rows_count_released_numbers_and_match_status(): void

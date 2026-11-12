@@ -29,6 +29,9 @@ class SaveCourierAccountRequest extends FormRequest
             'settings.*' => ['nullable', 'string', 'max:'.self::MAX_SETTING_INPUT],
             'secrets' => ['nullable', 'array'],
             'secrets.*' => ['nullable', 'string', 'max:'.CourierAccounts::MAX_VALUE_LENGTH],
+            'series' => ['nullable', 'array'],
+            'series.first' => ['nullable', 'string', 'max:20', 'required_with:series.last'],
+            'series.last' => ['nullable', 'string', 'max:20', 'required_with:series.first'],
             'after' => ['nullable', 'string', Rule::in(['test'])],
         ];
     }

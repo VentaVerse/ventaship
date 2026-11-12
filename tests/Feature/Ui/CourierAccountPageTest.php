@@ -276,7 +276,29 @@ class CourierAccountPageTest extends TestCase
 
         // The page now shows the saved key masked, and the account's own sections.
         $this->get(route('accounts.show', 'lbc'))->assertOk()->assertDontSee(self::SECRET)
-            ->assertSee('aria-label="Edit Sandbox Common API key"', false)->assertSee('Number blocks')->assertSee('Test connection');
+            ->assertSee('aria-label="Edit Sandbox Common API key"', false)->assertSee('Assigned series')->assertSee('Test connection');
+    }
+
+    public function test_first_save_adds_the_assigned_series(): void
+    {
+        $this->actingAs($this->admin())->put(route('accounts.update', 'lbc'), [
+            'mode' => 'sandbox',
+            'secrets' => ['lbc_sandbox_common_key' => self::SECRET],
+            'series' => ['first' => '37686000000001', 'last' => '37686000003000'],
+        ])->assertRedirect(route('accounts.show', 'lbc'))->assertSessionHas('status', 'Saved');
+
+        $block = \App\Couriers\TrackingNumbers\TrackingNumberSeries::query()->sole();
+        $this->assertSame(['37686000000001', '37686000003000'], [(string) $block->first_number, (string) $block->last_number]);
+
+        // A bad series refuses the whole set up: no account is left behind.
+        CourierAccount::query()->delete();
+        \App\Couriers\TrackingNumbers\TrackingNumberSeries::query()->delete();
+        $this->from(route('accounts.show', 'lbc'))->put(route('accounts.update', 'lbc'), [
+            'mode' => 'sandbox',
+            'series' => ['first' => 'abc', 'last' => '5'],
+        ])->assertSessionHasErrors('series.first');
+        $this->assertNull(CourierAccount::query()->first());
+        $this->put(route('accounts.update', 'lbc'), ['mode' => 'sandbox', 'series' => ['first' => '10']])->assertSessionHasErrors('series.last');
     }
 
     public function test_first_save_and_test_creates_then_tests(): void
@@ -312,13 +334,13 @@ class CourierAccountPageTest extends TestCase
         $this->assertStringContainsString('name="secrets[quadx_sandbox_api_key]" value=""', $html);
     }
 
-    public function test_no_account_page_shows_keys_and_defaults_but_not_the_webhook_or_blocks(): void
+    public function test_no_account_page_shows_keys_and_defaults_but_not_the_webhook(): void
     {
         config(['app.url' => 'https://ship.example.com']);
 
         $html = $this->actingAs($this->admin())->get(route('accounts.show', 'spx'))->assertOk()
             ->assertSee('Sandbox keys')->assertSee('Production keys')->assertSee('Booking defaults')->assertSee('Pouch presets')
-            ->assertDontSee('Webhook')->assertDontSee('Number blocks')->getContent();
+            ->assertDontSee('Webhook')->assertDontSee('Assigned series')->getContent();
         $this->assertMatchesRegularExpression('/data-keys="production"[^>]*\shidden[\s>]/', $html);
         $this->assertStringContainsString('name="secrets[spx_sandbox_secret_key]"', $html);
         $this->assertStringContainsString('name="settings[spx_sandbox_app_id]"', $html);
@@ -326,7 +348,9 @@ class CourierAccountPageTest extends TestCase
         $this->assertSame(['sandbox', null, false], [$form['env'], $form['saved'], $form['dirty']]);
         $this->assertSame('Switch SPX to Production? Bookings will be real.', $form['confirm']['title']);
 
-        $this->get(route('accounts.show', 'lbc'))->assertOk()->assertSee('API gateway')->assertDontSee('Number blocks')->assertDontSee('Add block');
+        // LBC's assigned series can be typed at set up; it is saved with the account, so there is no separate button yet.
+        $this->get(route('accounts.show', 'lbc'))->assertOk()->assertSee('API gateway')->assertSee('Assigned series')
+            ->assertSee('name="series[first]"', false)->assertDontSee('Add series');
     }
 
     // --- JSON settings ------------------------------------------------------------------------------------------
