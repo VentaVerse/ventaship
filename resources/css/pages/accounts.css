@@ -317,4 +317,54 @@
             flex: 1 1 140px;
         }
     }
+
+    /* SPX pouch presets: Small, Medium, Large by size. */
+    .ac-pouches {
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        border: 0;
+    }
+
+    .ac-pouches > .fm-label {
+        margin-bottom: 8px;
+    }
+
+    .ac-pouches__table {
+        width: 100%;
+        max-width: 520px;
+        table-layout: fixed;
+        border-collapse: collapse;
+    }
+
+    .ac-pouches__table th,
+    .ac-pouches__table td {
+        padding: 0 8px 8px 0;
+        vertical-align: top;
+        text-align: left;
+    }
+
+    .ac-pouches__table thead td {
+        width: 72px;
+    }
+
+    .ac-pouches__table thead th {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--bl-ink-2);
+        vertical-align: bottom;
+        padding-bottom: 6px;
+    }
+
+    .ac-pouches__table tbody th {
+        padding-top: 9px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .ac-pouches__in.x-input {
+        width: 100%;
+        min-width: 0;
+        font-variant-numeric: tabular-nums;
+    }
 }

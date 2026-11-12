@@ -116,6 +116,40 @@
                         $in = $plainInput($f, 'f-set-' . $f['key']);
                         $type = $f['type'] ?? 'text';
                     @endphp
+                    @if($type === 'pouch_presets')
+                        @php
+                            $pouches = \App\Couriers\Spx\SpxFulfillment::pouchTable(is_string($f['value'] ?? null) ? $f['value'] : null);
+                            $sizeLabels = ['length_cm' => 'Length (cm)', 'width_cm' => 'Width (cm)', 'height_cm' => 'Height (cm)', 'max_weight_kg' => 'Up to (kg)'];
+                        @endphp
+                        <div class="st-row">
+                            <fieldset class="ac-pouches">
+                                <legend class="fm-label">{{ $f['label'] }}</legend>
+                                <table class="ac-pouches__table">
+                                    <thead><tr><td></td>@foreach($sizeLabels as $label)<th scope="col">{{ $label }}</th>@endforeach</tr></thead>
+                                    <tbody>
+                                        @foreach($pouches as $slug => $row)
+                                            <tr>
+                                                <th scope="row">{{ $row['label'] }}</th>
+                                                @foreach($sizeLabels as $key => $label)
+                                                    @php
+                                                        $errKey = "pouches.{$slug}.{$key}";
+                                                        $bad = $errors->has($errKey);
+                                                        $value = old($errKey, (string) $row[$key]);
+                                                    @endphp
+                                                    <td>
+                                                        <input class="x-input ac-pouches__in{{ $bad ? ' is-invalid' : '' }}" type="text" inputmode="decimal" id="f-pouch-{{ $slug }}-{{ $key }}" name="pouches[{{ $slug }}][{{ $key }}]" value="{{ $value }}" aria-label="{{ $row['label'] }} {{ strtolower($label) }}" maxlength="8" autocomplete="off"
+                                                               @if($bad) aria-invalid="true" aria-describedby="f-pouch-{{ $slug }}-{{ $key }}-error" @endif>
+                                                        @if($bad)<p class="fm-error" id="f-pouch-{{ $slug }}-{{ $key }}-error">{{ $errors->first($errKey) }}</p>@endif
+                                                    </td>
+                                                @endforeach
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </fieldset>
+                        </div>
+                        @continue
+                    @endif
                     <div class="st-row">
                         <x-ui.field :label="$f['label']" :for="$in['id']" :errorKey="'settings.' . $f['key']">
                             @if($type === 'select')

@@ -355,61 +355,63 @@ class CourierAccountPageTest extends TestCase
 
     // --- JSON settings ------------------------------------------------------------------------------------------
 
-    public function test_json_setting_is_a_pretty_printed_code_box_and_round_trips(): void
+    public function test_spx_pouch_presets_are_a_table_of_sizes_and_round_trip(): void
     {
         $a = $this->account('spx');
-        $compact = '[{"label":"Small","length_cm":25,"width_cm":20,"height_cm":10,"max_weight_kg":3},{"label":"Medium","length_cm":35,"width_cm":25,"height_cm":15,"max_weight_kg":5}]';
+        $compact = '[{"label":"Small","length_cm":25,"width_cm":20,"height_cm":10,"max_weight_kg":3},{"label":"Medium","length_cm":25,"width_cm":35,"height_cm":15,"max_weight_kg":5},{"label":"Large","length_cm":25,"width_cm":45,"height_cm":20,"max_weight_kg":10}]';
         AccountSettings::for($a)->write('spx_pouch_presets', $compact);
         AuditEntry::query()->delete();
 
         $html = $this->actingAs($this->admin())->get(route('accounts.show', 'spx'))->assertOk()
-            ->assertDontSee('(JSON)')->getContent();
-        $pretty = "[\n  {\"label\": \"Small\", \"length_cm\": 25, \"width_cm\": 20, \"height_cm\": 10, \"max_weight_kg\": 3},\n  {\"label\": \"Medium\", \"length_cm\": 35, \"width_cm\": 25, \"height_cm\": 15, \"max_weight_kg\": 5}\n]";
-        $this->assertMatchesRegularExpression('/<label class="fm-label"\s+for="f-set-spx_pouch_presets"\s*>\s*Pouch presets\s*<\/label>/', $html);
-        $this->assertMatchesRegularExpression('/<textarea[^>]*class="x-input st-ctl x-mono ac-json"[^>]*name="settings\[spx_pouch_presets\]"[^>]*rows="4"[^>]*>/', $html);
-        $this->assertStringContainsString('>' . e($pretty) . '</textarea>', $html);
+            ->assertDontSee('name="settings[spx_pouch_presets]"', false)->getContent();
+        $this->assertMatchesRegularExpression('#<legend class="fm-label">Pouch presets</legend>#', $html);
+        $this->assertStringContainsString('name="pouches[medium][width_cm]" value="35" aria-label="Medium width (cm)"', $html);
+        $this->assertStringContainsString('name="pouches[large][max_weight_kg]" value="10" aria-label="Large up to (kg)"', $html);
+
+        $table = fn (array $over = []) => array_replace_recursive([
+            'small' => ['length_cm' => '25', 'width_cm' => '20', 'height_cm' => '10', 'max_weight_kg' => '3'],
+            'medium' => ['length_cm' => '25', 'width_cm' => '35', 'height_cm' => '15', 'max_weight_kg' => '5'],
+            'large' => ['length_cm' => '25', 'width_cm' => '45', 'height_cm' => '20', 'max_weight_kg' => '10'],
+        ], $over);
 
         // Posted back as shown: nothing changes.
-        $this->put(route('accounts.update', 'spx'), ['mode' => 'sandbox', 'settings' => ['spx_pouch_presets' => str_replace("\n", "\r\n", $pretty)]])
+        $this->put(route('accounts.update', 'spx'), ['mode' => 'sandbox', 'pouches' => $table()])
             ->assertSessionHasNoErrors()->assertSessionHas('status', 'Saved');
         $this->assertSame(0, AuditEntry::query()->count());
         $this->assertSame($compact, AccountSettings::for($a)->read('spx_pouch_presets'));
 
-        // An edit is stored compact.
-        $this->put(route('accounts.update', 'spx'), ['mode' => 'sandbox', 'settings' => ['spx_pouch_presets' => "[\n  {\"label\": \"Tiny\", \"length_cm\": 10.0, \"width_cm\": 10, \"height_cm\": 5, \"max_weight_kg\": 1}\n]"]])
+        // A changed size is stored in the same shape, so the form and the API read it as before.
+        $this->put(route('accounts.update', 'spx'), ['mode' => 'sandbox', 'pouches' => $table(['medium' => ['height_cm' => '12.5']])])
             ->assertSessionHasNoErrors();
-        $this->assertSame('[{"label":"Tiny","length_cm":10.0,"width_cm":10,"height_cm":5,"max_weight_kg":1}]', AccountSettings::for($a)->read('spx_pouch_presets'));
+        $this->assertSame(str_replace('"height_cm":15', '"height_cm":12.5', $compact), AccountSettings::for($a)->read('spx_pouch_presets'));
         $this->assertSame(1, AuditEntry::query()->where('action', 'courier_account.setting_changed')->count());
+        $this->assertSame('medium', collect(app(\App\Couriers\CourierRegistry::class)::for($a->fresh())->getParcelOptions())->pluck('value')->get(1));
     }
 
-    public function test_invalid_json_is_an_inline_error_and_comes_back_as_typed(): void
+    public function test_a_bad_pouch_size_is_refused_and_comes_back_as_typed(): void
     {
         $a = $this->account('spx');
-        AccountSettings::for($a)->write('spx_pouch_presets', '[]');
-        $typed = "[\n  {\"label\": \"Small\",\n]";
+        AccountSettings::for($a)->write('spx_pouch_presets', json_encode(\App\Couriers\Spx\SpxFulfillment::DEFAULT_POUCH_PRESETS));
+        $before = AccountSettings::for($a)->read('spx_pouch_presets');
 
         $this->actingAs($this->admin())->from(route('accounts.show', 'spx'))->put(route('accounts.update', 'spx'), [
-            'mode' => 'sandbox', 'settings' => ['spx_pouch_presets' => $typed],
-        ])->assertSessionHasErrors(['settings.spx_pouch_presets' => 'Enter valid JSON.']);
-        $this->assertSame('[]', AccountSettings::for($a)->read('spx_pouch_presets'));
+            'mode' => 'sandbox',
+            'pouches' => ['small' => ['length_cm' => '0', 'width_cm' => 'abc', 'height_cm' => '', 'max_weight_kg' => '3']],
+        ])->assertSessionHasErrors([
+            'pouches.small.length_cm' => 'Enter a size', 'pouches.small.width_cm' => 'Enter a size', 'pouches.small.height_cm' => 'Enter a size',
+        ]);
+        $this->assertSame($before, AccountSettings::for($a)->read('spx_pouch_presets'));
 
         $html = $this->get(route('accounts.show', 'spx'))->assertOk()->getContent();
-        $this->assertMatchesRegularExpression('/<div class="fm-error"\s+id="f-set-spx_pouch_presets-error"\s*>Enter valid JSON.<\/div>/', $html);
-        $this->assertMatchesRegularExpression('/<textarea[^>]*aria-invalid="true"[^>]*>' . preg_quote(e($typed), '/') . '<\/textarea>/', $html);
+        $this->assertMatchesRegularExpression('#name="pouches\[small\]\[width_cm\]" value="abc"[^>]*aria-invalid="true"#', $html);
+        $this->assertStringContainsString('<p class="fm-error" id="f-pouch-small-length_cm-error">Enter a size</p>', $html);
     }
 
-    public function test_json_check_lives_in_the_service(): void
+    public function test_a_new_spx_account_starts_with_the_default_pouches(): void
     {
-        $a = $this->account('spx');
-        $svc = app(CourierAccounts::class);
-
-        $svc->setSetting($a, 'spx_pouch_presets', '{"a": 1}');
-        $this->assertSame('{"a":1}', AccountSettings::for($a)->read('spx_pouch_presets'));
-        $svc->setSetting($a, 'spx_pouch_presets', '{}');
-        $this->assertSame('{}', AccountSettings::for($a)->read('spx_pouch_presets'), 'an empty object stays an object');
-
-        $this->expectExceptionMessage('Enter valid JSON.');
-        $svc->setSetting($a, 'spx_pouch_presets', 'not json');
+        $html = $this->actingAs($this->admin())->get(route('accounts.show', 'spx'))->assertOk()->getContent();
+        $this->assertStringContainsString('name="pouches[small][length_cm]" value="25"', $html);
+        $this->assertStringContainsString('name="pouches[large][width_cm]" value="45"', $html);
     }
 
     // --- Webhook, toggle, phones --------------------------------------------------------------------------------

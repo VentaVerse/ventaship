@@ -6,6 +6,7 @@ use App\Couriers\AccountSettings;
 use App\Couriers\CourierAccountException;
 use App\Couriers\CourierAccounts;
 use App\Couriers\CourierRegistry;
+use App\Couriers\Spx\SpxFulfillment;
 use App\Couriers\TrackingNumbers\TrackingNumberSeriesService;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Ui\SaveCourierAccountRequest;
@@ -107,6 +108,15 @@ class CourierAccountsController extends Controller
         };
 
         $attempt('mode', fn () => $accounts->setMode($account, $data['mode'], $actor));
+
+        // SPX's pouch table is stored as one setting; it is written only when a size changed.
+        if ($account->courier === 'spx' && is_array($data['pouches'] ?? null)) {
+            $json = SpxFulfillment::pouchJson($data['pouches']);
+            $stored = (string) AccountSettings::for($account)->read('spx_pouch_presets', '');
+            if ($json !== SpxFulfillment::pouchJson(SpxFulfillment::pouchTable($stored)) || $stored === '') {
+                $attempt('pouches', fn () => $accounts->setSetting($account, 'spx_pouch_presets', $json, $actor));
+            }
+        }
 
         // An assigned series typed on the page (at set up, before the account exists) is added with the save.
         $first = trim((string) ($data['series']['first'] ?? ''));

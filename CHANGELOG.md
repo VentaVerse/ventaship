@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Updates
+
+- SPX pouch presets are now a table: a length, width, height and weight for Small, Medium and Large.
+
 ## 1.1.0 (2026-11-13)
 
 ### New features

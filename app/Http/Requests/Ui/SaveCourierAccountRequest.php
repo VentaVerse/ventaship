@@ -29,10 +29,24 @@ class SaveCourierAccountRequest extends FormRequest
             'settings.*' => ['nullable', 'string', 'max:'.self::MAX_SETTING_INPUT],
             'secrets' => ['nullable', 'array'],
             'secrets.*' => ['nullable', 'string', 'max:'.CourierAccounts::MAX_VALUE_LENGTH],
+            'pouches' => ['nullable', 'array'],
+            'pouches.*' => ['array'],
+            'pouches.*.*' => ['required', 'numeric', 'gt:0', 'max:1000'],
             'series' => ['nullable', 'array'],
             'series.first' => ['nullable', 'string', 'max:20', 'required_with:series.last'],
             'series.last' => ['nullable', 'string', 'max:20', 'required_with:series.first'],
             'after' => ['nullable', 'string', Rule::in(['test'])],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public function messages(): array
+    {
+        return [
+            'pouches.*.*.required' => 'Enter a size',
+            'pouches.*.*.numeric' => 'Enter a size',
+            'pouches.*.*.gt' => 'Enter a size',
+            'pouches.*.*.max' => 'Too big',
         ];
     }
 

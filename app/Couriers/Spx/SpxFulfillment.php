@@ -72,6 +72,60 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
      * height up to 30 cm, weight up to 10 kg. Small/Medium/Large mirrors the
      * same shopper mental model QuadX's pouch parcel options already use.
      */
+    /** The pouch sizes the account page edits, in order; their parcel values (small, medium, large) never change, since stores book with them. */
+    public const POUCH_SIZES = ['length_cm', 'width_cm', 'height_cm', 'max_weight_kg'];
+
+    /**
+     * Small, Medium and Large with their stored sizes, any size missing from the stored setting taken from the
+     * defaults: the table the account page shows, keyed by parcel value.
+     *
+     * @return array<string, array{label: string, length_cm: float|int, width_cm: float|int, height_cm: float|int, max_weight_kg: float|int}>
+     */
+    public static function pouchTable(?string $stored): array
+    {
+        $decoded = $stored ? json_decode($stored, true) : null;
+        $saved = [];
+        foreach (is_array($decoded) ? $decoded : [] as $p) {
+            if (is_array($p) && isset($p['label'])) {
+                $saved[Str::slug((string) $p['label'])] = $p;
+            }
+        }
+
+        $table = [];
+        foreach (self::DEFAULT_POUCH_PRESETS as $default) {
+            $slug = Str::slug($default['label']);
+            $row = ['label' => $default['label']];
+            foreach (self::POUCH_SIZES as $key) {
+                $value = $saved[$slug][$key] ?? null;
+                $row[$key] = is_numeric($value) && (float) $value > 0 ? $value + 0 : $default[$key];
+            }
+            $table[$slug] = $row;
+        }
+
+        return $table;
+    }
+
+    /**
+     * The setting's stored form of a posted table (parcel value => sizes), in Small, Medium, Large order.
+     *
+     * @param  array<string, array<string, mixed>>  $posted
+     */
+    public static function pouchJson(array $posted): string
+    {
+        $out = [];
+        foreach (self::DEFAULT_POUCH_PRESETS as $default) {
+            $slug = Str::slug($default['label']);
+            $row = ['label' => $default['label']];
+            foreach (self::POUCH_SIZES as $key) {
+                $value = (float) ($posted[$slug][$key] ?? $default[$key]);
+                $row[$key] = floor($value) === $value ? (int) $value : $value;
+            }
+            $out[] = $row;
+        }
+
+        return json_encode($out, JSON_UNESCAPED_SLASHES);
+    }
+
     public const DEFAULT_POUCH_PRESETS = [
         ['label' => 'Small',  'length_cm' => 25, 'width_cm' => 20, 'height_cm' => 10, 'max_weight_kg' => 3],
         ['label' => 'Medium', 'length_cm' => 25, 'width_cm' => 35, 'height_cm' => 15, 'max_weight_kg' => 5],
@@ -1941,10 +1995,10 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
      * its live one); the account's environment picks the set. On/off is the
      * account's status, so it is not a setting.
      *
-     * spx_pouch_presets is `type: 'json'`: a JSON string of
-     * `{label,length_cm,width_cm,height_cm,max_weight_kg}` objects (see
-     * DEFAULT_POUCH_PRESETS above for the shape and defaults). It is checked
-     * as JSON and stored compact; the admin screen shows it in a code box.
+     * spx_pouch_presets is `type: 'pouch_presets'`: the admin screen shows
+     * Small, Medium and Large as a table of sizes (pouchTable()), and stores
+     * them as a compact JSON string of `{label,length_cm,width_cm,height_cm,
+     * max_weight_kg}` objects, the shape of DEFAULT_POUCH_PRESETS.
      */
     public function settingsSchema(): array
     {
@@ -1961,9 +2015,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
             [
                 'key'   => 'spx_pouch_presets',
                 'label' => 'Pouch presets',
-                'type'  => 'json',
-                'help'  => 'JSON array of {label, length_cm, width_cm, height_cm, max_weight_kg}. '
-                    . 'Defaults: Small 25×20×10cm/3kg, Medium 25×35×15cm/5kg, Large 25×45×20cm/10kg.',
+                'type'  => 'pouch_presets',
             ],
         ];
     }
