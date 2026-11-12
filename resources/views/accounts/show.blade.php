@@ -195,7 +195,6 @@
         <p class="x-sr" aria-live="polite" x-text="status"></p>
 
         <div class="st-bar">
-            <x-ui.button :href="route('accounts.show', $courier)">Discard</x-ui.button>
             <x-ui.button type="submit" data-save>Save</x-ui.button>
             <x-ui.button variant="primary" type="submit" name="after" value="test" data-save-test>Save and test</x-ui.button>
         </div>

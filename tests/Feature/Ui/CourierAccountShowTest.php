@@ -50,7 +50,7 @@ class CourierAccountShowTest extends TestCase
             ->assertSee('QuadX')->assertSee('Sandbox')->assertSee('Connected')
             ->assertSee('Test connection')->assertSee('Environment')->assertSee('Booking defaults')
             ->assertSee('Default schedule')->assertSee('Default parcel')
-            ->assertSee('Discard')->assertSee('Save')
+            ->assertDontSee('Discard')->assertSee('Save')
             ->assertDontSee('Default for QuadX')->assertDontSee('Staging')
             ->getContent();
         $this->assertStringContainsString('role="radiogroup"', $html);

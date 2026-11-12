@@ -180,7 +180,7 @@ class CourierAccountPageTest extends TestCase
         $this->account('quadx');
 
         $html = $this->actingAs($this->admin())->get(route('accounts.show', 'quadx'))->assertOk()
-            ->assertSeeInOrder(['Discard', 'Save', 'Save and test'])->getContent();
+            ->assertSeeInOrder(['Save', 'Save and test'])->assertDontSee('Discard')->getContent();
 
         $this->assertMatchesRegularExpression('/<button type="submit"\s+class="x-btn x-btn--default x-btn--md" data-save="data-save">Save<\/button>/', $html);
         $this->assertMatchesRegularExpression('/<button type="submit"\s+class="x-btn x-btn--primary x-btn--md" name="after" value="test" data-save-test="data-save-test">Save and test<\/button>/', $html);
