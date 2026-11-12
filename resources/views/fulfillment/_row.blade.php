@@ -62,6 +62,6 @@
         @elseif($next)
             <x-ui.button size="sm" :variant="$next['variant']" :href="$next['href']" class="fl-next">{{ $next['label'] }}</x-ui.button>
         @endif
-        <a class="fl-view" href="{{ $show }}" aria-label="View {{ $name ?: ($shipment->client_reference ?: $shipment->courier_ref) }}"><x-ui.icon name="eye" size="18" /></a>
+        <x-ui.icon-link class="fl-view" icon="eye" :href="$show" :label="'View '.($name ?: ($shipment->client_reference ?: $shipment->courier_ref))" />
     </div>
 </div>

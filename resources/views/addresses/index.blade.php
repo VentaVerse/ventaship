@@ -54,7 +54,7 @@
                                         <x-ui.button size="sm" type="submit" :aria-label="'Make ' . $p->label . ' the default'">Make default</x-ui.button>
                                     </form>
                                 @endunless
-                                <x-ui.button size="sm" :href="route('addresses.pickup.edit', $p)" :aria-label="'Edit ' . $p->label">Edit</x-ui.button>
+                                <x-ui.icon-link icon="pencil" :href="route('addresses.pickup.edit', $p)" :label="'Edit '.$p->label" />
                             </td>
                         </tr>
                     @endforeach
@@ -91,7 +91,7 @@
                             <td class="addr-sub" data-label="Address">{{ $line((array) $c->address) }}</td>
                             <td class="x-num addr-pair" data-label="Shipments">{{ number_format($c->shipments_count) }}</td>
                             <td class="addr-pair" data-label="Last shipped">{{ $c->last_shipped_at?->format('j M Y') ?? 'Never' }}</td>
-                            <td class="addr-act"><x-ui.button size="sm" :href="route('addresses.customers.edit', $c)" :aria-label="'Edit ' . $shown">Edit</x-ui.button></td>
+                            <td class="addr-act"><x-ui.icon-link icon="pencil" :href="route('addresses.customers.edit', $c)" :label="'Edit '.$shown" /></td>
                         </tr>
                     @endforeach
                 </tbody>

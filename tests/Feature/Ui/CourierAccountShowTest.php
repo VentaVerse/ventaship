@@ -85,11 +85,11 @@ class CourierAccountShowTest extends TestCase
         $this->actingAs($this->admin())->get(route('accounts.index'))->assertSee('Inactive');
     }
 
-    public function test_list_open_button_has_accessible_name(): void
+    public function test_list_edit_icon_has_accessible_name(): void
     {
         $account = $this->account('quadx');
         $this->actingAs($this->admin())->get(route('accounts.index'))
-            ->assertSee('aria-label="Open QuadX"', false)
+            ->assertSee('aria-label="Edit QuadX"', false)
             ->assertSee(route('accounts.show', $account->courier), false);
     }
 

@@ -328,6 +328,35 @@
         color: var(--bl-ink-3);
     }
 
+    /* An icon that opens a row's page: the eye views, the pencil edits. */
+    .x-view {
+        display: inline-grid;
+        place-items: center;
+        width: 36px;
+        height: 36px;
+        border: 1px solid var(--bl-rule-2);
+        border-radius: 9px;
+        color: var(--bl-ink-3);
+        vertical-align: middle;
+    }
+
+    .x-view:hover {
+        background: var(--bl-brand-w);
+        color: var(--bl-brand-link);
+    }
+
+    .x-view:focus-visible {
+        outline: 2px solid var(--bl-brand-link);
+        outline-offset: 2px;
+    }
+
+    @media (max-width: 640px) {
+        .x-view {
+            width: 44px;
+            height: 44px;
+        }
+    }
+
     /* The back link of a second-level page. */
     .x-back {
         display: inline-flex;

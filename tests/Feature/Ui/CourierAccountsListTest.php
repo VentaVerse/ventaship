@@ -34,7 +34,9 @@ class CourierAccountsListTest extends TestCase
 
         $this->assertSame(3, preg_match_all('/<li class="ac-row[" ]/', $html));
         $this->assertStringContainsString('Not set up', $html);
-        $this->assertSame(2, substr_count($html, '>Open</a>'));
+        // A set-up account is edited with the pencil; there is no Open button.
+        $this->assertSame(0, substr_count($html, '>Open</a>'));
+        $this->assertSame(2, preg_match_all('#<a class="x-view" href="[^"]+" aria-label="Edit (QuadX|SPX)"><svg#', $html));
         $this->assertSame(1, substr_count($html, '>Set up</a>'));
     }
 

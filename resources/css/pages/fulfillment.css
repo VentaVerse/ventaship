@@ -293,26 +293,9 @@
     .fl-cell--act { grid-area: act; }
     .fl-cell--act:empty { display: none; }
 
-    /* View: the eye at the end of a row. On a phone the whole row already opens the shipment, so it is left out. */
-    .fl-view {
+    /* On a phone the whole row already opens the shipment, so the eye is left out. */
+    .x-view.fl-view {
         display: none;
-        place-items: center;
-        width: 36px;
-        height: 36px;
-        border: 1px solid var(--bl-rule-2);
-        border-radius: 9px;
-        color: var(--bl-ink-3);
-        vertical-align: middle;
-    }
-
-    .fl-view:hover {
-        background: var(--bl-brand-w);
-        color: var(--bl-brand-link);
-    }
-
-    .fl-view:focus-visible {
-        outline: 2px solid var(--bl-brand-link);
-        outline-offset: 2px;
     }
 
     .fl-cell--act:not(:has(.fl-next)) { display: none; }
@@ -536,7 +519,7 @@
             display: flex;
         }
 
-        .fl-view {
+        .x-view.fl-view {
             display: inline-grid;
             position: relative;
             z-index: 1;

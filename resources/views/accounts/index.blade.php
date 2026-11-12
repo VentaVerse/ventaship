@@ -42,7 +42,11 @@
                     @endif
                 </div>
                 <div class="ac-row__act">
-                    <x-ui.button size="sm" :variant="$account ? ($failed ? 'danger-outline' : 'default') : 'primary'" :href="route('accounts.show', $row['courier'])" aria-label="{{ $action }} {{ $name }}">{{ $action }}</x-ui.button>
+                    @if($action === 'Open')
+                        <x-ui.icon-link icon="pencil" :href="route('accounts.show', $row['courier'])" :label="'Edit '.$name" />
+                    @else
+                        <x-ui.button size="sm" :variant="$account ? 'danger-outline' : 'primary'" :href="route('accounts.show', $row['courier'])" aria-label="{{ $action }} {{ $name }}">{{ $action }}</x-ui.button>
+                    @endif
                 </div>
             </li>
         @endforeach
