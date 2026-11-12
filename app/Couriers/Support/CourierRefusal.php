@@ -9,7 +9,13 @@ namespace App\Couriers\Support;
  */
 final class CourierRefusal
 {
-    public function __construct(public readonly string $title, public readonly string $detail = '') {}
+    /** @param  string|null  $code  a stable machine code for API clients (`parcel_too_long`, `spx_no_delivery`, ...) */
+    public function __construct(public readonly string $title, public readonly string $detail = '', public readonly ?string $code = null) {}
+
+    public function withCode(?string $code): self
+    {
+        return new self($this->title, $this->detail, $code);
+    }
 
     /** The one line stored as a shipment's error: "Too long for SPX. Length is 35 cm. SPX takes up to 25 cm." */
     public function message(): string

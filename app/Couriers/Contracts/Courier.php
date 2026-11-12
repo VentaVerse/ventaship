@@ -207,8 +207,13 @@ interface Courier
      * This call MUST NOT create anything. It is a question, and the endpoints
      * behind it (QuadX /orders/estimates/rates, SPX batch_check_order) are
      * quote endpoints that book nothing.
+     *
+     * $parcel is the parcel the client described, all keys optional, in the
+     * shape of createShipment()'s $opts: `parcel` (the courier's parcel value),
+     * `weight_kg`, `length_cm`, `width_cm`, `height_cm`. Empty means "not
+     * described": the courier checks on its own default, as it always did.
      */
-    public function checkServiceability(CourierOrder $order, PickupPoint $from): ServiceabilityVerdict;
+    public function checkServiceability(CourierOrder $order, PickupPoint $from, array $parcel = []): ServiceabilityVerdict;
 
     /**
      * Pickup time slots the operator can choose from when booking this order

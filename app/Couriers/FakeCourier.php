@@ -297,7 +297,7 @@ class FakeCourier implements Courier, QuotesWithRefusal
         return $this->quote ?? FeeQuote::unavailable();
     }
 
-    public function checkServiceability(CourierOrder $order, PickupPoint $from): ServiceabilityVerdict
+    public function checkServiceability(CourierOrder $order, PickupPoint $from, array $parcel = []): ServiceabilityVerdict
     {
         $this->record(__FUNCTION__, [$order, $from]);
 

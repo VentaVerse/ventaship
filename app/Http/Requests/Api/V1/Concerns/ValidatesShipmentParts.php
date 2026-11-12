@@ -36,6 +36,35 @@ trait ValidatesShipmentParts
         ] + $this->addressRules($prefix);
     }
 
+    /**
+     * The sender's name and phone, optional where only a question is asked (coverage, quotes): SPX checks a parcel
+     * only with a sender phone, so without one its answer is `unknown` with `missing_pickup_phone`.
+     *
+     * @return array<string, mixed>
+     */
+    protected function optionalPickupContactRules(string $prefix = 'pickup'): array
+    {
+        return [
+            "{$prefix}.contact_name" => ['nullable', 'string', 'max:255'],
+            "{$prefix}.contact_phone" => ['nullable', 'string', new PhMobile(self::PHONE_MESSAGE)],
+        ];
+    }
+
+    /**
+     * The customer's name and phone, optional where only a question is asked: SPX checks a parcel only with the
+     * customer's phone, so without one its answer is `unknown` with `missing_phone`.
+     *
+     * @return array<string, mixed>
+     */
+    protected function optionalRecipientContactRules(string $prefix): array
+    {
+        return [
+            "{$prefix}.first_name" => ['nullable', 'string', 'max:255'],
+            "{$prefix}.last_name" => ['nullable', 'string', 'max:255'],
+            "{$prefix}.phone" => ['nullable', 'string', new PhMobile(self::PHONE_MESSAGE)],
+        ];
+    }
+
     /** @return array<string, mixed> */
     protected function recipientRules(string $prefix = 'recipient'): array
     {

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### New features
+
+- Connected stores can ask POST /coverage about a parcel's size and weight, and a parcel SPX will not take now comes back as a clear refusal there and on POST /quotes.
+- POST /coverage and POST /quotes now accept the sender's and customer's names and phones, which SPX needs before it answers.
+
 ## 1.1.0 (2026-11-13)
 
 ### New features

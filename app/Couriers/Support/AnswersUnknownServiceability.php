@@ -17,7 +17,7 @@ use App\Couriers\PickupPoint;
  */
 trait AnswersUnknownServiceability
 {
-    public function checkServiceability(CourierOrder $order, PickupPoint $from): ServiceabilityVerdict
+    public function checkServiceability(CourierOrder $order, PickupPoint $from, array $parcel = []): ServiceabilityVerdict
     {
         return ServiceabilityVerdict::unknown();
     }

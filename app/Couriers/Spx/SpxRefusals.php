@@ -148,6 +148,41 @@ final class SpxRefusals
         return self::generic();
     }
 
+    /** The API code for each side a parcel is too big on. */
+    public const PARCEL_CODES = [
+        'length' => 'parcel_too_long',
+        'width' => 'parcel_too_wide',
+        'height' => 'parcel_too_tall',
+        'weight' => 'parcel_too_heavy',
+    ];
+
+    private const SIDE_OUTER_CODES = [10001 => 'weight', 10083 => 'weight', 10084 => 'length', 10085 => 'width', 10086 => 'height'];
+
+    /**
+     * `parcel_too_long`, `parcel_too_wide`, `parcel_too_tall` or `parcel_too_heavy` when SPX refused the parcel for
+     * being over a limit (its Max...ExtremumRule and weight messages, or outer codes 10001 and 10083 to 10086);
+     * null for anything else, a minimum included.
+     */
+    public static function parcelCode(?int $code, ?string $text): ?string
+    {
+        $text = trim((string) $text);
+        if (preg_match('/([A-Za-z]+)ExtremumRule failed,?\s*\d+(?:\.\d+)?\s*exceeds?\s+(?:the\s+)?max/i', $text, $m) === 1) {
+            $rule = strtolower($m[1]);
+            foreach (self::PARCEL_CODES as $side => $parcelCode) {
+                if (str_contains($rule, $side)) {
+                    return $parcelCode;
+                }
+            }
+
+            return null;
+        }
+        if (preg_match('/weight should (?:be )?less than or equal to/i', $text) === 1) {
+            return self::PARCEL_CODES['weight'];
+        }
+
+        return $code !== null && isset(self::SIDE_OUTER_CODES[$code]) ? self::PARCEL_CODES[self::SIDE_OUTER_CODES[$code]] : null;
+    }
+
     public static function generic(): CourierRefusal
     {
         return new CourierRefusal(self::GENERIC_TITLE, self::GENERIC_DETAIL);

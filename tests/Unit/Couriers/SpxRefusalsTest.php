@@ -79,4 +79,19 @@ class SpxRefusalsTest extends TestCase
         $this->assertSame('0', CourierRefusal::number('0.000'));
         $this->assertSame('abc', CourierRefusal::number('abc'));
     }
+
+    public function test_parcel_codes_name_the_side_spx_refused(): void
+    {
+        $this->assertSame('parcel_too_long', SpxRefusals::parcelCode(13051, 'check rule|7 |ruleName| MaxLengthExtremumRule failed, 35.000000 exceed max value 25.000000'));
+        $this->assertSame('parcel_too_wide', SpxRefusals::parcelCode(13051, 'MaxWidthExtremumRule failed, 60 exceed max value 45'));
+        $this->assertSame('parcel_too_tall', SpxRefusals::parcelCode(13051, 'HeightSumExtremumRule failed, 60 exceed max value 30'));
+        $this->assertSame('parcel_too_heavy', SpxRefusals::parcelCode(13051, 'parcel weight should less than or equal to 10 kg'));
+        $this->assertSame('parcel_too_heavy', SpxRefusals::parcelCode(10083, ''));
+        $this->assertSame('parcel_too_long', SpxRefusals::parcelCode(10084, ''));
+        $this->assertSame('parcel_too_wide', SpxRefusals::parcelCode(10085, ''));
+        $this->assertSame('parcel_too_tall', SpxRefusals::parcelCode(10086, ''));
+        $this->assertNull(SpxRefusals::parcelCode(13051, 'MinLengthExtremumRule failed, 0.5 less than min value 1'));
+        $this->assertNull(SpxRefusals::parcelCode(10019, 'not supported'));
+        $this->assertNull(SpxRefusals::parcelCode(13051, 'something else'));
+    }
 }

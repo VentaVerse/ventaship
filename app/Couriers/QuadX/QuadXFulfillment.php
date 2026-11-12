@@ -599,7 +599,7 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
      * never tries to tell those apart: one recognised kind (destination), and
      * anything else it says is carried through in its own words.
      */
-    public function checkServiceability(CourierOrder $order, PickupPoint $from): ServiceabilityVerdict
+    public function checkServiceability(CourierOrder $order, PickupPoint $from, array $parcel = []): ServiceabilityVerdict
     {
         if (!$this->isEnabled()) {
             return ServiceabilityVerdict::unknown(ServiceabilityVerdict::KIND_UNREACHABLE);

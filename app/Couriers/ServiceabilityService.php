@@ -30,9 +30,10 @@ class ServiceabilityService
     /** How long a definite verdict is kept. */
     public const CACHE_TTL_SECONDS = 86400;
 
-    public static function check(CourierAccount $account, CourierOrder $order, PickupPoint $from): ServiceabilityVerdict
+    /** @param  array<string, mixed>  $parcel  the described parcel, see Courier::checkServiceability() */
+    public static function check(CourierAccount $account, CourierOrder $order, PickupPoint $from, array $parcel = []): ServiceabilityVerdict
     {
-        $key = self::cacheKey($account, $order, $from);
+        $key = self::cacheKey($account, $order, $from, $parcel);
 
         $cached = Cache::get($key);
         if (is_array($cached)) {
@@ -42,7 +43,7 @@ class ServiceabilityService
         $startedAt = microtime(true);
 
         try {
-            $verdict = CourierRegistry::for($account)->checkServiceability($order, $from);
+            $verdict = CourierRegistry::for($account)->checkServiceability($order, $from, $parcel);
         } catch (\Throwable $e) {
             Log::warning('Serviceability check failed', [
                 'account' => $account->public_id, 'error' => $e->getMessage(),
@@ -87,7 +88,7 @@ class ServiceabilityService
      * The addresses this verdict is about, normalised. Two shipments between the same places share one answer, and
      * editing either address produces a different key.
      */
-    public static function cacheKey(CourierAccount $account, CourierOrder $order, PickupPoint $from): string
+    public static function cacheKey(CourierAccount $account, CourierOrder $order, PickupPoint $from, array $parcel = []): string
     {
         $pickup = self::fingerprint([
             $from->address_1, $from->barangay, $from->barangay_code, $from->district, $from->city, $from->city_code,
@@ -106,7 +107,16 @@ class ServiceabilityService
         // service once that setting changes, so its cached fees must not outlive the change.
         $service = (string) AccountSettings::for($account)->read($account->courier . '_default_service', '');
 
-        return 'cov:' . $account->getKey() . ':' . sha1($service) . ':' . sha1($pickup) . ':' . sha1($recipient);
+        $key = 'cov:' . $account->getKey() . ':' . sha1($service) . ':' . sha1($pickup) . ':' . sha1($recipient);
+
+        // A described parcel gets its own answer (a parcel too big for one courier is not an address refusal);
+        // with none, the key is the one it always was.
+        if ($parcel !== []) {
+            ksort($parcel);
+            $key .= ':' . sha1(self::fingerprint(array_map(fn ($k, $v) => $k . '=' . (is_scalar($v) ? (string) $v : ''), array_keys($parcel), $parcel)));
+        }
+
+        return $key;
     }
 
     /** @param  list<mixed>  $parts */

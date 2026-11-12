@@ -26,11 +26,12 @@ class CoverageController extends Controller
 
         $from = PickupPoint::fromArray($data['pickup']);
         $payment = ['method' => $data['payment']['method'] ?? 'prepaid'];
+        $parcel = self::parcel($data['parcel'] ?? null);
 
         $answers = [];
         foreach ($data['destinations'] as $destination) {
             $shipment = new Shipment(ShipmentCreator::attributes(['recipient' => $destination['recipient'], 'payment' => $payment]));
-            $verdict = ServiceabilityService::check($account, CourierOrder::fromApi($shipment), $from);
+            $verdict = ServiceabilityService::check($account, CourierOrder::fromApi($shipment), $from, $parcel);
 
             $answers[] = [
                 'ref' => $destination['ref'],
@@ -43,5 +44,26 @@ class CoverageController extends Controller
         }
 
         return response()->json(['data' => $answers]);
+    }
+
+    /**
+     * The optional `parcel` in the couriers' option shape (createShipment()'s $opts): only what was sent, so a request
+     * without one is checked exactly as before.
+     *
+     * @return array<string, string|float>
+     */
+    private static function parcel(mixed $parcel): array
+    {
+        if (! is_array($parcel)) {
+            return [];
+        }
+
+        return array_filter([
+            'parcel' => is_string($parcel['type'] ?? null) && trim($parcel['type']) !== '' ? trim($parcel['type']) : null,
+            'weight_kg' => is_numeric($parcel['weight_kg'] ?? null) ? (float) $parcel['weight_kg'] : null,
+            'length_cm' => is_numeric($parcel['length_cm'] ?? null) ? (float) $parcel['length_cm'] : null,
+            'width_cm' => is_numeric($parcel['width_cm'] ?? null) ? (float) $parcel['width_cm'] : null,
+            'height_cm' => is_numeric($parcel['height_cm'] ?? null) ? (float) $parcel['height_cm'] : null,
+        ], fn ($v) => $v !== null);
     }
 }

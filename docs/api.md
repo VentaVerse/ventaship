@@ -706,6 +706,9 @@ Request:
 | `destinations` | required list, 1 to 10 |
 | `destinations[].ref` | required string ≤ 64, unique in the request; echoed back |
 | `destinations[].recipient` | required, an [address](#addresses) |
+| `pickup.contact_name`, `pickup.contact_phone` | optional, as in [`POST /shipments`](#post-shipments). **SPX** checks only with the sender's phone (without it: `unknown`, `missing_pickup_phone`) |
+| `destinations[].recipient.first_name`, `.last_name`, `.phone` | optional, as in `POST /shipments`. **SPX** checks only with the customer's phone (without it: `unknown`, `missing_phone`) |
+| `parcel` | optional, the parcel to check: `type`, `weight_kg`, `length_cm`, `width_cm`, `height_cm`, each optional, as in `POST /shipments`. When sent, the courier checks this parcel (SPX: its size and weight); when left out, each courier checks its own default parcel, as before |
 | `payment.method` | optional, `cod` or `prepaid` (default `prepaid`); some couriers do not offer COD everywhere |
 
 <!-- fixture: coverage.request -->
@@ -742,8 +745,8 @@ Response, one entry per destination, in request order:
 | `ref` | your `ref` |
 | `verdict` | `serviceable`, `not_serviceable`, or `unknown` (the courier could not be asked or gave no clear answer: it is **not** a refusal) |
 | `kind` | when recognised, which kind of problem: `destination`, `origin`, `cod`, `postcode`, `parcel` (these come with `not_serviceable`), or `slot`, `their_side`, `unreachable` (these come with `unknown`); otherwise `null` |
-| `code` | why, when Ventaship itself knows without asking the courier, else `null`. With `unknown`: `missing_province`, `missing_city`, `missing_barangay`, `missing_postcode`, `missing_phone` (the customer's address) or the same with `pickup_` (`missing_pickup_postcode`, ...) for the sender; add the field and ask again. With `not_serviceable` (SPX): `spx_unlisted_province`, `spx_unlisted_city`, `spx_unlisted_barangay` (SPX's location list does not have the customer's place; `spx_unlisted_pickup_*` for the sender), `spx_no_delivery`, `spx_no_cod`, `spx_no_pickup`, `spx_no_cod_pickup`, and, when SPX itself answers, also `spx_no_route` (SPX has no route to the address), `spx_invalid_postcode`, `spx_invalid_pickup_postcode`. With `unknown` (SPX's answer, still bookable): `spx_too_far`, `spx_too_near` (SPX's distance limit between pickup and delivery), `spx_unmapped_address`, `spx_unmapped_pickup` (SPX could not place the address on its map; check the street and barangay). A missing postcode is first filled from the PSGC city, so `missing_postcode` only appears when the city cannot be matched |
-| `reason` | the courier's own words when it said something (always shown to people when `kind` is `null`; may also accompany a recognised `kind`, e.g. `destination`); otherwise `null` |
+| `code` | why, when Ventaship itself knows without asking the courier, else `null`. With `unknown`: `missing_province`, `missing_city`, `missing_barangay`, `missing_postcode`, `missing_phone` (the customer's address) or the same with `pickup_` (`missing_pickup_postcode`, ...) for the sender; add the field and ask again. With `not_serviceable` (SPX): `spx_unlisted_province`, `spx_unlisted_city`, `spx_unlisted_barangay` (SPX's location list does not have the customer's place; `spx_unlisted_pickup_*` for the sender), `spx_no_delivery`, `spx_no_cod`, `spx_no_pickup`, `spx_no_cod_pickup`, and, when SPX itself answers, also `spx_no_route` (SPX has no route to the address), `spx_invalid_postcode`, `spx_invalid_pickup_postcode`. With `unknown` (SPX's answer, still bookable): `spx_too_far`, `spx_too_near` (SPX's distance limit between pickup and delivery), `spx_unmapped_address`, `spx_unmapped_pickup` (SPX could not place the address on its map; check the street and barangay). With `not_serviceable` and `kind` `parcel` (SPX, for the `parcel` you sent): `parcel_too_long`, `parcel_too_wide`, `parcel_too_tall`, `parcel_too_heavy`. A missing postcode is first filled from the PSGC city, so `missing_postcode` only appears when the city cannot be matched |
+| `reason` | the courier's own words when it said something (always shown to people when `kind` is `null`; may also accompany a recognised `kind`, e.g. `destination`); for a `parcel_too_*` code, a plain sentence with the courier's limit, e.g. "Too heavy for SPX. Weight is 12 kg. SPX takes up to 10 kg."; otherwise `null` |
 | `odz` | `true` when the courier says the destination is outside its normal delivery zone (a remote-area surcharge applies), `false` when it says it is not, `null` when it gave no signal. Information only: it never changes `verdict`. SPX: `true` when its answer carries a `remote_area_fee` above 0 (SPX does not document that field, so most answers are `null`). LBC: its serviceability answer (`false` for a serviced barangay, `true` for one it does not serve). QuadX: always `null` |
 
 <!-- fixture: coverage.response -->
@@ -768,13 +771,19 @@ A destination SPX does not list, for example barangay Agtangao of Bangued, Abra:
 {"ref": "cart-2", "verdict": "not_serviceable", "kind": "destination", "code": "spx_unlisted_barangay", "reason": null, "odz": null}
 ```
 
+A parcel SPX will not take, asked with `"parcel": {"weight_kg": 12, "length_cm": 20, "width_cm": 15, "height_cm": 10}`:
+
+```json
+{"ref": "cart-3", "verdict": "not_serviceable", "kind": "parcel", "code": "parcel_too_heavy", "reason": "Too heavy for SPX. Weight is 12 kg. SPX takes up to 10 kg.", "odz": null}
+```
+
 ---
 
 ### `POST /quotes`
 
 The fee the courier itself quotes for one parcel. Ventaship never estimates a fee of its own: when the courier gives no figure (or cannot be reached), `data` is `null`.
 
-Request: `account_id` / `courier`, `pickup` (address), `recipient` (address), `service` (optional), `insure` (optional, as in [`POST /shipments`](#post-shipments)), `parcel` (optional, as in `POST /shipments`), `payment` (required, as in `POST /shipments`).
+Request: `account_id` / `courier`, `pickup` (address, with optional `contact_name` and `contact_phone`), `recipient` (address, with optional `first_name`, `last_name` and `phone`), `service` (optional), `insure` (optional, as in [`POST /shipments`](#post-shipments)), `parcel` (optional, as in `POST /shipments`), `payment` (required, as in `POST /shipments`). **SPX** quotes only with both phones.
 
 <!-- fixture: quotes.request -->
 ```json
@@ -810,6 +819,18 @@ Request: `account_id` / `courier`, `pickup` (address), `recipient` (address), `s
         "label": "₱145.00",
         "odz": null,
         "remote_area_fee": null
+    }
+}
+```
+
+When the courier has no figure because it refuses the shipment (today: SPX), `data` stays `null` and `refusal` says why: `code` is one of the [`POST /coverage`](#post-coverage) codes (`parcel_too_long`, `parcel_too_wide`, `parcel_too_tall`, `parcel_too_heavy`, `spx_no_delivery`, ...) or `courier_refused`, and `reason` is a plain sentence. Without a refusal the answer is `{"data": null}` as before.
+
+```json
+{
+    "data": null,
+    "refusal": {
+        "code": "parcel_too_long",
+        "reason": "Too long for SPX. Length is 35 cm. SPX takes up to 25 cm."
     }
 }
 ```

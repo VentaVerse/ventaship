@@ -5,7 +5,7 @@ namespace App\Http\Requests\Api\V1;
 use App\Http\Requests\Api\V1\Concerns\ValidatesShipmentParts;
 use Illuminate\Foundation\Http\FormRequest;
 
-/** POST /coverage: up to 10 destinations from one pickup point. */
+/** POST /coverage: up to 10 destinations from one pickup point, optionally for one described parcel. */
 class CoverageRequest extends FormRequest
 {
     use ValidatesShipmentParts;
@@ -28,6 +28,6 @@ class CoverageRequest extends FormRequest
             'destinations.*.recipient' => ['required', 'array'],
             'payment' => ['nullable', 'array'],
             'payment.method' => ['nullable', 'string', 'in:cod,prepaid'],
-        ] + $this->addressRules('destinations.*.recipient');
+        ] + $this->optionalPickupContactRules() + $this->optionalRecipientContactRules('destinations.*.recipient') + $this->parcelRules() + $this->addressRules('destinations.*.recipient');
     }
 }

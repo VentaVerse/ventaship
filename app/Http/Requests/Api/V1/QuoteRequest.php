@@ -23,6 +23,6 @@ class QuoteRequest extends FormRequest
             'recipient' => ['required', 'array'],
             'service' => ['nullable', 'string', 'max:64'],
             'insure' => ['sometimes', 'boolean'],
-        ] + $this->addressRules('recipient') + $this->parcelRules() + $this->paymentRules();
+        ] + $this->optionalPickupContactRules() + $this->optionalRecipientContactRules('recipient') + $this->addressRules('recipient') + $this->parcelRules() + $this->paymentRules();
     }
 }

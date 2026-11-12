@@ -169,7 +169,7 @@ class ReadEndpointsTest extends TestCase
                 return (object) ['amount' => 80.0, 'currency' => 'PHP', 'label' => '₱80.00', 'remote_area_fee' => '25.00', 'odz' => true];
             }
 
-            public function checkServiceability(CourierOrder $order, PickupPoint $from): ServiceabilityVerdict
+            public function checkServiceability(CourierOrder $order, PickupPoint $from, array $parcel = []): ServiceabilityVerdict
             {
                 return ServiceabilityVerdict::serviceable(['estimate' => 80.0])->withOdz(true);
             }

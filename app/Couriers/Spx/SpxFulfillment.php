@@ -1033,14 +1033,14 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
         $context = self::parcelContext($options);
 
         if (($problem = $order->paymentProblem($options)) !== null) {
-            return FeeQuote::refused(new CourierRefusal("SPX can't book this shipment", $problem));
+            return FeeQuote::refused(new CourierRefusal("SPX can't book this shipment", $problem, self::REFUSED_CODE));
         }
         $built = $this->buildOrderPayload($order, $options);
         if (!$built['ok']) {
-            return FeeQuote::refused(new CourierRefusal("SPX can't book this shipment", (string) ($built['error'] ?? SpxRefusals::GENERIC_DETAIL)));
+            return FeeQuote::refused(new CourierRefusal("SPX can't book this shipment", (string) ($built['error'] ?? SpxRefusals::GENERIC_DETAIL), $built['code'] ?? self::REFUSED_CODE));
         }
         if (($problem = $this->limitProblem($order, $options)) !== null) {
-            return FeeQuote::refused(new CourierRefusal("SPX can't book this shipment", $problem));
+            return FeeQuote::refused(new CourierRefusal("SPX can't book this shipment", $problem, self::REFUSED_CODE));
         }
 
         try {
@@ -1049,7 +1049,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
             $raw = self::rawText($e->retCode, $e->getMessage(), null);
 
             return $e->httpStatus < 500 && SpxRefusals::isRefusal($e->retCode)
-                ? FeeQuote::refused(SpxRefusals::explain($e->retCode, $e->getMessage(), $context), $raw)
+                ? FeeQuote::refused(SpxRefusals::explain($e->retCode, $e->getMessage(), $context)->withCode(self::refusalCode($e->retCode, $e->getMessage())), $raw)
                 : FeeQuote::unavailable($raw);
         } catch (\Throwable $e) {
             // Transport: curl's words, not SPX's, and possibly a URL. Logged by class only.
@@ -1069,8 +1069,10 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
             $code = is_numeric($failed['ret_code'] ?? null) ? (int) $failed['ret_code'] : null;
             $failure = self::createFailure($failed, $context);
 
+            $text = trim(((string) ($failed['message'] ?? '')) . ' ' . ((string) ($failed['debug_msg'] ?? '')));
+
             return SpxRefusals::isRefusal($code)
-                ? FeeQuote::refused(SpxRefusals::explain($code, trim(((string) ($failed['message'] ?? '')) . ' ' . ((string) ($failed['debug_msg'] ?? ''))), $context), $failure['raw'])
+                ? FeeQuote::refused(SpxRefusals::explain($code, $text, $context)->withCode(self::refusalCode($code, $text)), $failure['raw'])
                 : FeeQuote::unavailable($failure['raw']);
         }
 
@@ -1135,6 +1137,15 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
         return ['ok' => true];
     }
 
+    /** The code of a refusal with nothing more specific to say. */
+    private const REFUSED_CODE = 'courier_refused';
+
+    /** A refusal's API code: the parcel's side, else the same code coverage gives (VERDICT_CODES), else courier_refused. */
+    private static function refusalCode(?int $code, string $text): string
+    {
+        return SpxRefusals::parcelCode($code, $text) ?? ($code === null ? null : self::verdictCode($code)) ?? self::REFUSED_CODE;
+    }
+
     /** SPX's generic sentence says "book"; an update says "update". */
     private static function updateRefusal(CourierRefusal $refusal): CourierRefusal
     {
@@ -1173,18 +1184,20 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
      * Only the four refusal groups make the card inert; a parcel complaint, a
      * pickup-slot complaint and an SPX-side failure all leave it clickable.
      */
-    public function checkServiceability(CourierOrder $order, PickupPoint $from): ServiceabilityVerdict
+    public function checkServiceability(CourierOrder $order, PickupPoint $from, array $parcel = []): ServiceabilityVerdict
     {
         if (!$this->client->hasAccountCredentials()) {
             return ServiceabilityVerdict::unknown(ServiceabilityVerdict::KIND_UNREACHABLE);
         }
 
-        // No booking options exist yet at this point in the modal (the
-        // courier has not even been chosen), so the payload is built with
-        // defaults: buildOrderPayload() falls back to the first pouch
-        // preset, which is the smallest and therefore the cheapest, making
-        // the quoted fee a genuine from-price.
-        $built = $this->buildOrderPayload($order, ['pickup' => $from]);
+        // With no parcel described the payload is built with defaults:
+        // buildOrderPayload() falls back to the first pouch preset, which is
+        // the smallest and therefore the cheapest, making the quoted fee a
+        // genuine from-price. A described parcel (POST /coverage `parcel`) is
+        // what SPX checks instead, typed size and weight included.
+        $parcel = array_intersect_key($parcel, array_flip(['parcel', 'weight_kg', 'length_cm', 'width_cm', 'height_cm']));
+        $opts = ['pickup' => $from] + $parcel;
+        $built = $this->buildOrderPayload($order, $opts);
         if (!$built['ok'] && isset($built['kind'])) {
             // SPX's own location list rules the address out: a refusal we
             // can state without asking SPX.
@@ -1203,7 +1216,8 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
             // ->retCode, never getCode(): SpxApiException carries SPX's own
             // code in its own property and leaves the RuntimeException code
             // at zero.
-            return self::verdictForCode($e->retCode, $e->getMessage());
+            return ($parcel !== [] && $e->httpStatus < 500 ? self::parcelVerdict($e->retCode, $e->getMessage(), $opts) : null)
+                ?? self::verdictForCode($e->retCode, $e->getMessage());
         } catch (\Throwable $e) {
             // Transport: DNS, connection, timeout, or a response that was not
             // an SPX envelope at all. We could not ask, and the message is
@@ -1227,10 +1241,31 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
         // with its own ret_code, rather than failing the whole envelope.
         $failed = ($data['fail_list'] ?? [])[0] ?? null;
         if (is_array($failed)) {
-            return self::verdictForCode((int) ($failed['ret_code'] ?? 0), (string) ($failed['message'] ?? ''));
+            $code = (int) ($failed['ret_code'] ?? 0);
+            $said = (string) ($failed['message'] ?? '');
+
+            return ($parcel !== [] ? self::parcelVerdict($code, $said, $opts) : null) ?? self::verdictForCode($code, $said);
         }
 
         return ServiceabilityVerdict::unknown(ServiceabilityVerdict::KIND_THEIR_SIDE);
+    }
+
+    /**
+     * A described parcel SPX will not take for its size or weight: `not_serviceable`, kind `parcel`, a stable code
+     * (`parcel_too_long`, `parcel_too_wide`, `parcel_too_tall`, `parcel_too_heavy`) and a plain reason naming SPX's
+     * limit. Null for any other answer, which keeps its usual classification.
+     */
+    private static function parcelVerdict(int $code, string $message, array $opts): ?ServiceabilityVerdict
+    {
+        if (!SpxRefusals::isRefusal($code) || ($parcelCode = SpxRefusals::parcelCode($code, $message)) === null) {
+            return null;
+        }
+
+        return ServiceabilityVerdict::notServiceable(
+            ServiceabilityVerdict::KIND_PARCEL,
+            SpxRefusals::explain($code, $message, self::parcelContext($opts))->message(),
+            $parcelCode,
+        );
     }
 
     /** One SPX error code, classified by group and given its `code` (VERDICT_CODES), with SPX's own words. */

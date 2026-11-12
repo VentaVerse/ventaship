@@ -875,7 +875,7 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
      * serviceability check, asked by PSGC code. An address LBC's search
      * cannot find, or a check that did not answer, is not a refusal.
      */
-    public function checkServiceability(CourierOrder $order, PickupPoint $from): ServiceabilityVerdict
+    public function checkServiceability(CourierOrder $order, PickupPoint $from, array $parcel = []): ServiceabilityVerdict
     {
         if (!$this->isEnabled()) {
             return ServiceabilityVerdict::unknown(ServiceabilityVerdict::KIND_UNREACHABLE);
