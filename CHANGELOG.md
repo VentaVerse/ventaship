@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Updates
+
+- SPX shipments always ask for the parcel size, and picking a pouch fills its size in, which you can still change.
+
 ## 1.0.0 (2026-11-10)
 
 ### New features

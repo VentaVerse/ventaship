@@ -39,11 +39,14 @@ export function courierFields(courier, parcel, sizeOpen = false) {
     const own = OWN_PACKAGING[courier] !== undefined && OWN_PACKAGING[courier] === parcel;
     const addSize = courier === 'lbc' && LBC_KILOBOX.includes(parcel);
 
+    // SPX always takes a size; a preset fills it in.
+    const sized = own || courier === 'spx';
+
     return {
         service: courier === 'quadx',
         weight: courier === 'spx' || courier === 'lbc',
-        size: own || (addSize && sizeOpen),
-        sizeRequired: own,
+        size: sized || (addSize && sizeOpen),
+        sizeRequired: sized,
         addSize,
         category: courier === 'spx',
         shippingPayment: courier === 'quadx' || courier === 'spx',
@@ -69,6 +72,15 @@ export function courierReset(courier, { parcel, firstDate }) {
         slotState: 'idle',
         pickupDate: firstDate ?? '',
     };
+}
+
+/** The size a preset fills in, as form values, or null when the packaging has none (own packaging, other couriers). */
+export function presetSize(sizes, parcel) {
+    const size = (sizes ?? {})[parcel];
+    if (!size) {
+        return null;
+    }
+    return { length: String(size.length_cm), width: String(size.width_cm), height: String(size.height_cm) };
 }
 
 const PICKUP_KEYS = ['contact_name', 'contact_phone', 'address_1', 'address_2', 'barangay', 'district', 'city', 'state', 'postcode'];
@@ -134,7 +146,10 @@ export function shipmentForm(config) {
                     parcel: config.defaultParcels[this.account] ?? null,
                     firstDate: config.firstDate,
                 }));
+                this.fillPresetSize();
             });
+            // Picking an SPX preset fills its size in; own packaging starts empty.
+            this.$watch('parcel', () => this.fillPresetSize());
             // SPX pickup times belong to the pickup address they were loaded for.
             this.$watch('pickupId', () => {
                 this.slotSeq++;
@@ -145,6 +160,14 @@ export function shipmentForm(config) {
             this.$watch('account', () => this.$nextTick(() => this.autoLoadSlots()));
             this.$watch('handover', () => this.autoLoadSlots());
             this.autoLoadSlots();
+        },
+
+        fillPresetSize() {
+            if (this.courier !== 'spx') {
+                return;
+            }
+            const size = presetSize((config.parcelSizes ?? {})[this.account], this.parcel);
+            Object.assign(this, size ?? { length: '', width: '', height: '' });
         },
 
         autoLoadSlots() {

@@ -59,7 +59,7 @@ class ShipmentCourierFieldsTest extends TestCase
     {
         $own = match ($courier) {
             'quadx' => ['parcel' => ['type' => 'box'], 'payment' => ['shipping_payment' => 'cash']],
-            'spx' => ['parcel' => ['type' => 'small', 'weight_kg' => '1.2', 'category' => 'General merchandise'],
+            'spx' => ['parcel' => ['type' => 'small', 'weight_kg' => '1.2', 'length_cm' => '25', 'width_cm' => '20', 'height_cm' => '10', 'category' => 'General merchandise'],
                 'payment' => ['shipping_payment' => 'sender_pay'], 'handover' => 'dropoff'],
             'lbc' => ['parcel' => ['type' => '45', 'weight_kg' => '1.2'], 'pickup_date' => $this->lbcDates()[0]],
         };
@@ -147,12 +147,16 @@ class ShipmentCourierFieldsTest extends TestCase
         $this->assertEquals('1.2', $this->latest()->options['parcel']['weight_kg']);
     }
 
-    public function test_size_required_only_for_own_packaging(): void
+    public function test_size_required_for_spx_and_own_packaging(): void
     {
         $this->accounts();
         $dims = ['length_cm' => '30', 'width_cm' => '20', 'height_cm' => '10'];
+        $noSize = ['length_cm' => '', 'width_cm' => '', 'height_cm' => ''];
 
-        $this->post('/shipments', $this->form('spx', ['parcel' => ['type' => 'custom']]))
+        // SPX always takes a size, preset or not.
+        $this->post('/shipments', $this->form('spx', ['parcel' => $noSize]))
+            ->assertSessionHasErrors(['parcel.length_cm', 'parcel.width_cm', 'parcel.height_cm']);
+        $this->post('/shipments', $this->form('spx', ['parcel' => ['type' => 'custom'] + $noSize]))
             ->assertSessionHasErrors(['parcel.length_cm', 'parcel.width_cm', 'parcel.height_cm']);
         $this->post('/shipments', $this->form('lbc', ['parcel' => ['type' => '16']]))
             ->assertSessionHasErrors(['parcel.length_cm', 'parcel.width_cm', 'parcel.height_cm']);
@@ -160,9 +164,10 @@ class ShipmentCourierFieldsTest extends TestCase
         $this->post('/shipments', $this->form('spx', ['parcel' => ['type' => 'custom'] + $dims]))->assertSessionHasNoErrors();
         $this->assertEquals('30', $this->latest()->options['parcel']['length_cm']);
 
-        // Presets carry their own size: a posted one is dropped.
+        // An SPX preset keeps the size typed over it.
         $this->post('/shipments', $this->form('spx', ['parcel' => $dims]))->assertSessionHasNoErrors();
-        $this->assertArrayNotHasKey('length_cm', $this->latest()->options['parcel']);
+        $this->assertEquals('30', $this->latest()->options['parcel']['length_cm']);
+        // LBC packaging carries its own size: a posted one is dropped.
         $this->post('/shipments', $this->form('lbc', ['parcel' => $dims]))->assertSessionHasNoErrors();
         $this->assertArrayNotHasKey('length_cm', $this->latest()->options['parcel']);
 

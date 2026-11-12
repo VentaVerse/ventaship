@@ -267,18 +267,19 @@ class ShipmentsController extends Controller
     }
 
     /**
-     * Per account: its courier, packaging tiles and default packaging.
+     * Per account: its courier, packaging tiles, default packaging and the size each SPX preset fills in.
      *
      * @param  Collection<int, CourierAccount>  $accounts
-     * @return array{couriers: array<string, string>, parcels: array<string, list<array{value: string, label: string, more: bool}>>, defaultParcels: array<string, ?string>}
+     * @return array{couriers: array<string, string>, parcels: array<string, list<array{value: string, label: string, more: bool}>>, defaultParcels: array<string, ?string>, parcelSizes: array<string, array<string, array{label: string, length_cm: float, width_cm: float, height_cm: float}>>}
      */
     private function courierFieldsFor(Collection $accounts): array
     {
-        $out = ['couriers' => [], 'parcels' => [], 'defaultParcels' => []];
+        $out = ['couriers' => [], 'parcels' => [], 'defaultParcels' => [], 'parcelSizes' => []];
         foreach ($accounts as $account) {
             $out['couriers'][$account->public_id] = (string) $account->courier;
             $out['parcels'][$account->public_id] = CourierFormFields::parcelOptions($account);
             $out['defaultParcels'][$account->public_id] = CourierFormFields::defaultParcel($account);
+            $out['parcelSizes'][$account->public_id] = CourierFormFields::presetSizes($account);
         }
 
         return $out;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cents, itemText, normalisePrice, peso, shipmentForm } from '../../resources/js/shipmentForm.js';
+import { cents, itemText, normalisePrice, peso, presetSize, shipmentForm } from '../../resources/js/shipmentForm.js';
 
 test('the value parses to centavos without floats', () => {
     assert.equal(cents('500.1'), 50010n);
@@ -40,7 +40,8 @@ test('courier fields show only for their courier', async () => {
     const spx = courierFields('spx', 'small');
     assert.equal(spx.service, false);
     assert.equal(spx.weight, true);
-    assert.equal(spx.size, false);
+    assert.equal(spx.size, true);
+    assert.equal(spx.sizeRequired, true);
     assert.equal(spx.category, true);
     assert.equal(spx.shippingPayment, true);
     assert.equal(spx.handover, true);
@@ -145,4 +146,11 @@ test('SPX pickup times load by themselves only for SPX pickup with nothing loade
     assert.equal(shouldAutoLoadSlots('spx', 'pickup', 'error'), false);
     assert.equal(shouldAutoLoadSlots('spx', 'dropoff', 'idle'), false);
     assert.equal(shouldAutoLoadSlots('quadx', 'pickup', 'idle'), false);
+});
+
+test('an SPX preset fills its size in, own packaging has none', () => {
+    const sizes = { small: { label: 'Small', length_cm: 25, width_cm: 20, height_cm: 10 } };
+    assert.deepEqual(presetSize(sizes, 'small'), { length: '25', width: '20', height: '10' });
+    assert.equal(presetSize(sizes, 'custom'), null);
+    assert.equal(presetSize(undefined, 'small'), null);
 });

@@ -64,13 +64,14 @@ final class CourierFormFields
             return [];
         }
 
+        $sizes = self::presetSizes($account);
         $options = [];
         foreach ($raw as $o) {
             if (! is_array($o) || ! isset($o['value'], $o['label']) || ! empty($o['disabled'])) {
                 continue;
             }
             $value = (string) $o['value'];
-            $label = $courier === 'spx' && $value === self::OWN_PACKAGING['spx'] ? 'Own packaging' : (string) $o['label'];
+            $label = $courier === 'spx' && $value === self::OWN_PACKAGING['spx'] ? 'Own packaging' : (string) ($sizes[$value]['label'] ?? $o['label']);
             $more = $courier === 'lbc' && ! in_array($value, self::LBC_MAIN, true) && ctype_digit($value) && LbcPackaging::exists((int) $value);
             $options[$value] = ['value' => $value, 'label' => $label, 'more' => $more];
         }
@@ -81,6 +82,25 @@ final class CourierFormFields
         }
 
         return array_values($options);
+    }
+
+    /**
+     * The size each SPX preset fills in on the form, keyed by its parcel value. Other couriers have none.
+     *
+     * @return array<string, array{label: string, length_cm: float, width_cm: float, height_cm: float}>
+     */
+    public static function presetSizes(CourierAccount $account): array
+    {
+        if ((string) $account->courier !== 'spx') {
+            return [];
+        }
+        try {
+            $courier = CourierRegistry::for($account);
+        } catch (Throwable) {
+            return [];
+        }
+
+        return $courier instanceof SpxFulfillment ? $courier->presetSizes() : [];
     }
 
     /** @return list<string> */
@@ -104,10 +124,10 @@ final class CourierFormFields
         return array_key_first(self::SHIPPING_PAYMENT[$courier] ?? []);
     }
 
-    /** Whether the parcel's size is required (own packaging), optional (LBC Kilobox) or not taken. */
+    /** Whether the parcel's size is required (SPX, own packaging), optional (LBC Kilobox) or not taken. */
     public static function sizeRule(string $courier, ?string $parcel): ?string
     {
-        if ($parcel !== null && (self::OWN_PACKAGING[$courier] ?? null) === $parcel) {
+        if ($courier === 'spx' || ($parcel !== null && (self::OWN_PACKAGING[$courier] ?? null) === $parcel)) {
             return 'required';
         }
 

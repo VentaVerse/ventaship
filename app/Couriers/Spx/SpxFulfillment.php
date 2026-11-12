@@ -2418,6 +2418,15 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
     {
         $key = $opts['parcel'] ?? null;
 
+        // A typed size wins over the preset's: the form fills the preset's size in and the seller may change it.
+        $typed = [$opts['length_cm'] ?? null, $opts['width_cm'] ?? null, $opts['height_cm'] ?? null];
+        if ($key !== 'custom' && collect($typed)->every(fn ($d) => is_numeric($d) && (float) $d > 0)) {
+            return ['ok' => true, 'dims' => [
+                'length_cm' => (float) $typed[0], 'width_cm' => (float) $typed[1],
+                'height_cm' => (float) $typed[2], 'max_weight_kg' => null,
+            ]];
+        }
+
         if ($key === 'custom') {
             $length = $opts['length_cm'] ?? null;
             $width  = $opts['width_cm'] ?? null;
@@ -2450,6 +2459,27 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
             'length_cm' => (float) $fallback['length_cm'], 'width_cm' => (float) $fallback['width_cm'],
             'height_cm' => (float) $fallback['height_cm'], 'max_weight_kg' => (float) $fallback['max_weight_kg'],
         ]];
+    }
+
+    /**
+     * The presets the Add shipment form offers, keyed by their parcel value, with the size each one fills in.
+     *
+     * @return array<string, array{label: string, length_cm: float, width_cm: float, height_cm: float}>
+     */
+    public function presetSizes(): array
+    {
+        $sizes = [];
+        foreach ($this->pouchPresets() as $preset) {
+            $label = (string) ($preset['label'] ?? 'Preset');
+            $sizes[Str::slug($label)] = [
+                'label' => $label,
+                'length_cm' => (float) ($preset['length_cm'] ?? 0),
+                'width_cm' => (float) ($preset['width_cm'] ?? 0),
+                'height_cm' => (float) ($preset['height_cm'] ?? 0),
+            ];
+        }
+
+        return $sizes;
     }
 
     private function pouchPresets(): array

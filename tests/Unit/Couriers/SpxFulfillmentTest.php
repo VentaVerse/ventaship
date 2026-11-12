@@ -300,6 +300,30 @@ class SpxFulfillmentTest extends TestCase
         });
     }
 
+    public function test_a_size_typed_over_a_preset_is_the_size_sent(): void
+    {
+        $this->configureAccountCredentials();
+        Http::fake([
+            '*batch_create_order*' => Http::response(['ret_code' => 0, 'message' => 'success.', 'data' => ['batch_no' => 1]]),
+            '*get_order_create_result*' => Http::response($this->doneCreateResultResponse('SPEPH000000000003', 1)),
+        ]);
+
+        $result = $this->courier()->createShipment($this->makeOrder(), $this->opts([
+            'parcel' => 'small', 'length_cm' => 28, 'width_cm' => 22, 'height_cm' => 6, 'weight_kg' => 0.8,
+            'shipping_payment' => 'sender_pay',
+        ]));
+
+        $this->assertTrue($result['success']);
+        Http::assertSent(function ($request) {
+            if (!str_contains($request->url(), 'batch_create_order')) {
+                return false;
+            }
+            $p = $request->data()['orders'][0]['parcel_info'];
+            return (float) $p['parcel_length'] === 28.0 && (float) $p['parcel_width'] === 22.0
+                && (float) $p['parcel_height'] === 6.0 && (float) $p['parcel_weight'] === 0.8;
+        });
+    }
+
     public function test_create_shipment_rejects_custom_parcel_with_missing_dimensions_and_never_calls_spx(): void
     {
         $this->configureAccountCredentials();

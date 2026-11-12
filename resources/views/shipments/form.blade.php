@@ -60,6 +60,11 @@
     $dateValues = array_column($lbcDates, 'value');
     $parcel = $str('parcel.type', (string) ($fields['defaultParcels'][$accountId] ?? ''));
     $dims = ['length' => $str('parcel.length_cm'), 'width' => $str('parcel.width_cm'), 'height' => $str('parcel.height_cm')];
+    // An SPX preset fills its size in until the seller types one.
+    $preset = $fields['parcelSizes'][$accountId][$parcel] ?? null;
+    if ($preset !== null && collect($dims)->every(fn ($d) => $d === '')) {
+        $dims = ['length' => (string) $preset['length_cm'], 'width' => (string) $preset['width_cm'], 'height' => (string) $preset['height_cm']];
+    }
     $sizeOpen = collect($dims)->contains(fn ($d) => $d !== '') || collect(['length_cm', 'width_cm', 'height_cm'])->contains(fn ($k) => $errors->has('parcel.'.$k));
     $show = CourierFormFields::show($courier, $parcel, $sizeOpen);
     $slotTime = CourierFormFields::spxSlotTime($str('pickup_slot'));
@@ -82,7 +87,7 @@
     $config = [
         'services' => $services, 'account' => $accountId, 'service' => (string) $v('service'), 'names' => $names,
         'item' => $item, 'value' => $valueRaw, 'method' => $method, 'insure' => $insure,
-        'couriers' => $fields['couriers'], 'defaultParcels' => $fields['defaultParcels'], 'firstDate' => $dateValues[0] ?? '',
+        'couriers' => $fields['couriers'], 'defaultParcels' => $fields['defaultParcels'], 'parcelSizes' => $fields['parcelSizes'], 'firstDate' => $dateValues[0] ?? '',
         'slotsUrl' => route('shipments.options.spx-slots'), 'courier' => $courierState,
         'pickupId' => $pickupId, 'pickups' => collect($pickups)->mapWithKeys(fn ($o) => [$o['id'] => $o['pickup']])->all(),
     ];
