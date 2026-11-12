@@ -3,6 +3,8 @@
 namespace App\Couriers;
 
 use App\Couriers\Contracts\Courier;
+use App\Couriers\Contracts\QuotesWithRefusal;
+use App\Couriers\Support\FeeQuote;
 use App\Couriers\Support\ServiceabilityVerdict;
 use App\Models\CourierAccount;
 use Throwable;
@@ -12,7 +14,7 @@ use Throwable;
  * It never makes a network call. Every courier call is recorded in $calls as ['method' => ..., 'args' => [...]].
  * Not final: a test may extend it to add an optional courier interface (e.g. ThrottlesStatusPolling).
  */
-class FakeCourier implements Courier
+class FakeCourier implements Courier, QuotesWithRefusal
 {
     /** @var list<array{method: string, args: array<int, mixed>}> */
     public array $calls = [];
@@ -24,6 +26,9 @@ class FakeCourier implements Courier
     private string $bookedStatus = 'pending';
 
     private ?string $refusal = null;
+
+    /** quoteFee()'s scripted answer; null answers unavailable. */
+    private ?FeeQuote $quote = null;
 
     /** @var array<string, Throwable> method => what it throws */
     private array $throws = [];
@@ -76,6 +81,14 @@ class FakeCourier implements Courier
     public function booksWithExtra(array $extra): self
     {
         $this->bookingExtra = $extra;
+
+        return $this;
+    }
+
+    /** What the booking's final check (quoteFee) answers. */
+    public function quotes(FeeQuote $quote): self
+    {
+        $this->quote = $quote;
 
         return $this;
     }
@@ -275,6 +288,13 @@ class FakeCourier implements Courier
         $this->record(__FUNCTION__, [$order, $options]);
 
         return null;
+    }
+
+    public function quoteFee(CourierOrder $order, array $options): FeeQuote
+    {
+        $this->record(__FUNCTION__, [$order, $options]);
+
+        return $this->quote ?? FeeQuote::unavailable();
     }
 
     public function checkServiceability(CourierOrder $order, PickupPoint $from): ServiceabilityVerdict

@@ -90,6 +90,8 @@
         'couriers' => $fields['couriers'], 'defaultParcels' => $fields['defaultParcels'], 'parcelSizes' => $fields['parcelSizes'], 'firstDate' => $dateValues[0] ?? '',
         'slotsUrl' => route('shipments.options.spx-slots'), 'courier' => $courierState,
         'pickupId' => $pickupId, 'pickups' => collect($pickups)->mapWithKeys(fn ($o) => [$o['id'] => $o['pickup']])->all(),
+        'checkUrl' => $editing ? route('shipments.check-edit', $shipment->public_id) : route('shipments.check'),
+        'payers' => CourierFormFields::SHIPPING_PAYMENT, 'handovers' => CourierFormFields::HANDOVER,
     ];
     $config['parcelLabels'] = collect($fields['parcels'])->map(fn ($options) => collect($options)->mapWithKeys(fn ($o) => [$o['value'] => $o['label']])->all())->all();
     $place = collect([$text($recipient['city'] ?? ''), $text($recipient['state'] ?? '')])->filter()->implode(', ');
@@ -115,7 +117,7 @@
     </section>
 @else
 <form class="sh-form" method="POST" action="{{ $editing ? route('shipments.update', $shipment->public_id) : route('shipments.store') }}" novalidate x-data="shipmentForm(@js($config))"
-      x-on:input="recipientTyped($event)" x-on:ph-place.window="placed($event)">
+      x-on:input="recipientTyped($event)" x-on:ph-place.window="placed($event)" x-on:submit="submitted($event)">
     @csrf
     @if($editing) @method('PUT') @endif
     <input type="hidden" name="form_token" value="{{ $token }}">
@@ -453,15 +455,41 @@
             <div class="sh-summary__actions">
                 @if($editing)
                     <x-ui.button type="submit">Save</x-ui.button>
-                    <x-ui.button variant="primary" type="submit" name="book" value="1">Save and book</x-ui.button>
+                    <x-ui.button variant="primary" type="submit" name="book" value="1" data-book>Save and book</x-ui.button>
                 @else
                     <x-ui.button type="submit" name="draft" value="1">Save draft</x-ui.button>
-                    <x-ui.button variant="primary" type="submit">Book shipment</x-ui.button>
+                    <x-ui.button variant="primary" type="submit" data-book>Book shipment</x-ui.button>
                 @endif
                 <x-ui.button :href="$editing ? route('shipments.show', $shipment->public_id) : route('fulfillment')">Cancel</x-ui.button>
             </div>
         </div>
     </aside>
+
+    <div class="modal-backdrop" x-show="check.open" x-cloak @click.self="closeCheck()" @keydown.escape.window="closeCheck()">
+        <div class="modal sh-book" role="dialog" aria-modal="true" aria-labelledby="sh-book-title" x-ref="checkDialog" tabindex="-1"
+             @keydown.tab="trapCheck($event)" x-bind:aria-busy="check.state === 'loading' ? 'true' : 'false'">
+            <h2 class="modal__title" id="sh-book-title">Book this shipment?</h2>
+            <dl class="sh-book__sum">
+                <template x-for="row in checkRows" :key="row[0]">
+                    <div class="sh-book__row"><dt x-text="row[0]"></dt><dd x-text="row[1]"></dd></div>
+                </template>
+            </dl>
+            <div class="sh-book__fee" x-show="check.state !== 'refused'" role="status" aria-live="polite">
+                <span>Shipping fee</span>
+                <b class="sh-num" x-show="check.state === 'ready'" x-text="check.label"></b>
+                <span class="sh-book__muted" x-show="check.state === 'loading'">Checking…</span>
+                <span class="sh-book__muted" x-show="check.state === 'none'">Not available</span>
+            </div>
+            <div class="sh-book__err" role="alert" x-show="check.state === 'refused'">
+                <b x-text="check.title"></b>
+                <span x-show="check.detail !== ''" x-text="check.detail"></span>
+            </div>
+            <div class="modal__actions">
+                <x-ui.button x-ref="checkBack" x-bind:class="check.state === 'refused' && 'x-btn--primary'" @click="closeCheck()">Back to edit</x-ui.button>
+                <x-ui.button x-bind:class="check.state !== 'refused' && 'x-btn--primary'" x-bind:disabled="!canBook" @click="confirmBook()">Book shipment</x-ui.button>
+            </div>
+        </div>
+    </div>
 </form>
 @endif
 @endsection

@@ -94,7 +94,7 @@
                 <b class="fl-bulk__count" aria-hidden="true"><span class="x-num" x-text="count"></span> selected</b>
                 <x-ui.button size="sm" type="submit" :formaction="route('shipments.labels')" formtarget="_blank" x-bind:disabled="n.printable === 0 || busy" @click.prevent="print()"><span x-text="label('Print waybills', n.printable)">Print waybills</span></x-ui.button>
                 <x-ui.button size="sm" type="submit" :formaction="route('shipments.book')" x-bind:disabled="n.bookable === 0" @click.prevent="run('bookable', 'book')"><span x-text="label('Book', n.bookable)">Book</span></x-ui.button>
-                <x-ui.button size="sm" type="submit" :formaction="route('shipments.cancel')" x-bind:disabled="n.cancellable === 0" @click.prevent="confirmCancel()"><span x-text="label('Cancel', n.cancellable)">Cancel</span></x-ui.button>
+                <x-ui.button size="sm" type="submit" :formaction="route('shipments.cancel')" x-bind:disabled="n.cancellable === 0" @click.prevent="confirmCancel()"><span x-text="label('Cancel shipments', n.cancellable)">Cancel shipments</span></x-ui.button>
                 <x-ui.button size="sm" @click="clear()">Deselect</x-ui.button>
             </div>
             <div class="fl-alert" role="alert" x-show="printError" x-cloak>

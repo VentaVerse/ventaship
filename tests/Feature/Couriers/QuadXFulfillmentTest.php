@@ -252,4 +252,31 @@ class QuadXFulfillmentTest extends TestCase
     {
         return base64_decode(strtr($s, '-_', '+/') . str_repeat('=', (4 - strlen($s) % 4) % 4));
     }
+
+    public function test_a_not_serviceable_refusal_reads_plainly_and_keeps_quadx_words_for_support(): void
+    {
+        Http::fake(['api.staging.quadx.xyz/*' => Http::response($this->quadxFixture('not-serviceable'), 422)]);
+        $account = $this->quadxAccount();
+        $order = CourierOrder::fromApi($this->shipmentFor($account));
+
+        $result = CourierRegistry::for($account)->createShipment($order, ['pickup' => $this->pickup()]);
+        $this->assertFalse($result['success']);
+        $this->assertSame("QuadX doesn't deliver here. Check the delivery address.", $result['error']);
+        $this->assertSame('QuadX 422: Delivery address is not serviceable.', $result['courier_error']);
+
+        $quote = CourierRegistry::for($account)->quoteFee($order, ['pickup' => $this->pickup(), 'parcel' => 'box']);
+        $this->assertTrue($quote->isRefused());
+        $this->assertSame("QuadX doesn't deliver here", $quote->refusal->title);
+    }
+
+    public function test_the_final_check_never_refuses_on_other_quadx_errors(): void
+    {
+        Http::fake(['api.staging.quadx.xyz/*' => Http::response(['message' => 'Unauthenticated.'], 401)]);
+        $account = $this->quadxAccount();
+
+        $quote = CourierRegistry::for($account)->quoteFee(CourierOrder::fromApi($this->shipmentFor($account)), ['pickup' => $this->pickup(), 'parcel' => 'box']);
+
+        $this->assertFalse($quote->isRefused());
+        $this->assertNull($quote->amount);
+    }
 }

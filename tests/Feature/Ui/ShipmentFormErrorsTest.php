@@ -317,7 +317,7 @@ class ShipmentFormErrorsTest extends TestCase
     {
         $html = $this->get('/shipments/new')->getContent();
         $this->assertMatchesRegularExpression('#<button type="submit"[^>]*name="draft" value="1"[^>]*>Save draft</button>#', $html);
-        $this->assertMatchesRegularExpression('#Save draft</button>\s*<button type="submit"\s+class="x-btn x-btn--primary[^"]*">Book shipment</button>#', $html);
+        $this->assertMatchesRegularExpression('#Save draft</button>\s*<button type="submit"\s+class="x-btn x-btn--primary[^"]*"[^>]*data-book[^>]*>Book shipment</button>#', $html);
 
         $body = $this->form(['draft' => '1']);
         $res = $this->post('/shipments', $body);
@@ -327,6 +327,7 @@ class ShipmentFormErrorsTest extends TestCase
         $this->assertSame('draft', $s->state);
         $this->assertSame('manual', $s->source);
         $this->assertSame([], $this->fake->callsTo('createShipment'));
+        $this->assertSame([], $this->fake->callsTo('quoteFee'), 'Save draft never asks the courier');
         $this->assertSame('draft', AuditEntry::query()->where('action', 'shipment.created')->sole()->changes['state']);
         $this->assertTrue($s->isEditable());
 

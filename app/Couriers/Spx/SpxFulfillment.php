@@ -6,10 +6,13 @@ use App\Couriers\AccountSettings;
 use App\Couriers\CourierOrder;
 use App\Couriers\Contracts\Courier;
 use App\Couriers\Contracts\ProvidesPublicTrackingUrl;
+use App\Couriers\Contracts\QuotesWithRefusal;
 use App\Couriers\PickupOrigin;
 use App\Couriers\PickupPoint;
 use App\Couriers\ServiceabilityService;
 use App\Support\PhAddress;
+use App\Couriers\Support\CourierRefusal;
+use App\Couriers\Support\FeeQuote;
 use App\Couriers\Support\OrderWeight;
 use App\Couriers\Support\PhPhone;
 use App\Couriers\Support\ServiceabilityVerdict;
@@ -60,7 +63,7 @@ use Illuminate\Support\Str;
  *    delivered or returned, from 2.2 batch_get_asf (getTracking(), at most
  *    once per parcel per day). App\Shipments\CourierFacts stores it.
  */
-class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
+class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRefusal
 {
     /**
      * Sensible default PH pouch dimensions (editable via the
@@ -384,7 +387,8 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
             return ['success' => false, 'error' => $problem];
         }
 
-        $attempt = $this->submitOrder($built['payload']);
+        $context = self::parcelContext($opts);
+        $attempt = $this->submitOrder($built['payload'], $context);
 
         if ($pickup && $attempt['kind'] === 'refused' && $attempt['code'] === 10080) {
             // Past SPX's cutoff (guide 12: "use the latest returned results"): ask 1.1 again, once, and book the
@@ -402,9 +406,13 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
             if (!$built['ok']) {
                 return ['success' => false, 'error' => $built['error']];
             }
-            $attempt = $this->submitOrder($built['payload']);
+            $attempt = $this->submitOrder($built['payload'], $context);
             if ($attempt['kind'] === 'refused' && $attempt['code'] === 10080) {
-                return ['success' => false, 'error' => 'SPX refused the pickup times ' . self::slotLabel($refused) . ' and ' . self::slotLabel($slot) . " as past its cutoff. Choose another pickup time. (SPX 10080)"];
+                return [
+                    'success' => false,
+                    'error' => 'SPX refused the pickup times ' . self::slotLabel($refused) . ' and ' . self::slotLabel($slot) . " as past its cutoff. Choose another pickup time.",
+                    'courier_error' => $attempt['raw'] ?? null,
+                ];
             }
         }
 
@@ -416,7 +424,8 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
             return ['success' => false, 'error' => $attempt['error'], 'outcome_unknown' => true];
         }
         if ($attempt['kind'] === 'refused') {
-            return ['success' => false, 'error' => $attempt['error']];
+            // A plain sentence for the seller; SPX's own words go to the shipment's meta for support.
+            return ['success' => false, 'error' => $attempt['error'], 'courier_error' => $attempt['raw'] ?? null];
         }
 
         $meta = [
@@ -458,14 +467,15 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
     }
 
     /**
-     * One 1.4 submit and its bounded 1.5 poll.
+     * One 1.4 submit and its bounded 1.5 poll. A refusal's `error` is plain (SpxRefusals) and `raw` is SPX's own text.
      *
+     * @param array<string, mixed> $context the parcel's own figures (parcelContext())
      * @return array{kind:'booked', order:array, batch_no:int|string}
      *       | array{kind:'pending', batch_no:int|string}
-     *       | array{kind:'refused', error:string, code:?int, batch_no?:int|string}
+     *       | array{kind:'refused', error:string, raw:?string, code:?int, batch_no?:int|string}
      *       | array{kind:'unknown', error:string}
      */
-    private function submitOrder(array $payload): array
+    private function submitOrder(array $payload, array $context = []): array
     {
         try {
             $createData = $this->client->createOrders([$payload]);
@@ -475,7 +485,12 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
                 return ['kind' => 'unknown', 'error' => "SPX booking failed: {$e->getMessage()} (ret_code {$e->retCode})"];
             }
 
-            return ['kind' => 'refused', 'error' => "SPX booking failed: {$e->getMessage()} (ret_code {$e->retCode})", 'code' => $e->retCode];
+            return [
+                'kind' => 'refused',
+                'error' => SpxRefusals::explain($e->retCode, $e->getMessage(), $context)->message(),
+                'raw' => self::rawText($e->retCode, $e->getMessage(), null),
+                'code' => $e->retCode,
+            ];
         } catch (\Throwable $e) {
             // Transport failure, timeout or a non-envelope answer (a 5xx page): the order may exist at SPX.
             return ['kind' => 'unknown', 'error' => 'SPX booking failed: ' . $e->getMessage()];
@@ -492,11 +507,11 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
             return ['kind' => 'pending', 'batch_no' => $batchNo];
         }
 
-        $outcome = $this->outcomeFromCreateResult($resultData);
+        $outcome = $this->outcomeFromCreateResult($resultData, $context);
 
         return $outcome['ok']
             ? ['kind' => 'booked', 'order' => $outcome['order'], 'batch_no' => $batchNo]
-            : ['kind' => 'refused', 'error' => $outcome['error'], 'code' => $outcome['code'] ?? null, 'batch_no' => $batchNo];
+            : ['kind' => 'refused', 'error' => $outcome['error'], 'raw' => $outcome['raw'] ?? null, 'code' => $outcome['code'] ?? null, 'batch_no' => $batchNo];
     }
 
     /**
@@ -944,6 +959,68 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
             'remote_area_fee' => Money::decimal($first['remote_area_fee'] ?? null),
             'odz'             => self::odz($first),
         ];
+    }
+
+    /**
+     * The booking's final check: 2.1 Check Shipping Fee runs the same parcel
+     * rules as create, so a parcel SPX would refuse is refused here, before
+     * anything is saved. Our own checks run first, as createShipment() runs
+     * them. The pickup window is left out: the fee check counts a pickup as
+     * collected without one, and createShipment() moves a window past SPX's
+     * cutoff by itself, so it is no reason to refuse here.
+     */
+    public function quoteFee(CourierOrder $order, array $options): FeeQuote
+    {
+        if (!$this->client->hasAccountCredentials()) {
+            return FeeQuote::unavailable();
+        }
+
+        unset($options['pickup_slot']);
+        $context = self::parcelContext($options);
+
+        if (($problem = $order->paymentProblem($options)) !== null) {
+            return FeeQuote::refused(new CourierRefusal("SPX can't book this shipment", $problem));
+        }
+        $built = $this->buildOrderPayload($order, $options);
+        if (!$built['ok']) {
+            return FeeQuote::refused(new CourierRefusal("SPX can't book this shipment", (string) ($built['error'] ?? SpxRefusals::GENERIC_DETAIL)));
+        }
+        if (($problem = $this->limitProblem($order, $options)) !== null) {
+            return FeeQuote::refused(new CourierRefusal("SPX can't book this shipment", $problem));
+        }
+
+        try {
+            $data = $this->client->checkOrderFee([$built['payload']], ServiceabilityService::TIMEOUT_SECONDS * 2);
+        } catch (SpxApiException $e) {
+            $raw = self::rawText($e->retCode, $e->getMessage(), null);
+
+            return $e->httpStatus < 500 && SpxRefusals::isRefusal($e->retCode)
+                ? FeeQuote::refused(SpxRefusals::explain($e->retCode, $e->getMessage(), $context), $raw)
+                : FeeQuote::unavailable($raw);
+        } catch (\Throwable $e) {
+            // Transport: curl's words, not SPX's, and possibly a URL. Logged by class only.
+            Log::warning('SPX fee check could not reach SPX', ['order' => $order->id, 'exception' => $e::class]);
+
+            return FeeQuote::unavailable();
+        }
+
+        $first = ($data['orders'] ?? [])[0] ?? null;
+        if (is_array($first) && isset($first['estimated_shipping_fee']) && is_numeric($first['estimated_shipping_fee'])) {
+            return FeeQuote::fee($first['estimated_shipping_fee'], 'PHP');
+        }
+
+        // A per-order failure comes back in data.fail_list with its own ret_code (api.md §2.1).
+        $failed = ($data['fail_list'] ?? [])[0] ?? null;
+        if (is_array($failed)) {
+            $code = is_numeric($failed['ret_code'] ?? null) ? (int) $failed['ret_code'] : null;
+            $failure = self::createFailure($failed, $context);
+
+            return SpxRefusals::isRefusal($code)
+                ? FeeQuote::refused(SpxRefusals::explain($code, trim(((string) ($failed['message'] ?? '')) . ' ' . ((string) ($failed['debug_msg'] ?? ''))), $context), $failure['raw'])
+                : FeeQuote::unavailable($failure['raw']);
+        }
+
+        return FeeQuote::unavailable();
     }
 
     /**
@@ -1878,8 +1955,11 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
         if (!$outcome['ok']) {
             $meta['creation_failed'] = true;
             $meta['creation_error']  = $outcome['error'];
+            if (($outcome['raw'] ?? null) !== null) {
+                $meta['creation_error_courier'] = $outcome['raw'];
+            }
             Log::warning('SPX pending shipment creation failed', [
-                'order' => $order->id, 'batch_no' => $batchNo, 'reason' => $outcome['error'],
+                'order' => $order->id, 'batch_no' => $batchNo, 'reason' => $outcome['error'], 'code' => $outcome['code'] ?? null,
             ]);
             // The caller writes it: the courier code holds no order of its own.
             return ['courier_status' => 'creation_failed', 'meta' => $meta];
@@ -2531,55 +2611,49 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
     }
 
     /**
-     * Our sentence for the create failures SPX's guide lists as the most
-     * common (portal/guide/12, meanings from guide/08), so the operator reads
-     * what to fix. Any other code is told in SPX's own words.
-     */
-    private const CREATE_FAILURES = [
-        10001 => 'The parcel is too heavy for SPX.',
-        10003 => 'The COD amount is more than SPX collects.',
-        10018 => "SPX doesn't serve the pickup address.",
-        10019 => "SPX doesn't serve the delivery address.",
-        10021 => 'The delivery address is too far from the pickup address for SPX.',
-        10022 => 'The delivery address is too close to the pickup address for SPX.',
-        10077 => "SPX couldn't place the pickup address on its map.",
-        10078 => "SPX couldn't place the delivery address on its map.",
-        10080 => "The pickup slot is past SPX's cutoff. Choose another pickup date.",
-        10083 => 'The parcel is too heavy for SPX (actual or volumetric weight).',
-        10084 => 'The parcel is too long for SPX.',
-        10085 => 'The parcel is too wide for SPX.',
-        10086 => 'The parcel is too tall for SPX.',
-    ];
-
-    /**
-     * One fail_list entry (1.5) as the shipment's error: a human sentence
-     * first, then SPX's code and its specific reason (debug_msg) in brackets,
-     * e.g. "The pickup slot is past SPX's cutoff. Choose another pickup date.
-     * (SPX 10080: now_time over cutoff_time)".
+     * One fail_list entry (1.5) for the shipment: `error` is the seller's
+     * sentence (SpxRefusals: "Too long for SPX. Length is 35 cm. SPX takes
+     * up to 25 cm."), `raw` is SPX's code and its own words (message and
+     * debug_msg), kept for support and never shown as the error.
      *
      * @param array<string, mixed> $fail
+     * @param array<string, mixed> $context the parcel's own figures (parcelContext())
+     * @return array{error:string, raw:?string}
      */
-    private static function createFailureText(array $fail): string
+    private static function createFailure(array $fail, array $context = []): array
     {
         $code = is_numeric($fail['ret_code'] ?? null) ? (int) $fail['ret_code'] : null;
         $message = self::cleanText($fail['message'] ?? null);
         $debug = self::cleanText($fail['debug_msg'] ?? null);
 
-        $sentence = ($code !== null ? (self::CREATE_FAILURES[$code] ?? null) : null)
-            ?? ($message ?? 'SPX could not create this shipment.');
-        $detail = $debug ?? (isset(self::CREATE_FAILURES[$code ?? -1]) ? $message : null);
-        if ($detail !== null && $detail === $sentence) {
-            $detail = null;
+        return [
+            'error' => SpxRefusals::explain($code, trim(($message ?? '') . ' ' . ($debug ?? '')), $context)->message(),
+            'raw'   => self::rawText($code, $message, $debug),
+        ];
+    }
+
+    /** SPX's own answer on one line for support: "SPX 13101: <message> | <debug_msg>". Null when it said nothing. */
+    private static function rawText(?int $code, ?string $message, ?string $debug): ?string
+    {
+        $words = implode(' | ', array_filter([self::cleanText($message), self::cleanText($debug)]));
+        if ($code === null && $words === '') {
+            return null;
         }
 
-        $bracket = match (true) {
-            $code !== null && $detail !== null => "SPX {$code}: {$detail}",
-            $code !== null => "SPX {$code}",
-            $detail !== null => "SPX: {$detail}",
-            default => null,
-        };
+        return $code === null ? "SPX: {$words}" : ($words === '' ? "SPX {$code}" : "SPX {$code}: {$words}");
+    }
 
-        return $bracket === null ? $sentence : "{$sentence} ({$bracket})";
+    /**
+     * The parcel figures the seller typed, so a refusal can name them ("Length is 35 cm.").
+     *
+     * @return array<string, mixed>
+     */
+    private static function parcelContext(array $opts): array
+    {
+        return array_filter(
+            array_intersect_key($opts, array_flip(['weight_kg', 'length_cm', 'width_cm', 'height_cm'])),
+            fn ($v) => is_numeric($v)
+        );
     }
 
     /** SPX's text on one line, at most 300 characters; null when empty. */
@@ -2601,9 +2675,10 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
      * another way this batch can be settled-but-unsuccessful, folded into
      * the same "no usable order" branch below via $failed.
      *
-     * @return array{ok:bool, order?:array, error?:string, code?:?int} `code`: the first fail_list entry's ret_code
+     * @param array<string, mixed> $context the parcel's own figures (parcelContext())
+     * @return array{ok:bool, order?:array, error?:string, raw?:?string, code?:?int} `code`: the first fail_list entry's ret_code
      */
-    private function outcomeFromCreateResult(array $resultData): array
+    private function outcomeFromCreateResult(array $resultData, array $context = []): array
     {
         $taskFailed = (int) ($resultData['task_status'] ?? 0) === 5;
         $failCount  = (int) ($resultData['fail_count'] ?? 0);
@@ -2612,14 +2687,18 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl
 
         if ($taskFailed || $failCount > 0 || !empty($failList) || empty($orders)) {
             $first = is_array($failList[0] ?? null) ? $failList[0] : null;
-            $reason = $first !== null
-                ? self::createFailureText($first)
-                : ($taskFailed
-                    ? ('SPX marked this batch as Failed' . (!empty($resultData['description']) ? ": {$resultData['description']}" : '.'))
-                    : 'SPX could not create this shipment.');
             $code = $first !== null && is_numeric($first['ret_code'] ?? null) ? (int) $first['ret_code'] : null;
+            if ($first !== null) {
+                $failure = self::createFailure($first, $context);
 
-            return ['ok' => false, 'error' => $reason, 'code' => $code];
+                return ['ok' => false, 'error' => $failure['error'], 'raw' => $failure['raw'], 'code' => $code];
+            }
+
+            $said = $taskFailed && !empty($resultData['description']) && is_string($resultData['description'])
+                ? 'SPX: batch failed | ' . self::cleanText($resultData['description'])
+                : null;
+
+            return ['ok' => false, 'error' => SpxRefusals::generic()->message(), 'raw' => $said, 'code' => null];
         }
 
         $created = $orders[0];

@@ -1,3 +1,5 @@
+import { bookCheck } from './bookCheck.js';
+
 // Money on the Add shipment form, in whole centavos (BigInt): never a float. The server recomputes all of it, after
 // the same normalisation and with the same pattern (ShipmentFormRequest::normaliseValue / VALUE_PATTERN).
 const PRICE = /^\d{1,10}(\.\d{1,2})?$/;
@@ -121,7 +123,7 @@ export function shouldAutoLoadSlots(courier, handover, slotState) {
 }
 
 export function shipmentForm(config) {
-    return {
+    const form = {
         account: config.account,
         service: config.service,
         method: config.method,
@@ -258,4 +260,7 @@ export function shipmentForm(config) {
             }
         },
     };
+
+    // The final check before booking, merged with its getters intact (a spread would copy their values once).
+    return Object.defineProperties(form, Object.getOwnPropertyDescriptors(bookCheck(config)));
 }

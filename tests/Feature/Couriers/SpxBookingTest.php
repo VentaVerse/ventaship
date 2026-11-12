@@ -181,7 +181,7 @@ class SpxBookingTest extends TestCase
 
         $s->refresh();
         $this->assertSame('failed', $s->state);
-        $this->assertSame("SPX refused the pickup times Tue, Nov 10 · 2:00pm-4:00pm and Tue, Nov 10 · 4:00pm-6:00pm as past its cutoff. Choose another pickup time. (SPX 10080)", $s->error_message);
+        $this->assertSame("SPX refused the pickup times Tue, Nov 10 · 2:00pm-4:00pm and Tue, Nov 10 · 4:00pm-6:00pm as past its cutoff. Choose another pickup time.", $s->error_message);
         $this->assertCount(2, $this->created(), 'retried once, never more');
         $this->assertSame(1, $this->pickupTimeCalls());
     }

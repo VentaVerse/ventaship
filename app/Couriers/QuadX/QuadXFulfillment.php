@@ -6,10 +6,13 @@ use App\Couriers\AccountSettings;
 use App\Couriers\CourierOrder;
 use App\Couriers\Contracts\Courier;
 use App\Couriers\Contracts\ProvidesPublicTrackingUrl;
+use App\Couriers\Contracts\QuotesWithRefusal;
 use App\Couriers\Contracts\ReportsShippingCost;
 use App\Couriers\PickupOrigin;
 use App\Couriers\PickupPoint;
 use App\Couriers\ServiceabilityService;
+use App\Couriers\Support\CourierRefusal;
+use App\Couriers\Support\FeeQuote;
 use App\Couriers\Support\ServiceabilityVerdict;
 use App\Models\CourierAccount;
 
@@ -20,7 +23,7 @@ use App\Models\CourierAccount;
  * lives here + QuadXClient: auth, parcel categories, services, the
  * seller_payment_method field, and name-based address resolution.
  */
-class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShippingCost
+class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShippingCost, QuotesWithRefusal
 {
     /** QuadX's official status labels (docs/couriers/quadx/statuses.md); the live cache wins when it has one. */
     public const STATUS_LABELS = [
@@ -231,10 +234,15 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
             // A transport error or a 5xx answer to the create may still have booked the parcel: the outcome is
             // unknown and the caller must not treat it as a refusal (which would invite a second booking).
             $unknown = ($res['transport'] ?? false) === true || (int) ($res['status'] ?? 0) >= 500;
+            $said = is_string($res['error'] ?? null) ? trim($res['error']) : '';
+
+            $plain = $unknown ? null : self::refusal($said);
 
             return array_filter([
                 'success' => false,
-                'error' => $res['error'] ?? 'QuadX booking failed.',
+                'error' => $plain?->message() ?? ($said !== '' ? $said : 'QuadX booking failed.'),
+                // QuadX's own words, kept for support when the error above is ours.
+                'courier_error' => $plain === null || $said === '' ? null : 'QuadX ' . (int) ($res['status'] ?? 0) . ': ' . mb_substr($said, 0, 500),
                 'outcome_unknown' => $unknown ?: null,
             ], fn ($v) => $v !== null);
         }
@@ -522,6 +530,55 @@ class QuadXFulfillment implements Courier, ProvidesPublicTrackingUrl, ReportsShi
             // parcel labels must follow the total rather than contradict it.
             'fees'      => $quote['fees'],
         ];
+    }
+
+    /**
+     * The booking's final check, from the same rate call: QuadX's fee for the
+     * parcel the booking would send. Only QuadX saying it does not serve the
+     * address is a refusal (create refuses it in the same words); any other
+     * failure, an auth error or a rate it did not give, is no answer, never a
+     * reason to stop the booking.
+     */
+    public function quoteFee(CourierOrder $order, array $options): FeeQuote
+    {
+        if (!$this->isEnabled()) {
+            return FeeQuote::unavailable();
+        }
+
+        $quote = $this->rateQuote($order, $options, ServiceabilityService::TIMEOUT_SECONDS * 2);
+        if (!$quote['ok']) {
+            $said = trim((string) ($quote['error'] ?? ''));
+            $status = (int) $quote['status'];
+            if ($status === 0) {
+                return FeeQuote::unavailable();
+            }
+            $raw = 'QuadX ' . $status . ': ' . mb_substr($said, 0, 500);
+
+            return $status >= 400 && $status < 500 && stripos($said, 'serviceable') !== false
+                ? FeeQuote::refused(self::refusal($said) ?? new CourierRefusal("QuadX doesn't deliver here"), $raw)
+                : FeeQuote::unavailable($raw);
+        }
+
+        $amount = $quote['fees'][$this->parcelFor($options)] ?? null;
+
+        return is_numeric($amount) ? FeeQuote::fee($amount, 'PHP') : FeeQuote::unavailable();
+    }
+
+    /**
+     * A QuadX refusal in plain words, or null when QuadX's own sentence already reads plainly. QuadX writes its own
+     * sentences ("Delivery address is not serviceable."), so only the serviceability refusal, a bare HTTP status and
+     * text that looks like code are reworded.
+     */
+    private static function refusal(string $said): ?CourierRefusal
+    {
+        if (stripos($said, 'serviceable') !== false) {
+            return new CourierRefusal("QuadX doesn't deliver here", 'Check the delivery address.');
+        }
+        if ($said === '' || preg_match('/^QuadX returned HTTP \d+$/', $said) === 1 || mb_strlen($said) > 200 || preg_match('/[{}\[\]<>|]/', $said) === 1) {
+            return new CourierRefusal("QuadX couldn't book this shipment", 'Check the details and try again.');
+        }
+
+        return null;
     }
 
     /**

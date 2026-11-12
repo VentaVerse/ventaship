@@ -546,8 +546,9 @@ class SpxFulfillmentTest extends TestCase
         $result = $this->courier()->createShipment($order, $this->opts(['parcel' => 'small', 'shipping_payment' => 'sender_pay']));
 
         $this->assertFalse($result['success']);
-        // Our sentence for the code first, then SPX's code and specific reason.
-        $this->assertSame("SPX doesn't serve the pickup address. (SPX 10018: x)", $result['error']);
+        // Our plain sentence for the code; SPX's code and its own words go to courier_error for support.
+        $this->assertSame("SPX doesn't pick up here. Check the pickup address.", $result['error']);
+        $this->assertSame('SPX 10018: Address invalid. | x', $result['courier_error']);
     }
 
     /**
@@ -579,7 +580,8 @@ class SpxFulfillmentTest extends TestCase
         $result = $this->courier()->createShipment($order, $this->opts(['parcel' => 'small', 'shipping_payment' => 'sender_pay']));
 
         $this->assertFalse($result['success']);
-        $this->assertStringContainsString('Failed', $result['error']);
+        $this->assertSame("SPX couldn't book this shipment. Check the details and try again.", $result['error']);
+        $this->assertStringContainsString('Failed', $result['courier_error']);
         // 1 create + exactly 1 poll, proves it stopped immediately rather
         // than exhausting the full bounded backoff window.
         Http::assertSentCount(2);
@@ -647,7 +649,8 @@ class SpxFulfillmentTest extends TestCase
         $this->assertSame('creation_failed', $answer['courier_status']);
         $this->assertArrayNotHasKey('tracking_number', $answer);
         $this->assertTrue($answer['meta']['creation_failed']);
-        $this->assertSame('Weight exceeds limit. (SPX 10025)', $answer['meta']['creation_error']);
+        $this->assertSame("SPX doesn't pick up here. Check the pickup address.", $answer['meta']['creation_error']);
+        $this->assertSame('SPX 10025: Weight exceeds limit.', $answer['meta']['creation_error_courier']);
         $this->assertSame(7, $answer['meta']['batch_no']);
     }
 
@@ -677,7 +680,8 @@ class SpxFulfillmentTest extends TestCase
 
         $this->assertSame('creation_failed', $answer['courier_status']);
         $this->assertTrue($answer['meta']['creation_failed']);
-        $this->assertStringContainsString('Failed', $answer['meta']['creation_error']);
+        $this->assertSame("SPX couldn't book this shipment. Check the details and try again.", $answer['meta']['creation_error']);
+        $this->assertStringContainsString('Failed', $answer['meta']['creation_error_courier']);
     }
 
     // ------------------------------------------------------------------
@@ -1777,32 +1781,38 @@ class SpxFulfillmentTest extends TestCase
         $this->assertArrayNotHasKey('edd', $result['meta'], 'the real 1.5 answer carries no EDD');
     }
 
-    /** @return array<string, array{0: array<string, mixed>, 1: string}> */
+    /** @return array<string, array{0: array<string, mixed>, 1: string, 2: ?string}> */
     public static function createFailureProvider(): array
     {
+        $generic = "SPX couldn't book this shipment. Check the details and try again.";
+
         return [
             'known code with debug_msg' => [
                 ['order_id' => 'VS000042', 'message' => 'Create Order Failed.', 'debug_msg' => 'now_time over cutoff_time', 'ret_code' => 10080],
-                "The pickup slot is past SPX's cutoff. Choose another pickup date. (SPX 10080: now_time over cutoff_time)",
+                'Pickup time has passed. Choose another pickup time.',
+                'SPX 10080: Create Order Failed. | now_time over cutoff_time',
             ],
-            'known code without debug_msg keeps SPX message' => [
+            'known code without debug_msg' => [
                 ['message' => 'Create Order Failed.', 'ret_code' => 10019],
-                "SPX doesn't serve the delivery address. (SPX 10019: Create Order Failed.)",
+                "SPX doesn't deliver here. Check the delivery address.",
+                'SPX 10019: Create Order Failed.',
             ],
-            'unknown code in SPX words' => [
+            'a parcel rule on create, numbers without trailing zeros' => [
+                ['order_id' => 'VS000042', 'message' => 'check rule|7 |ruleName| MaxLengthExtremumRule failed, 35.000000 exceed max value 25.000000', 'debug_msg' => 'order {"order_id":"VS000042"}', 'ret_code' => 13101],
+                'Too long for SPX. Length is 35 cm. SPX takes up to 25 cm.',
+                'SPX 13101: check rule|7 |ruleName| MaxLengthExtremumRule failed, 35.000000 exceed max value 25.000000 | order {"order_id":"VS000042"}',
+            ],
+            'unknown code' => [
                 ['message' => 'Receiver name too long.', 'debug_msg' => "deliver_name\nlength 80 > 64", 'ret_code' => 10099],
-                'Receiver name too long. (SPX 10099: deliver_name length 80 > 64)',
+                $generic,
+                'SPX 10099: Receiver name too long. | deliver_name length 80 > 64',
             ],
-            'unknown code, no debug_msg' => [
-                ['message' => 'Create Order Failed.', 'ret_code' => 10099],
-                'Create Order Failed. (SPX 10099)',
-            ],
-            'no code no message' => [[], 'SPX could not create this shipment.'],
+            'no code no message' => [[], $generic, null],
         ];
     }
 
     #[DataProvider('createFailureProvider')]
-    public function test_a_create_failure_names_the_reason_then_spx_code_and_debug_msg(array $fail, string $expected): void
+    public function test_a_create_failure_names_the_reason_then_spx_code_and_debug_msg(array $fail, string $expected, ?string $raw): void
     {
         $this->configureAccountCredentials();
         Http::fake([
@@ -1817,6 +1827,92 @@ class SpxFulfillmentTest extends TestCase
 
         $this->assertFalse($result['success']);
         $this->assertSame($expected, $result['error']);
+        $this->assertSame($raw, $result['courier_error'] ?? null);
+    }
+
+    // ------------------------------------------------------------------
+    // quoteFee: the booking's final check.
+    // ------------------------------------------------------------------
+
+    public function test_quote_fee_answers_spx_estimated_fee(): void
+    {
+        $this->configureAccountCredentials();
+        Http::fake(['*batch_check_order*' => Http::response(['ret_code' => 0, 'message' => 'success.', 'data' => [
+            'orders' => [['order_id' => '', 'estimated_shipping_fee' => 85]], 'fail_list' => [],
+        ]])]);
+
+        $quote = $this->courier()->quoteFee($this->makeOrder(), $this->opts(['parcel' => 'small']));
+
+        $this->assertFalse($quote->isRefused());
+        $this->assertSame('85.00', $quote->amount);
+        $this->assertSame('PHP', $quote->currency);
+    }
+
+    public function test_quote_fee_turns_a_parcel_rule_refusal_into_plain_words(): void
+    {
+        $this->configureAccountCredentials();
+        Http::fake(['*batch_check_order*' => Http::response([
+            'ret_code' => 13051,
+            'message' => 'check rule|7 |ruleName| MaxLengthExtremumRule failed, 35.000000 exceed max value 25.000000',
+            'data' => null,
+        ])]);
+
+        $quote = $this->courier()->quoteFee($this->makeOrder(), $this->opts(['parcel' => 'custom', 'length_cm' => 35, 'width_cm' => 20, 'height_cm' => 10]));
+
+        $this->assertTrue($quote->isRefused());
+        $this->assertSame('Too long for SPX', $quote->refusal->title);
+        $this->assertSame('Length is 35 cm. SPX takes up to 25 cm.', $quote->refusal->detail);
+        $this->assertStringContainsString('SPX 13051: check rule|7', $quote->courierText);
+    }
+
+    public function test_quote_fee_reads_a_refusal_from_the_fail_list(): void
+    {
+        $this->configureAccountCredentials();
+        Http::fake(['*batch_check_order*' => Http::response(['ret_code' => 0, 'message' => 'success.', 'data' => [
+            'orders' => [], 'fail_list' => [['order_id' => '', 'ret_code' => 10033, 'message' => 'Sorry,the address you selected is not within the limits of the region']],
+        ]])]);
+
+        $quote = $this->courier()->quoteFee($this->makeOrder(), $this->opts(['parcel' => 'small']));
+
+        $this->assertTrue($quote->isRefused());
+        $this->assertSame("Outside SPX's area. Check the delivery address.", $quote->refusal->message());
+    }
+
+    public function test_quote_fee_never_refuses_on_an_outage_or_an_account_error(): void
+    {
+        $this->configureAccountCredentials();
+
+        Http::fake(['*batch_check_order*' => Http::response(['ret_code' => 99001, 'message' => 'Internal error', 'data' => null])]);
+        $this->assertFalse($this->courier()->quoteFee($this->makeOrder(), $this->opts(['parcel' => 'small']))->isRefused());
+
+        Http::fake(['*batch_check_order*' => fn () => throw new \Illuminate\Http\Client\ConnectionException('timed out')]);
+        $quote = $this->courier()->quoteFee($this->makeOrder(), $this->opts(['parcel' => 'small']));
+        $this->assertFalse($quote->isRefused());
+        $this->assertNull($quote->amount);
+    }
+
+    public function test_quote_fee_leaves_the_pickup_window_out(): void
+    {
+        $this->configureAccountCredentials();
+        Http::fake(['*batch_check_order*' => Http::response(['ret_code' => 0, 'message' => 'success.', 'data' => [
+            'orders' => [['estimated_shipping_fee' => 85]], 'fail_list' => [],
+        ]])]);
+        $slot = json_encode(['pickup_time' => 1700000000, 'pickup_time_range_id' => 2, 'pickup_time_range' => '2:00pm-4:00pm']);
+
+        $this->courier()->quoteFee($this->makeOrder(), $this->opts(['parcel' => 'small', 'method' => 'pickup', 'pickup_slot' => $slot]));
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'batch_check_order') && ! str_contains($request->body(), 'pickup_time_range'));
+    }
+
+    public function test_quote_fee_without_user_credentials_is_no_answer(): void
+    {
+        Http::fake();
+
+        $quote = $this->courier()->quoteFee($this->makeOrder(), $this->opts(['parcel' => 'small']));
+
+        $this->assertFalse($quote->isRefused());
+        $this->assertNull($quote->amount);
+        Http::assertNothingSent();
     }
 
     public function test_parse_webhook_carries_the_actual_fee_edd_driver_and_proofs(): void

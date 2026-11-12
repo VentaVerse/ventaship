@@ -129,9 +129,10 @@ final class Poller
 
         if (($answer['courier_status'] ?? null) === 'creation_failed') {
             $error = data_get($answer, 'meta.creation_error');
-            $message = is_string($error) && trim($error) !== '' ? 'The courier refused the booking: '.trim($error) : 'The courier refused the booking.';
+            $raw = data_get($answer, 'meta.creation_error_courier');
+            $message = is_string($error) && trim($error) !== '' ? trim($error) : 'The courier refused the booking.';
             // Settles a requested cancel too: nothing exists at the courier.
-            $this->outcomes->failed($s->id, 'courier_refused', $message);
+            $this->outcomes->failed($s->id, 'courier_refused', $message, courierError: is_string($raw) ? $raw : null);
         }
     }
 

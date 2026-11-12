@@ -56,7 +56,7 @@
 @endsection
 
 @section('crumb')
-    <a class="sd-crumb" href="{{ route('fulfillment') }}">Shipments</a>
+    <a class="sd-crumb" href="{{ route('fulfillment') }}"><x-ui.icon name="chevron-left" size="14" /> Shipments</a>
 @endsection
 
 @if(in_array(true, [$act['print'], $act['retry'], $act['book'], $act['edit'], $act['cancel'], $act['delete']], true))
@@ -75,7 +75,10 @@
             <x-ui.button class="sd-edit" :href="route('shipments.edit', $id)">Edit</x-ui.button>
         @endif
         @if($act['cancel'])
-            <x-ui.button class="sd-cancel" @click="$dispatch('confirm', {{ Js::from(['title' => 'Cancel shipment '.$title.'?', 'confirm' => 'Cancel shipment', 'dismiss' => 'Keep shipment', 'form' => 'sd-cancel', 'tone' => 'danger']) }})">Cancel</x-ui.button>
+            @if(in_array(true, [$act['print'], $act['retry'], $act['book'], $act['edit']], true))
+                <span class="sd-actions__sep" aria-hidden="true"></span>
+            @endif
+            <x-ui.button variant="danger-outline" class="sd-cancel" @click="$dispatch('confirm', {{ Js::from(['title' => 'Cancel shipment '.$title.'?', 'confirm' => 'Cancel shipment', 'dismiss' => 'Keep shipment', 'form' => 'sd-cancel', 'tone' => 'danger']) }})">Cancel shipment</x-ui.button>
         @endif
         @if($act['delete'])
             <x-ui.button class="sd-delete" @click="$dispatch('confirm', {{ Js::from(['title' => 'Delete shipment '.$title.'?', 'confirm' => 'Delete shipment', 'dismiss' => 'Keep shipment', 'form' => 'sd-delete', 'tone' => 'danger']) }})">Delete</x-ui.button>
@@ -85,6 +88,15 @@
 @endif
 
 @section('content')
+@if(session('booked') === true)
+    <div class="sd-booked" role="status">
+        <p class="sd-booked__msg"><x-ui.icon name="check" size="16" /> Shipment booked</p>
+        <div class="sd-booked__actions">
+            <x-ui.button :href="route('fulfillment')">Go to shipments</x-ui.button>
+            <x-ui.button variant="primary" :href="route('shipments.create')">Add another shipment</x-ui.button>
+        </div>
+    </div>
+@endif
 @if($alert)
     <div class="sd-alert sd-alert--{{ $alert['kind'] === 'failed' ? 'bad' : 'attn' }}" data-alert="{{ $alert['kind'] }}">
         <x-ui.icon :name="$alert['kind'] === 'unknown' ? 'clock' : 'alert-triangle'" size="16" />

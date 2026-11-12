@@ -268,7 +268,7 @@ class ShipmentFormRedesignTest extends TestCase
             'parcel' => ['type' => 'box'],
             'payment' => ['method' => 'cod'],
             'insure' => '1',
-        ])->assertSessionHasNoErrors()->assertSessionHas('status', 'Booked · QX-E2E-1');
+        ])->assertSessionHasNoErrors()->assertSessionHas('booked', true);
 
         $s = Shipment::query()->sole();
         $this->assertSame('booked', $s->state);

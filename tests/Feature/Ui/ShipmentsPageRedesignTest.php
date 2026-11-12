@@ -270,7 +270,7 @@ class ShipmentsPageRedesignTest extends TestCase
         $html = $this->get('/')->assertOk()->getContent();
         $this->assertStringContainsString('aria-live="polite"', $html);
         $this->assertStringContainsString('Deselect', $html);
-        foreach (["'Print waybills'", "'Book'", "'Cancel'"] as $label) {
+        foreach (["'Print waybills'", "'Book'", "'Cancel shipments'"] as $label) {
             $this->assertStringContainsString($label, $html);
         }
         $this->assertStringContainsString('formtarget="_blank"', $html);

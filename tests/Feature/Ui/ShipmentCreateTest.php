@@ -99,7 +99,7 @@ class ShipmentCreateTest extends TestCase
         $res = $this->post('/shipments', $this->form());
 
         $s = Shipment::query()->sole();
-        $res->assertRedirect(route('shipments.show', $s))->assertSessionHas('status', 'Booked · QX-UI-1');
+        $res->assertRedirect(route('shipments.show', $s))->assertSessionHas('booked', true);
         $this->assertSame('booked', $s->state);
         $this->assertSame('manual', $s->source);
         $this->assertNull($s->client_app_id);

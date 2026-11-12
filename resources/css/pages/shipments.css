@@ -717,6 +717,70 @@
         overflow-wrap: anywhere;
     }
 
+    /* Book this shipment? (the final check) */
+    .modal.sh-book {
+        max-width: 440px;
+    }
+
+    .sh-book__sum {
+        display: grid;
+        gap: 8px;
+        margin: -6px 0 0;
+        font-size: 13px;
+    }
+
+    .sh-book__row {
+        display: grid;
+        grid-template-columns: 96px minmax(0, 1fr);
+        gap: 12px;
+    }
+
+    .sh-book__row dt {
+        color: var(--bl-ink-3);
+    }
+
+    .sh-book__row dd {
+        min-width: 0;
+        margin: 0;
+        font-weight: 500;
+        overflow-wrap: anywhere;
+    }
+
+    .sh-book__fee {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        margin: 14px 0 18px;
+        padding: 12px 14px;
+        border-radius: var(--bl-r-ctrl);
+        background: var(--bl-brand-w);
+        color: var(--bl-ink-2);
+        font-weight: 600;
+    }
+
+    .sh-book__fee b {
+        color: var(--bl-ink);
+        font-size: 20px;
+    }
+
+    .sh-book__muted {
+        color: var(--bl-ink-3);
+        font-weight: 500;
+    }
+
+    .sh-book__err {
+        display: grid;
+        gap: 3px;
+        margin: 14px 0 18px;
+        padding: 12px 14px;
+        border-radius: var(--bl-r-ctrl);
+        background: var(--bl-bad-w);
+        color: var(--bl-bad);
+        font-size: 13px;
+        overflow-wrap: anywhere;
+    }
+
     .sh-sum__sub {
         display: block;
         color: var(--bl-ink-2);
@@ -856,6 +920,63 @@
     }
 
     .sd-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* The buttons keep one row; the title and its references wrap instead. */
+    .x-page:has(.sd-actions) .x-page__actions {
+        flex: none;
+    }
+
+    /* Cancel shipment stands apart from the buttons that move the shipment forward. */
+    .sd-actions__sep {
+        align-self: stretch;
+        width: 1px;
+        margin: 4px 4px;
+        background: var(--bl-rule-2);
+    }
+
+    .sd-crumb {
+        display: inline-flex;
+        gap: 2px;
+        align-items: center;
+        color: var(--bl-brand-link);
+        font-weight: 600;
+        text-decoration: none;
+    }
+
+    .sd-crumb:hover {
+        text-decoration: underline;
+        text-underline-offset: 2px;
+    }
+
+    /* Right after a booking: what to do next. */
+    .sd-booked {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 16px;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+        padding: 10px 12px 10px 16px;
+        border: 1px solid color-mix(in srgb, var(--bl-good) 30%, transparent);
+        border-radius: 12px;
+        background: var(--bl-good-w);
+    }
+
+    .sd-booked__msg {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin: 0;
+        color: var(--bl-good);
+        font-weight: 700;
+    }
+
+    .sd-booked__actions {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
@@ -1033,6 +1154,19 @@
 
         .sd-actions .x-btn {
             width: 100%;
+            min-height: 44px;
+            justify-content: center;
+        }
+
+        .sd-actions__sep {
+            width: auto;
+            height: 1px;
+            margin: 4px 0;
+        }
+
+        .sd-booked__actions,
+        .sd-booked__actions .x-btn {
+            flex: 1 1 auto;
             min-height: 44px;
             justify-content: center;
         }

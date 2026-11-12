@@ -224,7 +224,7 @@ class SpxMoneyAndStatusTest extends TestCase
 
     // ---------------------------------------------------------------- failure reason
 
-    public function test_a_refused_booking_shows_spx_reason_code_and_debug_msg(): void
+    public function test_a_refused_booking_shows_a_plain_reason_and_keeps_spx_words_in_meta(): void
     {
         Http::fake([
             '*batch_create_order*' => Http::response(['ret_code' => 0, 'message' => 'success.', 'data' => ['batch_no' => 1]]),
@@ -239,13 +239,14 @@ class SpxMoneyAndStatusTest extends TestCase
         Bus::dispatchSync(new BookShipment($s->id));
 
         $s->refresh();
-        $expected = "The pickup slot is past SPX's cutoff. Choose another pickup date. (SPX 10080: now_time over cutoff_time)";
+        $expected = 'Pickup time has passed. Choose another pickup time.';
         $this->assertSame('failed', $s->state);
         $this->assertSame($expected, $s->error_message);
+        $this->assertSame('SPX 10080: Create Order Failed. | now_time over cutoff_time', $s->meta['courier_error']);
         $this->assertSame(['code' => 'courier_refused', 'message' => $expected], (new ShipmentResource($s))->toArray()['error']);
 
         $this->actingAs($this->admin());
-        $this->get(route('shipments.show', $s->public_id))->assertOk()->assertSee($expected);
+        $this->get(route('shipments.show', $s->public_id))->assertOk()->assertSee($expected)->assertDontSee('now_time over cutoff_time');
     }
 
     public function test_a_late_refusal_found_by_the_poller_carries_the_reason_too(): void
@@ -258,10 +259,8 @@ class SpxMoneyAndStatusTest extends TestCase
 
         app(Poller::class)->run();
 
-        $this->assertSame(
-            "The courier refused the booking: SPX doesn't serve the delivery address. (SPX 10019: deliver address not in service area)",
-            $s->refresh()->error_message,
-        );
+        $this->assertSame("SPX doesn't deliver here. Check the delivery address.", $s->refresh()->error_message);
+        $this->assertSame('SPX 10019: Create Order Failed. | deliver address not in service area', $s->meta['courier_error']);
     }
 
     // ---------------------------------------------------------------- POD, driver, EDD, evidence

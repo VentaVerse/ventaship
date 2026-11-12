@@ -28,6 +28,8 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::post('shipments', [ShipmentsController::class, 'store'])->name('shipments.store');
     Route::get('shipments/options/spx-slots', [ShipmentOptionsController::class, 'spxSlots'])->name('shipments.options.spx-slots');
     Route::get('shipments/options/lbc-dates', [ShipmentOptionsController::class, 'lbcDates'])->name('shipments.options.lbc-dates');
+    Route::post('shipments/check', [ShipmentsController::class, 'check'])->middleware('throttle:booking-checks')->name('shipments.check');
+    Route::post('shipments/{shipment:public_id}/check', [ShipmentsController::class, 'checkEdit'])->middleware('throttle:booking-checks')->name('shipments.check-edit');
     Route::get('shipments/{shipment:public_id}', [ShipmentsController::class, 'show'])->name('shipments.show');
     Route::get('shipments/{shipment:public_id}/edit', [ShipmentsController::class, 'edit'])->name('shipments.edit');
     Route::put('shipments/{shipment:public_id}', [ShipmentsController::class, 'update'])->name('shipments.update');

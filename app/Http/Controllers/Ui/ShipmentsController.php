@@ -17,11 +17,15 @@ use App\Models\CourierAccount;
 use App\Models\Customer;
 use App\Models\PickupAddress;
 use App\Models\Shipment;
+use App\Shipments\BookingCheck;
+use App\Shipments\BookingRefused;
 use App\Shipments\CourierFormFields;
 use App\Shipments\ItemsText;
 use App\Shipments\ShipmentCreator;
+use App\Support\Money;
 use Closure;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -43,6 +47,9 @@ class ShipmentsController extends Controller
 
     private const LOCK_SECONDS = 120;
 
+    /** outcome() for a shipment the courier booked: the page shows its success bar instead of a status line. */
+    private const BOOKED = 'booked';
+
     /** The courier tiles, in this order. */
     private const COURIERS = ['quadx', 'spx', 'lbc'];
 
@@ -60,7 +67,7 @@ class ShipmentsController extends Controller
         return $this->form($request, $pickups, $shipment->loadMissing('courierAccount'));
     }
 
-    public function update(ShipmentFormRequest $form, Shipment $shipment, ShipmentCreator $creator): RedirectResponse
+    public function update(ShipmentFormRequest $form, Shipment $shipment, ShipmentCreator $creator, BookingCheck $check): RedirectResponse
     {
         if (! $shipment->isEditable()) {
             return $this->refused($shipment);
@@ -84,7 +91,9 @@ class ShipmentsController extends Controller
             return $this->failed($e, $shipment);
         }
 
-        return $this->once($form, function () use ($form, $creator, $shipment, $data) {
+        return $this->once($form, function () use ($form, $creator, $shipment, $data, $check) {
+            // The courier's final check runs before the edit is saved: a refusal leaves the shipment as it was.
+            $check->assertBookable($data, $shipment);
             $this->auditUpdate($form, $creator->update($shipment, $data));
             $this->rememberCustomer($form, $shipment, false);
             $booked = $creator->submit($shipment->refresh(), now: true);
@@ -148,13 +157,17 @@ class ShipmentsController extends Controller
      * Book shipment books it now; Save draft (`draft=1`) stores the same validated shipment as a draft without calling
      * the courier, as the Edit form's Save does, to be booked later from its page or Needs action.
      */
-    public function store(ShipmentFormRequest $form, ShipmentCreator $creator): RedirectResponse
+    public function store(ShipmentFormRequest $form, ShipmentCreator $creator, BookingCheck $check): RedirectResponse
     {
         $draft = $form->boolean('draft');
 
-        return $this->once($form, function () use ($form, $creator, $draft) {
+        return $this->once($form, function () use ($form, $creator, $draft, $check) {
             $data = $form->shipmentData();
             $data['submit'] = ! $draft;
+            // Book shipment asks the courier first: a refusal saves nothing. Save draft never asks.
+            if (! $draft) {
+                $check->assertBookable($data);
+            }
             $shipment = $creator->create(null, $data, 'manual', now: true);
             $this->rememberCustomer($form, $shipment, true);
             $this->audit($form, 'shipment.created', $shipment, [
@@ -166,6 +179,49 @@ class ShipmentsController extends Controller
 
             return $shipment;
         });
+    }
+
+    /**
+     * POST /shipments/check: the Add shipment form's final check before Book shipment. The form is validated exactly
+     * as the booking validates it (a 422 with the field errors otherwise); the answer is the courier's fee, its refusal
+     * in plain words, or no fee when the courier gave none. Nothing is saved and the form token is not used.
+     */
+    public function check(ShipmentFormRequest $form, BookingCheck $check): JsonResponse
+    {
+        return $this->checkAnswer($check, fn () => $form->shipmentData(), null);
+    }
+
+    /** POST /shipments/{id}/check: the same for the Edit form's Save and book. */
+    public function checkEdit(ShipmentFormRequest $form, Shipment $shipment, BookingCheck $check): JsonResponse
+    {
+        if (! $shipment->isEditable()) {
+            return response()->json(['error' => 'Only unbooked manual shipments can be changed.', 'title' => 'Not editable', 'detail' => ''], 409);
+        }
+
+        return $this->checkAnswer($check, fn () => $form->shipmentData(false), $shipment);
+    }
+
+    /** @param  Closure(): array<string, mixed>  $data */
+    private function checkAnswer(BookingCheck $check, Closure $data, ?Shipment $editing): JsonResponse
+    {
+        try {
+            $quote = $check->quote($data(), $editing);
+        } catch (ApiError $e) {
+            // The chosen account cannot book: the same field error the booking would show.
+            $errors = array_map(fn (string $m) => [$m], $this->apiErrors($e));
+
+            return response()->json(['message' => reset($errors)[0], 'errors' => $errors], 422);
+        }
+
+        if ($quote->refusal !== null) {
+            return response()->json(['error' => $quote->refusal->message(), 'title' => $quote->refusal->title, 'detail' => $quote->refusal->detail]);
+        }
+
+        return response()->json([
+            'fee' => $quote->amount,
+            'currency' => $quote->amount === null ? null : $quote->currency,
+            'label' => $quote->amount === null ? null : ($quote->currency === 'PHP' ? Money::peso($quote->amount) : $quote->currency.' '.$quote->amount),
+        ]);
     }
 
     /**
@@ -204,6 +260,9 @@ class ShipmentsController extends Controller
                 $shipment = $work();
             } catch (ApiError $e) {
                 return $this->failed($e, $editing);
+            } catch (BookingRefused $e) {
+                // Nothing was saved and the token stays unused, so the corrected form can be booked.
+                return back()->withInput()->withErrors(['booking' => $e->refusal->message()]);
             }
 
             Cache::put(self::DONE_PREFIX.$token, $shipment->public_id, now()->addDay());
@@ -342,13 +401,18 @@ class ShipmentsController extends Controller
             ? redirect()->route('shipments.show', $publicId)
             : redirect()->route('fulfillment');
 
-        return $status === null ? $redirect : $redirect->with('status', $status);
+        return match ($status) {
+            null => $redirect,
+            // The shipment page shows its "Shipment booked" bar once, right after this booking.
+            self::BOOKED => $redirect->with('booked', true),
+            default => $redirect->with('status', $status),
+        };
     }
 
     private function outcome(Shipment $shipment): string
     {
         return match ($shipment->state) {
-            'booked' => 'Booked · '.$shipment->tracking_number,
+            'booked' => self::BOOKED,
             'failed' => 'Courier refused: '.$shipment->error_message,
             'unknown' => 'Booking result unknown',
             'draft' => 'Saved',

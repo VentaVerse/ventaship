@@ -173,16 +173,23 @@ final class BookingOutcomes
     }
 
     /**
-     * Nothing was booked: `failed`, and the client reference is free again.
+     * Nothing was booked: `failed`, and the client reference is free again. $message is what the seller reads;
+     * $courierError, the courier's own words, goes to meta.courier_error for support (cleared when there is none).
      *
      * @param  list<string>  $from  the states this refusal may replace
      */
-    public function failed(int $shipmentId, string $code, string $message, array $from = ['booking']): ?Shipment
+    public function failed(int $shipmentId, string $code, string $message, array $from = ['booking'], ?string $courierError = null): ?Shipment
     {
-        return DB::transaction(function () use ($shipmentId, $code, $message, $from) {
+        return DB::transaction(function () use ($shipmentId, $code, $message, $from, $courierError) {
             $s = $this->lock($shipmentId);
             if ($s === null || ! in_array($s->state, $from, true)) {
                 return null;
+            }
+
+            $meta = is_array($s->meta) ? $s->meta : [];
+            unset($meta['courier_error']);
+            if ($courierError !== null && trim($courierError) !== '') {
+                $meta['courier_error'] = mb_substr(trim($courierError), 0, self::MESSAGE_MAX);
             }
 
             $s->forceFill([
@@ -192,6 +199,7 @@ final class BookingOutcomes
                 'error_message' => mb_substr($message, 0, self::MESSAGE_MAX),
                 'needs_attention' => false,
                 'attention_reason' => null,
+                'meta' => $meta === [] ? null : $meta,
             ])->save();
 
             Outbox::record($s->clientApp, 'shipment.booking_failed', ['event' => null], $s);

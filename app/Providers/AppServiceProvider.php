@@ -68,6 +68,10 @@ class AppServiceProvider extends ServiceProvider
         // CourierWebhookController::UNVERIFIED_PER_MINUTE instead.
         RateLimiter::for('spx-webhooks', fn (Request $request) => Limit::perMinute(self::SPX_WEBHOOKS_PER_MINUTE)->by('spx-webhooks:ip:' . $request->ip()));
 
+        // The final check before a booking asks the courier for a fee: per admin.
+        RateLimiter::for('booking-checks', fn (Request $request) => Limit::perMinute(30)
+            ->by('booking-checks:admin:' . ($request->user()?->getAuthIdentifier() ?? 'ip:' . $request->ip())));
+
         // Viewing a courier secret: per admin.
         RateLimiter::for('secret-reveals', fn (Request $request) => Limit::perMinute(10)
             ->by('secret-reveals:admin:' . ($request->user()?->getAuthIdentifier() ?? 'ip:' . $request->ip()))

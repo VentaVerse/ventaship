@@ -142,7 +142,8 @@ class BookShipment implements ShouldQueue
 
         if (($result['success'] ?? false) !== true) {
             $error = is_string($result['error'] ?? null) && $result['error'] !== '' ? $result['error'] : 'The courier refused the booking.';
-            $outcomes->failed($s->id, 'courier_refused', $error);
+            // The courier's own words are kept in the shipment's meta for support, never logged (they can carry the recipient).
+            $outcomes->failed($s->id, 'courier_refused', $error, courierError: $this->text($result['courier_error'] ?? null));
 
             return;
         }

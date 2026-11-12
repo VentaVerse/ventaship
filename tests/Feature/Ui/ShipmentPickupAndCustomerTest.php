@@ -302,7 +302,7 @@ class ShipmentPickupAndCustomerTest extends TestCase
         $this->fake->booksAs('QX-C2');
 
         $this->post('/shipments', $this->form(['pickup_address_id' => $this->pickupId(), 'save_customer' => '1']))
-            ->assertSessionHasNoErrors()->assertSessionHas('status', 'Booked · QX-C2');
+            ->assertSessionHasNoErrors()->assertSessionHas('booked', true);
 
         $s = Shipment::query()->sole();
         $this->assertSame('booked', $s->state);

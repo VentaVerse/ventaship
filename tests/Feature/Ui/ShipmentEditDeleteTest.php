@@ -114,7 +114,7 @@ class ShipmentEditDeleteTest extends TestCase
         $token = $this->editToken($s);
 
         $this->put(route('shipments.update', $s->public_id), $this->form(['book' => '1', 'client_reference' => 'REF-1'], $token))
-            ->assertRedirect(route('shipments.show', $s->public_id))->assertSessionHas('status', 'Booked · QX-EDIT-1');
+            ->assertRedirect(route('shipments.show', $s->public_id))->assertSessionHas('booked', true);
 
         $this->assertSame('booked', $s->refresh()->state);
         $this->assertSame('QX-EDIT-1', $s->tracking_number);
@@ -371,7 +371,7 @@ class ShipmentEditDeleteTest extends TestCase
         $this->fake->booksAs('QX-EDIT-2');
 
         $this->put(route('shipments.update', $s->public_id), $this->form(['book' => '1', 'client_reference' => 'REF-1', 'recipient' => ['first_name' => 'Pedro']], $this->editToken($s)))
-            ->assertSessionHas('status', 'Booked · QX-EDIT-2');
+            ->assertSessionHas('booked', true);
 
         $this->assertSame(['shipment.created', 'shipment.updated', 'shipment.book_requested'], AuditEntry::query()->where('subject_id', $s->public_id)->orderBy('id')->pluck('action')->all());
         $booked = AuditEntry::query()->where('action', 'shipment.book_requested')->sole();

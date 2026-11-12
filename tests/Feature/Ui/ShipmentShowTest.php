@@ -345,6 +345,21 @@ class ShipmentShowTest extends TestCase
         $this->assertStringNotContainsString('sd-none', $html);
     }
 
+    public function test_the_header_has_a_back_link_and_cancel_shipment_set_apart_in_red(): void
+    {
+        $s = $this->ship('booked');
+        $html = $this->get(route('shipments.show', $s->public_id))->assertOk()->getContent();
+
+        // Back to the list, with the icon (never a text arrow).
+        $this->assertMatchesRegularExpression('#<a class="sd-crumb" href="'.preg_quote(route('fulfillment'), '#').'"><svg[^>]*>.*?</svg>\s*Shipments</a>#s', $html);
+        // Cancel shipment is red-outlined, after a divider that sets it apart from Print waybill.
+        $this->assertMatchesRegularExpression('#Print waybill</button>\s*<span class="sd-actions__sep" aria-hidden="true"></span>\s*<button type="button"\s+class="x-btn x-btn--danger-outline x-btn--md sd-cancel"[^>]*>Cancel shipment</button>#', $html);
+        $this->assertDoesNotMatchRegularExpression('#>\s*Cancel\s*</button>#', $html);
+        // The success bar belongs to the request right after a booking only.
+        $this->assertStringNotContainsString('Shipment booked', $html);
+        $this->withSession(['booked' => true])->get(route('shipments.show', $s->public_id))->assertSee('Shipment booked')->assertSee('Add another shipment');
+    }
+
     public function test_cancel_and_delete_confirms_are_danger_and_the_dialog_is_accessible(): void
     {
         Route::middleware(['web', 'auth'])->group(function () {

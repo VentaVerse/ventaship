@@ -6,11 +6,13 @@ use App\Couriers\AccountSettings;
 use App\Couriers\Contracts\CancelsLocallyOnly;
 use App\Couriers\Contracts\Courier;
 use App\Couriers\Contracts\ProvidesPublicTrackingUrl;
+use App\Couriers\Contracts\QuotesWithRefusal;
 use App\Couriers\Contracts\ThrottlesStatusPolling;
 use App\Couriers\CourierOrder;
 use App\Couriers\PickupOrigin;
 use App\Couriers\PickupPoint;
 use App\Couriers\ServiceabilityService;
+use App\Couriers\Support\FeeQuote;
 use App\Couriers\Support\OrderWeight;
 use App\Couriers\Support\ServiceabilityVerdict;
 use App\Couriers\TrackingNumbers\TrackingNumberSeriesException;
@@ -54,7 +56,7 @@ use Illuminate\Support\Facades\Storage;
  * (LbcAreaResolver), asked before booking. Tracking is polled (there is no
  * webhook), with intervals from pollIntervalMinutes().
  */
-class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocallyOnly, ThrottlesStatusPolling
+class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocallyOnly, ThrottlesStatusPolling, QuotesWithRefusal
 {
     /**
      * The gateway every documented LBC endpoint sits behind. Editable via
@@ -856,6 +858,16 @@ class LbcFulfillment implements Courier, ProvidesPublicTrackingUrl, CancelsLocal
             // serviceable barangay), and a quote is only given for a serviceable one.
             'odz' => false,
         ];
+    }
+
+    /**
+     * The booking's final check: LBC's rate when it gives one. LBC books an
+     * address outside its zone as ODZ rather than refusing it, and checks
+     * nothing else before the pickup request, so this never refuses.
+     */
+    public function quoteFee(CourierOrder $order, array $options): FeeQuote
+    {
+        return FeeQuote::fromEstimate($this->estimateFee($order, $options));
     }
 
     /**
