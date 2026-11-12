@@ -133,7 +133,7 @@ class ShipmentEditDeleteTest extends TestCase
         $token = $this->editToken($s);
 
         $this->put(route('shipments.update', $s->public_id), $this->form(['book' => '1', 'client_reference' => 'REF-1'], $token))
-            ->assertSessionHas('status', 'Courier refused: Still not serviceable');
+            ->assertSessionMissing('status');
         $this->assertSame('failed', $s->refresh()->state);
         $this->get(route('shipments.edit', $s->public_id))->assertOk();
     }

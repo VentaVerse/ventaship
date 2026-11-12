@@ -226,7 +226,7 @@ class ShipmentCreateTest extends TestCase
 
         $s = Shipment::query()->sole();
         $this->assertSame('failed', $s->state);
-        $res->assertRedirect(route('shipments.show', $s))->assertSessionHas('status', 'Courier refused: Barangay not serviceable');
+        $res->assertRedirect(route('shipments.show', $s))->assertSessionMissing('status');
     }
 
     public function test_timeout_saves_unknown(): void

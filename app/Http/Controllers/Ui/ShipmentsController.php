@@ -429,11 +429,12 @@ class ShipmentsController extends Controller
         };
     }
 
-    private function outcome(Shipment $shipment): string
+    private function outcome(Shipment $shipment): ?string
     {
         return match ($shipment->state) {
             'booked' => self::BOOKED,
-            'failed' => 'Courier refused: '.$shipment->error_message,
+            // The shipment page's red alert already gives the reason; a second, green copy of it read as success.
+            'failed' => null,
             'unknown' => 'Booking result unknown',
             'draft' => 'Saved',
             default => 'Booking pending',
