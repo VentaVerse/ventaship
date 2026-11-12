@@ -146,7 +146,7 @@ class BookingPayloadTest extends TestCase
         [$preset, $custom] = $this->spxParcels();
 
         $this->assertEquals(1.2, $preset['parcel_weight']);
-        $this->assertEquals([35, 25, 15], [$preset['parcel_length'], $preset['parcel_width'], $preset['parcel_height']]);
+        $this->assertEquals([25, 35, 15], [$preset['parcel_length'], $preset['parcel_width'], $preset['parcel_height']]);
 
         $this->assertEquals(7.5, $custom['parcel_weight']);
         $this->assertEquals([60, 40, 30], [$custom['parcel_length'], $custom['parcel_width'], $custom['parcel_height']]);

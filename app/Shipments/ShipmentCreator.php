@@ -12,7 +12,6 @@ use App\Support\PhAddress;
 use Closure;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
-use App\Support\Settings;
 use Illuminate\Contracts\Database\ConcurrencyErrorDetector;
 use Illuminate\Database\DeadlockException;
 use Illuminate\Database\QueryException;
@@ -36,11 +35,7 @@ final class ShipmentCreator
 
     private const ITEMS_SUMMARY_MAX = 255;
 
-    private const REF_PAD = 6;
-
     private const CONCURRENCY_ATTEMPTS = 3;
-
-    public function __construct(private readonly Settings $settings) {}
 
     /**
      * `now: true` books in this request; its callers must not hold a transaction.
@@ -60,14 +55,18 @@ final class ShipmentCreator
         AccountResolver::assertBookable($account);
 
         $state = filter_var($data['submit'] ?? true, FILTER_VALIDATE_BOOLEAN) ? 'queued' : 'draft';
+        // The courier reference is the shipment's for life. A manual shipment with no order number takes the same code.
+        $courierRef = CourierReference::generate();
+        $reference = ($data['client_reference'] ?? null) ?: $courierRef;
         $attributes = self::attributes($data) + [
             'client_app_id' => $app?->getKey(),
             'courier_account_id' => $account->getKey(),
             'courier' => $account->courier,
             'source' => $source,
             'state' => $state,
-            'client_reference' => $data['client_reference'],
-            'active_reference' => $data['client_reference'],
+            'client_reference' => $reference,
+            'active_reference' => $reference,
+            'courier_ref' => $courierRef,
             'order_label' => $data['order_label'] ?? null,
         ];
 
@@ -383,12 +382,7 @@ final class ShipmentCreator
     {
         for ($attempt = 1; ; $attempt++) {
             try {
-                return DB::transaction(function () use ($app, $attributes) {
-                    $shipment = $this->insertHoldingReference($app, $attributes);
-                    $shipment->forceFill(['courier_ref' => $this->courierRef($shipment)])->save();
-
-                    return $shipment;
-                });
+                return DB::transaction(fn () => $this->insertHoldingReference($app, $attributes));
             } catch (Throwable $e) {
                 if (! $this->lostReferenceRace($e)) {
                     throw $e;
@@ -462,13 +456,6 @@ final class ShipmentCreator
         return new ApiError(409, 'active_shipment_exists', 'A live shipment already uses this client_reference.', false, [
             'shipment' => $holder->public_id,
         ]);
-    }
-
-    private function courierRef(Shipment $s): string
-    {
-        $prefix = (string) $this->settings->get('shipments.reference_prefix', 'VS');
-
-        return $prefix.str_pad((string) $s->getKey(), self::REF_PAD, '0', STR_PAD_LEFT);
     }
 
     /**

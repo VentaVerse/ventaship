@@ -582,11 +582,11 @@ Every installed courier, what it can do, and the option lists you choose `servic
                 },
                 {
                     "value": "medium",
-                    "label": "Medium (35×25×15cm, up to 5kg)"
+                    "label": "Medium (25×35×15cm, up to 5kg)"
                 },
                 {
                     "value": "large",
-                    "label": "Large (45×35×20cm, up to 10kg)"
+                    "label": "Large (25×45×20cm, up to 10kg)"
                 },
                 {
                     "value": "custom",
@@ -902,7 +902,7 @@ Request fields:
 
 **QuadX items.** QuadX receives the items with their prices when every `items[].price` is present and the lines add up to `total`. When a price is missing, or the lines do not add up, QuadX receives one consolidated item line. The items are compared to, and that line's amount is, `total` on prepaid or `payment.cod_amount` on COD, so QuadX's order total always matches.
 
-**SPX limits.** SPX takes the weight from `parcel.weight_kg`, or from `items[].weight_kg` when every line has one (a booking with neither is refused), the weight must be under 50 kg, each side (`length_cm`, `width_cm`, `height_cm`) at most 150 cm, and `payment.cod_amount` whole pesos up to 50,000. A shipment outside these limits is not sent: it ends `failed` with `error.code` `courier_refused`.
+**SPX limits.** SPX takes the weight from `parcel.weight_kg`, or from `items[].weight_kg` when every line has one (a booking with neither is refused). SPX takes a parcel up to 25 cm long (`length_cm`), 45 cm wide (`width_cm`) and 30 cm tall (`height_cm`), weighing up to 10 kg, with `payment.cod_amount` in whole pesos up to 50,000. A shipment SPX refuses ends `failed` with `error.code` `courier_refused` and a plain `error.message`, such as "Too long for SPX. Length is 35 cm. SPX takes up to 25 cm."
 
 Money rules worth repeating: the courier collects `payment.cod_amount`, never the items' sum or `total`. Item prices do not need to add up to it. **SPX** collects whole pesos only: an SPX COD shipment with centavos (`1290.50`) is refused at booking (state `failed`, `error.code` `courier_refused`).
 

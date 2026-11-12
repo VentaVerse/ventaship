@@ -248,4 +248,73 @@ class ShipmentBookCheckTest extends TestCase
 
         $this->get(route('shipments.show', $s->public_id))->assertOk()->assertDontSee('Shipment booked');
     }
+
+    private function draft(string $item = 'Blue Tee'): Shipment
+    {
+        $this->post('/shipments', $this->form(['form_token' => $this->token(), 'draft' => '1', 'item' => $item]));
+
+        return Shipment::query()->latest('id')->first();
+    }
+
+    public function test_bulk_book_checks_each_draft_and_a_refusal_stays_a_draft(): void
+    {
+        $refused = $this->draft('Too long');
+        $fine = $this->draft('Fits');
+        $fake = new class extends FakeCourier
+        {
+            public ?int $refuse = null;
+
+            public function quoteFee(\App\Couriers\CourierOrder $order, array $options): FeeQuote
+            {
+                parent::quoteFee($order, $options);
+
+                return (int) $order->id === $this->refuse
+                    ? FeeQuote::refused(new CourierRefusal('Too long for SPX', 'Length is 35 cm. SPX takes up to 25 cm.'))
+                    : FeeQuote::fee('120');
+            }
+        };
+        $fake->refuse = $refused->id;
+        CourierRegistry::fake('quadx', $fake);
+
+        $this->from('/')->post(route('shipments.book'), ['ids' => [$refused->public_id, $fine->public_id]])
+            ->assertRedirect('/')
+            ->assertSessionHas('status', '1 booked · 1 refused');
+
+        $this->assertSame([$refused->courier_ref.': Too long for SPX. Length is 35 cm. SPX takes up to 25 cm.'], session('errors')->getBag('default')->all());
+        $this->assertSame('draft', $refused->refresh()->state);
+        $this->assertNull($refused->error_message);
+        $this->assertSame('booked', $fine->refresh()->state);
+        $this->assertCount(1, $fake->callsTo('createShipment'));
+    }
+
+    public function test_the_draft_page_book_opens_the_same_check(): void
+    {
+        $s = $this->draft();
+        $html = $this->get(route('shipments.show', $s->public_id))->assertOk()->getContent();
+
+        $this->assertMatchesRegularExpression('#<button type="submit"\s+class="x-btn x-btn--primary x-btn--md sd-book" form="sd-book" data-book#', $html);
+        $this->assertMatchesRegularExpression('#<form id="sd-book"[^>]*x-data="bookCheck\(#s', $html);
+        $this->assertStringContainsString('Book this shipment?', $html);
+        $config = (string) \Illuminate\Support\Js::from(['checkUrl' => route('shipments.check-draft', $s->public_id)]);
+        $this->assertStringContainsString(substr($config, strlen("JSON.parse('{"), -strlen("}')")), $html);
+
+        $this->fake->quotes($this->tooLong());
+        $this->postJson(route('shipments.check-draft', $s->public_id))->assertOk()
+            ->assertJsonPath('error', 'Too long for SPX. Length is 35 cm. SPX takes up to 25 cm.');
+        $this->fake->quotes(FeeQuote::fee('120'));
+        $this->postJson(route('shipments.check-draft', $s->public_id))->assertOk()->assertJsonPath('label', '₱120.00');
+
+        $s->forceFill(['state' => 'booked'])->save();
+        $this->postJson(route('shipments.check-draft', $s->public_id))->assertStatus(409)->assertJsonStructure(['error']);
+    }
+
+    public function test_the_draft_summary_rows(): void
+    {
+        $s = $this->draft();
+        $rows = (new \App\Fulfillment\ShipmentDetail($s->load('courierAccount')))->bookingSummary();
+
+        $this->assertSame(['Courier', 'To', 'Parcel', 'COD', 'Shipping fee'], array_column($rows, 0));
+        $this->assertSame('Juan Dela Cruz · Makati, Metro Manila', $rows[1][1]);
+        $this->assertSame('₱1,250.00', $rows[3][1]);
+    }
 }

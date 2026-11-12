@@ -194,6 +194,23 @@ class LbcPickupRequestBuilderTest extends TestCase
         $this->build(['order' => ['phone' => null]]);
     }
 
+    public function test_the_reference_is_cut_at_lbcs_50_characters(): void
+    {
+        $fields = (new LbcPickupRequestBuilder())->fields(
+            $this->order([], ['courier_ref' => str_repeat('A', 49).'BCDEFGHIJ']),
+            $this->pickupPoint(),
+            new LbcParcel(16, 1, 20, 15, 10, 500),
+            $this->area('KAPITOLYO', 'CITY OF PASIG'),
+            $this->area('POBLACION', 'CITY OF MAKATI'),
+            new LbcAccount('DEMO', self::ACCOUNT_NO),
+            self::SERIES_FIRST,
+            CarbonImmutable::parse('2026-11-05 01:30:00', 'UTC'),
+            CarbonImmutable::parse('2026-11-09 10:00:00', 'Asia/Manila'),
+        );
+
+        $this->assertSame(str_repeat('A', 49).'B', $fields['ReferenceNoOne']);
+    }
+
     public function test_a_shipment_without_a_courier_reference_refuses(): void
     {
         $this->expectException(LbcException::class);

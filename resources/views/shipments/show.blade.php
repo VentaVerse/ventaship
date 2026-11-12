@@ -69,7 +69,7 @@
             <x-ui.button variant="primary" type="submit" class="sd-retry" form="sd-retry">Retry</x-ui.button>
         @endif
         @if($act['book'])
-            <x-ui.button variant="primary" type="submit" class="sd-book" form="sd-book">Book</x-ui.button>
+            <x-ui.button variant="primary" type="submit" class="sd-book" form="sd-book" data-book>Book</x-ui.button>
         @endif
         @if($act['edit'])
             <x-ui.button class="sd-edit" :href="route('shipments.edit', $id)">Edit</x-ui.button>
@@ -181,7 +181,12 @@
             <dl class="sd-list">
                 @foreach($detail->courierRows() as $label => $value)
                     <dt>{{ $label }}</dt>
-                    @if($label === 'Tracking')
+                    @if($label === 'Courier reference')
+                        <dd class="sd-dd-copy">
+                            <span class="sd-mono">{{ $value }}</span>
+                            <span class="sd-copy" x-data="credentialField({{ Js::from($copy((string) $value)) }})"><x-ui.copy-button label="Copy courier reference" /></span>
+                        </dd>
+                    @elseif($label === 'Tracking')
                         <dd>
                             @if($trackingUrl)
                                 <a class="sd-mono sd-link" href="{{ $trackingUrl }}" target="_blank" rel="noopener">{{ $value }}</a>
@@ -225,7 +230,11 @@
 
 @push('forms')
     @if($act['book'])
-        <form id="sd-book" method="POST" action="{{ route('shipments.book') }}">@csrf<input type="hidden" name="ids[]" value="{{ $id }}"></form>
+        <form id="sd-book" method="POST" action="{{ route('shipments.book') }}"
+              x-data="bookCheck({{ Js::from(['checkUrl' => route('shipments.check-draft', $id), 'rows' => $detail->bookingSummary()]) }})" x-on:submit="submitted($event)">
+            @csrf<input type="hidden" name="ids[]" value="{{ $id }}">
+            @include('shipments._book-check', ['backLabel' => 'Back'])
+        </form>
     @endif
     @if($act['retry'])
         <form id="sd-retry" method="POST" action="{{ route('shipments.retry', $id) }}" x-data="{ busy: false }" @submit="if (busy) { $event.preventDefault() } busy = true">@csrf</form>

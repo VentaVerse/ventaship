@@ -117,7 +117,8 @@ export function bookCheck(config) {
 
         openCheck(submitter) {
             this.checkOpener = submitter;
-            this.checkRows = bookingSummary(this.summaryState());
+            // A stored draft's rows come from the server (config.rows); the form builds them from its fields.
+            this.checkRows = Array.isArray(config.rows) ? config.rows : bookingSummary(this.summaryState());
             this.check = { open: true, state: 'loading', label: '', title: '', detail: '', busy: false };
             this.$nextTick(() => this.$refs.checkBack?.focus());
             this.runCheck();

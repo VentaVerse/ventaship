@@ -8,6 +8,7 @@ use App\Couriers\Contracts\QuotesWithRefusal;
 use App\Couriers\CourierOrder;
 use App\Couriers\CourierRegistry;
 use App\Couriers\Support\FeeQuote;
+use App\Models\CourierAccount;
 use App\Models\Shipment;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Log;
@@ -40,6 +41,24 @@ final class BookingCheck
             'courier_ref' => $editing?->courier_ref,
         ])->setRelation('courierAccount', $account);
 
+        return $this->ask($account, $shipment);
+    }
+
+    /**
+     * The same check for a stored draft, exactly as it would be booked (the list's Book and the draft page's Book).
+     *
+     * @throws ApiError 422 account_misconfigured
+     */
+    public function quoteStored(Shipment $shipment): FeeQuote
+    {
+        $account = $shipment->courierAccount ?? throw new ApiError(422, 'account_misconfigured', 'This shipment has no courier account.');
+        AccountResolver::assertBookable($account);
+
+        return $this->ask($account, $shipment);
+    }
+
+    private function ask(CourierAccount $account, Shipment $shipment): FeeQuote
+    {
         try {
             $courier = CourierRegistry::for($account);
             $order = CourierOrder::fromApi($shipment);

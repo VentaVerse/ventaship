@@ -11,7 +11,7 @@ use Illuminate\Support\Collection;
  * One shipment as the courier code reads it: a read-only object exposing the property names the ported courier code
  * read from VentaCart's Order model (`shipping_first_name` ... `shipping_postcode`, `phone`, `total`,
  * `courier_comment`, `products`), plus `cod` and `reference`, the id the courier is given for the parcel
- * (`shipments.courier_ref`, e.g. "VS000123").
+ * (`shipments.courier_ref`, e.g. "20261112-7K2M9Q").
  *
  * The courier_* fields (`courier_meta` as a JSON string, `courier_tracking_number`, `courier_status`,
  * `courier_provider`) are the booking's, once there is one.

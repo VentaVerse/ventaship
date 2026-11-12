@@ -6,6 +6,7 @@
 
 - Book shipment now shows the shipment and the courier's shipping fee for a final check before anything is booked.
 - After booking, the shipment page lets you go back to your shipments or add another shipment.
+- Book on a draft's page and Book on the shipments list now run the same final check, and a shipment the courier refuses stays a draft with the reason.
 
 ### Updates
 
@@ -13,6 +14,13 @@
 - A shipment the courier refuses is no longer saved as failed: the form stays open with the reason so you can fix it.
 - Courier refusals are now explained in plain words, such as "Too long for SPX. Length is 35 cm. SPX takes up to 25 cm."
 - The shipment page's Cancel button is now Cancel shipment, in red and set apart, with a Shipments link at the top to go back.
+- New shipments get a courier reference like 20261112-7K2M9Q, shown on the shipment page, and a shipment added without an order number uses it as its order number.
+- The reference prefix setting is gone from Settings.
+- SPX pouch presets now fit SPX's limits: Medium is 25×35×15 cm and Large is 25×45×20 cm.
+
+### Bug fixes
+
+- LBC bookings no longer send an order reference longer than LBC accepts.
 
 ## 1.0.0 (2026-11-10)
 

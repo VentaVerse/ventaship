@@ -10,24 +10,7 @@
         @endforeach
     </nav>
 
-    @if($tab === 'general')
-        <form method="POST" action="{{ route('settings.update') }}" novalidate>
-            @csrf
-            @method('PUT')
-            <input type="hidden" name="tab" value="general">
-            <div class="st-sec">
-                <h2 class="st-h">Shipments</h2>
-                <div class="st-row">
-                    <x-ui.field label="Reference prefix" name="shipments_reference_prefix">
-                        <x-ui.input id="f-shipments-reference-prefix" name="shipments_reference_prefix" class="st-ctl st-narrow st-caps x-mono"
-                                    value="{{ old('shipments_reference_prefix', $prefix) }}" maxlength="8" autocomplete="off"
-                                    autocapitalize="characters" spellcheck="false" />
-                    </x-ui.field>
-                </div>
-            </div>
-            @include('settings._bar', ['label' => 'Save'])
-        </form>
-    @elseif($tab === 'jobs')
+    @if($tab === 'jobs')
         <div class="st-sec">
             <div class="st-row">
                 <div class="fm-field">

@@ -18,7 +18,8 @@ use Illuminate\Validation\Validator;
 
 /**
  * The Add shipment form. It accepts the API's input shape (so ShipmentCreator takes it unchanged) with the form's
- * differences: the order reference is optional and generated when blank, the shipment is always submitted, and the
+ * differences: the order reference is optional (blank, a new shipment's order number is its courier reference; an
+ * edit keeps its own), the shipment is always submitted, and the
  * money fields are derived from the Value. The pickup is never posted: `pickup_address_id` names a saved pickup address
  * (or, on an edit, `current`: the shipment's own snapshot), and that address is copied into `pickup` here. The items
  * are one text field, `item`, stored as a single item of quantity 1; posted `items` are ignored.
@@ -26,8 +27,6 @@ use Illuminate\Validation\Validator;
 class ShipmentFormRequest extends FormRequest
 {
     use ValidatesShipmentParts;
-
-    private const REFERENCE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
     /** What the Value may look like; resources/js/shipmentForm.js uses the same pattern. */
     private const VALUE_PATTERN = '/^\d{1,10}(\.\d{1,2})?$/';
@@ -350,19 +349,16 @@ class ShipmentFormRequest extends FormRequest
     }
 
     /**
-     * The validated input in the API's shape: the item as the one item, and the order reference generated when it was
-     * left blank (unless an edit keeps its own).
+     * The validated input in the API's shape: the item as the one item. A blank order reference stays null:
+     * ShipmentCreator gives a new shipment its courier reference as its order number, and an edit keeps its own.
      *
      * @return array<string, mixed>
      */
-    public function shipmentData(bool $generateReference = true): array
+    public function shipmentData(): array
     {
         $data = $this->validated();
         $data['items'] = [['name' => $data['item'], 'quantity' => 1, 'price' => null]];
         unset($data['item'], $data['pickup_address_id'], $data['customer_id'], $data['save_customer']);
-        if ($generateReference) {
-            $data['client_reference'] ??= self::generateReference();
-        }
 
         return $data;
     }
@@ -443,19 +439,5 @@ class ShipmentFormRequest extends FormRequest
             'pickup_date' => 'pickup date',
             'note' => 'delivery note',
         ];
-    }
-
-    /** `M-{Ymd}-{6 random A-Z0-9}`, unique among the active manual references. */
-    public static function generateReference(): string
-    {
-        do {
-            $suffix = '';
-            for ($i = 0; $i < 6; $i++) {
-                $suffix .= self::REFERENCE_CHARS[random_int(0, strlen(self::REFERENCE_CHARS) - 1)];
-            }
-            $reference = 'M-'.now()->format('Ymd').'-'.$suffix;
-        } while (Shipment::query()->whereNull('client_app_id')->where('active_reference', $reference)->exists());
-
-        return $reference;
     }
 }

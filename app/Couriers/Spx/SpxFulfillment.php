@@ -67,15 +67,15 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
 {
     /**
      * Sensible default PH pouch dimensions (editable via the
-     * spx_pouch_presets setting, see settingsSchema()). Well inside SPX's
-     * documented PH parcel limits (weight < 50kg,
-     * each dimension <= 150cm). Small/Medium/Large mirrors the same shopper
-     * mental model QuadX's pouch parcel options already use.
+     * spx_pouch_presets setting, see settingsSchema()). Inside the limits
+     * SPX's fee check enforces: length up to 25 cm, width up to 45 cm,
+     * height up to 30 cm, weight up to 10 kg. Small/Medium/Large mirrors the
+     * same shopper mental model QuadX's pouch parcel options already use.
      */
     public const DEFAULT_POUCH_PRESETS = [
         ['label' => 'Small',  'length_cm' => 25, 'width_cm' => 20, 'height_cm' => 10, 'max_weight_kg' => 3],
-        ['label' => 'Medium', 'length_cm' => 35, 'width_cm' => 25, 'height_cm' => 15, 'max_weight_kg' => 5],
-        ['label' => 'Large',  'length_cm' => 45, 'width_cm' => 35, 'height_cm' => 20, 'max_weight_kg' => 10],
+        ['label' => 'Medium', 'length_cm' => 25, 'width_cm' => 35, 'height_cm' => 15, 'max_weight_kg' => 5],
+        ['label' => 'Large',  'length_cm' => 25, 'width_cm' => 45, 'height_cm' => 20, 'max_weight_kg' => 10],
     ];
 
     /**
@@ -1899,7 +1899,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
                 'label' => 'Pouch presets',
                 'type'  => 'json',
                 'help'  => 'JSON array of {label, length_cm, width_cm, height_cm, max_weight_kg}. '
-                    . 'Defaults: Small 25×20×10cm/3kg, Medium 35×25×15cm/5kg, Large 45×35×20cm/10kg.',
+                    . 'Defaults: Small 25×20×10cm/3kg, Medium 25×35×15cm/5kg, Large 25×45×20cm/10kg.',
             ],
         ];
     }

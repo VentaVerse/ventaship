@@ -175,18 +175,20 @@ class ShipmentCreateTest extends TestCase
         $this->get('/shipments/new')->assertSee('Taguig')->assertSee('Kept Cap');
     }
 
-    public function test_generated_reference_format_and_uniqueness(): void
+    public function test_a_blank_reference_takes_the_courier_reference(): void
     {
         $this->post('/shipments', $this->form());
-        $ref = Shipment::query()->sole()->client_reference;
-        $this->assertMatchesRegularExpression('/^M-'.now()->format('Ymd').'-[A-Z0-9]{6}$/', $ref);
+        $s = Shipment::query()->sole();
+        $this->assertMatchesRegularExpression('/^'.now('Asia/Manila')->format('Ymd').'-[A-Z0-9]{6}$/', $s->courier_ref);
+        $this->assertSame($s->courier_ref, $s->client_reference);
 
         $this->post('/shipments', $this->form());
         $refs = Shipment::query()->pluck('client_reference');
         $this->assertCount(2, $refs->unique());
 
         $this->post('/shipments', $this->form(['client_reference' => 'MY-REF-1']));
-        $this->assertSame(1, Shipment::query()->where('client_reference', 'MY-REF-1')->count());
+        $typed = Shipment::query()->where('client_reference', 'MY-REF-1')->sole();
+        $this->assertMatchesRegularExpression('/^\d{8}-[A-Z0-9]{6}$/', $typed->courier_ref);
 
         $this->post('/shipments', $this->form(['client_reference' => 'MY-REF-1']))
             ->assertSessionHasErrors('client_reference');

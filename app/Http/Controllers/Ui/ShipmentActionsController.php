@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Ui\ResolveShipmentRequest;
 use App\Models\AuditEntry;
 use App\Models\Shipment;
+use App\Shipments\BookingCheck;
 use App\Shipments\BookingOutcomes;
 use App\Shipments\Canceller;
 use App\Shipments\LabelBundle;
@@ -27,10 +28,15 @@ class ShipmentActionsController extends Controller
 
     private const BUNDLE_URL_MINUTES = 5;
 
-    public function book(Request $request, ShipmentCreator $creator): RedirectResponse
+    /**
+     * Books drafts (the list's bulk Book and a draft page's Book). Each draft gets the courier's final check first: a
+     * refusal leaves it a draft with the plain reason, never a failed shipment, and the others book.
+     */
+    public function book(Request $request, ShipmentCreator $creator, BookingCheck $check): RedirectResponse
     {
         [$shipments, $unknown] = $this->requested($request);
         $booked = 0;
+        $refused = 0;
         $skipped = $unknown;
         $errors = [];
 
@@ -42,6 +48,13 @@ class ShipmentActionsController extends Controller
             }
             $name = $s->courier_ref ?: $s->public_id;
             try {
+                $quote = $check->quoteStored($s);
+                if ($quote->refusal !== null) {
+                    $refused++;
+                    $errors[] = "{$name}: {$quote->refusal->message()}";
+
+                    continue;
+                }
                 $row = $creator->submit($s, now: true);
             } catch (ApiError $e) {
                 if ($e->errorCode === 'not_draft') {
@@ -68,8 +81,9 @@ class ShipmentActionsController extends Controller
             };
         }
 
-        $failed = count($errors);
+        $failed = count($errors) - $refused;
         $status = "{$booked} booked"
+            .($refused > 0 ? " · {$refused} refused" : '')
             .($failed > 0 ? " · {$failed} failed" : '')
             .($skipped > 0 ? " · {$skipped} skipped" : '');
 

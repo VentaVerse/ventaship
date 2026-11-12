@@ -195,9 +195,9 @@ class SpxFulfillmentTest extends TestCase
                 && $o['fulfillment_info']['cod_collection'] === 0
                 && !array_key_exists('cod_amount', $o['fulfillment_info'])
                 && $o['fulfillment_info']['collect_type'] === 2
-                // parcel_info dims come from the "Medium" pouch preset (35x25x15cm); the weight is the typed one.
-                && (float) $o['parcel_info']['parcel_length'] === 35.0
-                && (float) $o['parcel_info']['parcel_width'] === 25.0
+                // parcel_info dims come from the "Medium" pouch preset (25x35x15cm); the weight is the typed one.
+                && (float) $o['parcel_info']['parcel_length'] === 25.0
+                && (float) $o['parcel_info']['parcel_width'] === 35.0
                 && (float) $o['parcel_info']['parcel_height'] === 15.0
                 && (float) $o['parcel_info']['parcel_weight'] === 1.2
                 && (int) $o['parcel_info']['express_insured_value'] === 0

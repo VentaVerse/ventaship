@@ -126,7 +126,8 @@ class BookShipmentRealCouriersTest extends TestCase
 
         $sent = Http::recorded(fn (Request $r) => $r->url() === 'https://api.staging.quadx.xyz/v2/orders')
             ->map(fn (array $pair) => [$pair[0]['reference_id'], (float) $pair[0]['declared_value']])->values()->all();
-        $this->assertSame([['VS000001', 800.0], ['VS000002', 0.0]], $sent);
+        $refs = Shipment::query()->orderBy('id')->pluck('courier_ref')->all();
+        $this->assertSame([[$refs[0], 800.0], [$refs[1], 0.0]], $sent);
         $this->assertSame(['booked', 'booked'], Shipment::query()->orderBy('id')->pluck('state')->all());
     }
 

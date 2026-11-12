@@ -75,7 +75,8 @@ class QuadXLifecycleTest extends TestCase
             && $r->method() === 'POST'
             && $r['payment_method'] === 'cod'
             && (float) $r['total'] === 1290.0
-            && $r['reference_id'] === 'VS000001');
+            && $r['reference_id'] === $shipment->courier_ref
+            && preg_match('/^\d{8}-[A-Z0-9]{6}$/', $r['reference_id']) === 1);
 
         // 5. The waybill.
         $label = $this->api($client, 'GET', "/api/v1/shipments/{$id}/label")->assertOk();

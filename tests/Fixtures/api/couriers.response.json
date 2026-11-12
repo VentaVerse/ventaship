@@ -190,11 +190,11 @@
                 },
                 {
                     "value": "medium",
-                    "label": "Medium (35×25×15cm, up to 5kg)"
+                    "label": "Medium (25×35×15cm, up to 5kg)"
                 },
                 {
                     "value": "large",
-                    "label": "Large (45×35×20cm, up to 10kg)"
+                    "label": "Large (25×45×20cm, up to 10kg)"
                 },
                 {
                     "value": "custom",

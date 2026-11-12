@@ -3,6 +3,7 @@
 namespace App\Fulfillment;
 
 use App\Couriers\Spx\SpxFulfillment;
+use App\Couriers\Support\CourierRefusal;
 use App\Models\Shipment;
 use App\Models\ShipmentEvent;
 use App\Shipments\BookingOutcomes;
@@ -33,10 +34,10 @@ final class ShipmentDetail
         return $t?->copy()->timezone(self::ZONE)->format('M j, Y · g:i A');
     }
 
-    /** The page heading: the order's VS number, never the long public id. */
+    /** The page heading: the order number, else the courier reference; never the public or database id. */
     public function title(): string
     {
-        return (string) ($this->shipment->courier_ref ?: $this->shipment->client_reference ?: 'Shipment');
+        return (string) ($this->shipment->client_reference ?: $this->shipment->courier_ref ?: 'Shipment');
     }
 
     public function courierName(): string
@@ -129,6 +130,40 @@ final class ShipmentDetail
         ], fn ($v) => $v !== null && $v !== '');
     }
 
+    /**
+     * "Book this shipment?" for a stored draft: the same rows the form's dialog shows (resources/js/bookCheck.js),
+     * as [label, value] pairs.
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    public function bookingSummary(): array
+    {
+        $s = $this->shipment;
+        $courier = (string) $s->courier;
+        $options = is_array($s->options) ? $s->options : [];
+        $parcel = is_array($options['parcel'] ?? null) ? $options['parcel'] : [];
+        $num = fn (mixed $v): string => CourierRefusal::number(is_float($v) ? rtrim(rtrim(sprintf('%.6F', $v), '0'), '.') : (string) $v);
+        $pickup = $courier === 'spx' && ($s->method === 'pickup' || ($options['pickup_slot'] ?? null) !== null);
+        $sides = [$parcel['length_cm'] ?? null, $parcel['width_cm'] ?? null, $parcel['height_cm'] ?? null];
+        $place = collect([$this->recipient()['city'] ?? '', $this->recipient()['state'] ?? ''])->map(fn ($v) => trim((string) $v))->filter()->implode(', ');
+        $payer = CourierFormFields::SHIPPING_PAYMENT[$courier][(string) ($options['shipping_payment'] ?? '')] ?? null;
+
+        $rows = [
+            ['Courier', $courier === 'spx' ? $this->courierName().' · '.CourierFormFields::HANDOVER[$pickup ? 'pickup' : 'dropoff'] : $this->courierName()],
+            ['Pickup', $pickup ? (string) SpxFulfillment::describeSlot($options['pickup_slot'] ?? null) : ''],
+            ['To', collect([$this->name(), $place])->filter()->implode(' · ')],
+            ['Parcel', collect([
+                $this->packaging(isset($parcel['type']) ? (string) $parcel['type'] : null),
+                is_numeric($parcel['weight_kg'] ?? null) ? $num($parcel['weight_kg']).' kg' : null,
+                collect($sides)->every(fn ($v) => is_numeric($v)) ? collect($sides)->map($num)->implode(' × ').' cm' : null,
+            ])->filter()->implode(' · ')],
+            ['COD', ShipmentBadges::isCod($s) ? (string) $this->peso($s->cod_amount) : ''],
+            ['Shipping fee', (string) $payer],
+        ];
+
+        return array_values(array_filter($rows, fn (array $r) => trim($r[1]) !== ''));
+    }
+
     public function insured(): string
     {
         return ($this->shipment->options['insure'] ?? false) ? 'Yes' : 'No';
@@ -157,6 +192,7 @@ final class ShipmentDetail
             'Service' => $s->service ? Str::title(str_replace('_', ' ', $s->service)) : null,
             'Pickup' => $pickup,
             'Pickup time' => $s->courier === 'spx' && $s->method === 'pickup' ? SpxFulfillment::describeSlot($s->options['pickup_slot'] ?? null) : null,
+            'Courier reference' => $s->courier_ref,
             'Tracking' => $s->tracking_number,
             'Booked at' => self::at($s->booked_at),
             'Fee' => $this->peso($s->fee_amount),

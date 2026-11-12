@@ -241,7 +241,7 @@ class ShipmentEditDeleteTest extends TestCase
         $s = $this->failedManual();
 
         $html = $this->get(route('shipments.show', $s->public_id))->getContent();
-        $this->assertStringContainsString('Delete shipment '.$s->courier_ref.'?', $html);
+        $this->assertStringContainsString('Delete shipment '.$s->client_reference.'?', $html);
         $this->assertMatchesRegularExpression('#<form id="sd-delete" method="POST" action="[^"]*/shipments/'.$s->public_id.'"[^>]*>.*?name="_method" value="DELETE"#s', $html);
     }
 

@@ -51,7 +51,7 @@ class CreateShipmentTest extends TestCase
         $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+08:00$/', $res->json('data.created_at'));
 
         $s = Shipment::query()->sole();
-        $this->assertSame(sprintf('VS%06d', $s->id), $s->courier_ref);
+        $this->assertMatchesRegularExpression('/^'.now('Asia/Manila')->format('Ymd').'-[A-Z0-9]{6}$/', $s->courier_ref);
         $this->assertSame('4211', $s->active_reference);
         $this->assertSame(3, $s->items_count);
         $this->assertSame($this->client['app']->id, $s->client_app_id);

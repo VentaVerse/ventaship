@@ -3,6 +3,7 @@ import Alpine from 'alpinejs';
 import { accountForm, accountHeader } from './accountForm';
 import { copyFeedback } from './copyFeedback';
 import { copyText } from './copyText';
+import { bookCheck } from './bookCheck';
 import { bulkSelect } from './bulkSelect';
 import { confirmDialog } from './confirmDialog';
 import { customerSearch } from './customerSearch';
@@ -20,6 +21,9 @@ Alpine.data('accountForm', (config) => accountForm(config));
 Alpine.data('accountHeader', (config) => accountHeader(config));
 
 Alpine.data('shipmentForm', (config) => shipmentForm(config));
+
+// A stored draft's Book: the same final check, its summary rows from the server.
+Alpine.data('bookCheck', (config) => bookCheck(config));
 
 Alpine.data('phAddress', (config) => phCascade(config));
 

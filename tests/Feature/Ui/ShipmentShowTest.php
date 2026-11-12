@@ -149,10 +149,14 @@ class ShipmentShowTest extends TestCase
         $this->assertStringNotContainsString('class="sd-link"', $html);
     }
 
-    public function test_title_uses_courier_ref(): void
+    public function test_title_is_the_order_number_and_the_courier_reference_is_a_copyable_row(): void
     {
-        $s = $this->ship('draft', ['courier_ref' => 'VS-TITLE']);
-        $this->get(route('shipments.show', $s->public_id))->assertSee('<title>VS-TITLE · Shipment', false);
+        $s = $this->ship('booked', ['client_reference' => 'ORDER-77', 'courier_ref' => '20261112-7K2M9Q']);
+        $html = $this->get(route('shipments.show', $s->public_id))->assertSee('<title>ORDER-77 · Shipment', false)->getContent();
+
+        $this->assertMatchesRegularExpression('#<dt>Courier reference</dt>\s*<dd class="sd-dd-copy">\s*<span class="sd-mono">20261112-7K2M9Q</span>#', $html);
+        $this->assertStringContainsString('Copy courier reference', $html);
+
     }
 
     public function test_unknown_id_404(): void
@@ -194,12 +198,12 @@ class ShipmentShowTest extends TestCase
 
     public function test_h1_is_the_reference_not_the_public_id(): void
     {
-        $s = $this->ship('draft', ['courier_ref' => 'VS000123']);
+        $s = $this->ship('draft', ['client_reference' => '29851']);
         $html = $this->get(route('shipments.show', $s->public_id))->assertOk()->getContent();
 
-        $this->assertMatchesRegularExpression('#<h1 class="x-page__title">VS000123\s*<span class="sd-title-badge">#', $html);
+        $this->assertMatchesRegularExpression('#<h1 class="x-page__title">29851\s*<span class="sd-title-badge">#', $html);
         $this->assertDoesNotMatchRegularExpression('#<h1[^>]*>[^<]*'.preg_quote($s->public_id, '#').'#', $html);
-        $this->assertStringContainsString('<title>VS000123 · Shipment', $html);
+        $this->assertStringContainsString('<title>29851 · Shipment', $html);
         // No empty heading, and the customer's name is not a heading.
         $this->assertDoesNotMatchRegularExpression('#<h2[^>]*>\s*</h2>#', $html);
         $this->assertStringNotContainsString('<h2 class="sd-name', $html);
@@ -261,7 +265,7 @@ class ShipmentShowTest extends TestCase
         $this->assertMatchesRegularExpression('#<form method="POST" action="'.preg_quote(route('shipments.resolve', $s->public_id), '#').'" class="sd-resolve"#', $html);
         $this->assertMatchesRegularExpression('#<input type="text" id="sd-tracking" name="tracking"[^>]*aria-label="Tracking number from QuadX"#s', $html);
         $this->assertStringContainsString('Courier has it', $html);
-        $this->assertStringContainsString((string) Js::from(['title' => 'Mark '.$s->courier_ref.' as not booked?', 'confirm' => 'Not booked', 'dismiss' => 'Back', 'form' => 'sd-not-booked']), $html);
+        $this->assertStringContainsString((string) Js::from(['title' => 'Mark '.$s->client_reference.' as not booked?', 'confirm' => 'Not booked', 'dismiss' => 'Back', 'form' => 'sd-not-booked']), $html);
         $this->assertMatchesRegularExpression('#<form id="sd-not-booked" method="POST" action="'.preg_quote(route('shipments.resolve', $s->public_id), '#').'">.*?name="outcome" value="not_booked"#s', $html);
         $this->assertStringContainsString('sd-cancel', $html);
 
@@ -370,7 +374,7 @@ class ShipmentShowTest extends TestCase
 
         $b = $this->ship('booked');
         $booked = $this->get(route('shipments.show', $b->public_id))->getContent();
-        $this->assertStringContainsString((string) Js::from(['title' => 'Cancel shipment '.$b->courier_ref.'?', 'confirm' => 'Cancel shipment', 'dismiss' => 'Keep shipment', 'form' => 'sd-cancel', 'tone' => 'danger']), $booked);
+        $this->assertStringContainsString((string) Js::from(['title' => 'Cancel shipment '.$b->client_reference.'?', 'confirm' => 'Cancel shipment', 'dismiss' => 'Keep shipment', 'form' => 'sd-cancel', 'tone' => 'danger']), $booked);
         $this->assertMatchesRegularExpression('#<div class="modal" role="dialog" aria-modal="true" aria-labelledby="x-confirm-title"[^>]*@keydown.tab="trap\(\$event\)"#s', $booked);
         $this->assertStringContainsString('<h2 class="modal__title" id="x-confirm-title" x-text="title">Confirm</h2>', $booked);
         $this->assertMatchesRegularExpression('#class="x-btn x-btn--default x-btn--md modal__safe" x-ref="safe"#', $booked);
@@ -378,7 +382,7 @@ class ShipmentShowTest extends TestCase
 
         $d = $this->ship('draft', ['source' => 'manual']);
         $draft = $this->get(route('shipments.show', $d->public_id))->getContent();
-        $this->assertStringContainsString((string) Js::from(['title' => 'Delete shipment '.$d->courier_ref.'?', 'confirm' => 'Delete shipment', 'dismiss' => 'Keep shipment', 'form' => 'sd-delete', 'tone' => 'danger']), $draft);
+        $this->assertStringContainsString((string) Js::from(['title' => 'Delete shipment '.$d->client_reference.'?', 'confirm' => 'Delete shipment', 'dismiss' => 'Keep shipment', 'form' => 'sd-delete', 'tone' => 'danger']), $draft);
     }
 
     public function test_mobile_menu_button_is_wired_to_the_drawer(): void

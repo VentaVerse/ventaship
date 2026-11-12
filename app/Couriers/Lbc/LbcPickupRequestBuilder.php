@@ -136,7 +136,7 @@ class LbcPickupRequestBuilder
             'Commodity' => '1',
             'ForCrating' => '0',
             'AttachmentNameOne' => 'ORDERNO',
-            'ReferenceNoOne' => self::text($reference, 64),
+            'ReferenceNoOne' => self::text($reference, 50),
             'AttachmentNameTwo' => 'MODE',
             'ReferenceNoTwo' => $mode,
             'AttachmentNameThree' => '0',

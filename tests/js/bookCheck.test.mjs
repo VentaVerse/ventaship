@@ -162,3 +162,14 @@ test('the form keeps the check getters live when merged', () => {
     form.check.state = 'ready';
     assert.equal(form.canBook, true);
 });
+
+test('a stored draft uses the server rows instead of the form fields', () => {
+    const rows = [['Courier', 'QuadX'], ['To', 'Juan Dela Cruz']];
+    const c = bookCheck({ rows, checkUrl: '/x' });
+    c.$nextTick = () => {};
+    c.$refs = {};
+    c.runCheck = () => {};
+    c.openCheck({ dataset: { book: '' } });
+    assert.deepEqual(c.checkRows, rows);
+    assert.equal(c.check.state, 'loading');
+});

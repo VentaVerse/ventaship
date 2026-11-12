@@ -8,6 +8,7 @@ use App\Addresses\PickupAddresses;
 use App\Api\ApiError;
 use App\Couriers\CourierAccounts;
 use App\Couriers\CourierRegistry;
+use App\Couriers\Support\FeeQuote;
 use App\Fulfillment\Couriers;
 use App\Fulfillment\ShipmentDetail;
 use App\Http\Controllers\Controller;
@@ -73,7 +74,7 @@ class ShipmentsController extends Controller
             return $this->refused($shipment);
         }
 
-        $data = $form->shipmentData(false);
+        $data = $form->shipmentData();
         // The form no longer shows the recipient's email; one stored through the API stays.
         $email = data_get($shipment->recipient, 'email');
         if (is_array($data['recipient'] ?? null) && blank($data['recipient']['email'] ?? null) && filled($email)) {
@@ -198,7 +199,21 @@ class ShipmentsController extends Controller
             return response()->json(['error' => 'Only unbooked manual shipments can be changed.', 'title' => 'Not editable', 'detail' => ''], 409);
         }
 
-        return $this->checkAnswer($check, fn () => $form->shipmentData(false), $shipment);
+        return $this->checkAnswer($check, fn () => $form->shipmentData(), $shipment);
+    }
+
+    /** POST /shipments/{id}/check-draft: the draft page's Book, the same final check on the stored draft. */
+    public function checkDraft(Shipment $shipment, BookingCheck $check): JsonResponse
+    {
+        if ($shipment->state !== 'draft') {
+            return response()->json(['error' => 'Only a draft can be booked here.', 'title' => 'Not a draft', 'detail' => ''], 409);
+        }
+
+        try {
+            return $this->quoteAnswer($check->quoteStored($shipment->loadMissing('courierAccount')));
+        } catch (ApiError $e) {
+            return response()->json(['error' => 'Not ready to book.', 'title' => 'Not ready to book', 'detail' => ''], 409);
+        }
     }
 
     /** @param  Closure(): array<string, mixed>  $data */
@@ -213,6 +228,11 @@ class ShipmentsController extends Controller
             return response()->json(['message' => reset($errors)[0], 'errors' => $errors], 422);
         }
 
+        return $this->quoteAnswer($quote);
+    }
+
+    private function quoteAnswer(FeeQuote $quote): JsonResponse
+    {
         if ($quote->refusal !== null) {
             return response()->json(['error' => $quote->refusal->message(), 'title' => $quote->refusal->title, 'detail' => $quote->refusal->detail]);
         }
