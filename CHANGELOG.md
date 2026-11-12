@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.1.0 (2026-11-13)
+
 ### New features
 
 - Book shipment now shows the shipment and the courier's shipping fee for a final check before anything is booked.
