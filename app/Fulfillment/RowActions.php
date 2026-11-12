@@ -26,7 +26,7 @@ final class RowActions
     /**
      * The next step of a row that needs action, or null.
      *
-     * @return array{kind: 'book'|'retry'|'check', label: string, variant: string, href: ?string}|null
+     * @return array{kind: 'book'|'retry', label: string, variant: string, href: ?string}|null
      */
     public static function nextStep(Shipment $s): ?array
     {
@@ -42,7 +42,6 @@ final class RowActions
             'failed' => ['kind' => 'retry', 'label' => 'Retry', 'variant' => 'primary', 'href' => $s->isEditable()
                 ? route('shipments.edit', $s->public_id)
                 : route('shipments.show', $s->public_id)],
-            'unknown' => ['kind' => 'check', 'label' => 'Check', 'variant' => 'default', 'href' => route('shipments.show', $s->public_id)],
             default => null,
         };
     }

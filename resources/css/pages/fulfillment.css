@@ -293,6 +293,30 @@
     .fl-cell--act { grid-area: act; }
     .fl-cell--act:empty { display: none; }
 
+    /* View: the eye at the end of a row. On a phone the whole row already opens the shipment, so it is left out. */
+    .fl-view {
+        display: none;
+        place-items: center;
+        width: 36px;
+        height: 36px;
+        border: 1px solid var(--bl-rule-2);
+        border-radius: 9px;
+        color: var(--bl-ink-3);
+        vertical-align: middle;
+    }
+
+    .fl-view:hover {
+        background: var(--bl-brand-w);
+        color: var(--bl-brand-link);
+    }
+
+    .fl-view:focus-visible {
+        outline: 2px solid var(--bl-brand-link);
+        outline-offset: 2px;
+    }
+
+    .fl-cell--act:not(:has(.fl-next)) { display: none; }
+
     .fl-check {
         display: grid;
         place-items: center;
@@ -433,7 +457,7 @@
 
     @container (min-width: 600px) {
         .fl-row {
-            grid-template-columns: 44px minmax(0, 2.2fr) minmax(0, 1.5fr) 120px minmax(150px, 1.3fr) 92px;
+            grid-template-columns: 44px minmax(0, 2.2fr) minmax(0, 1.5fr) 120px minmax(150px, 1.3fr) 128px;
             grid-template-areas: "check who courier amt status act";
             column-gap: 0;
             padding: 11px 0;
@@ -501,11 +525,21 @@
         }
 
         .fl-cell--act {
-            text-align: right;
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            justify-content: flex-end;
         }
 
-        .fl-cell--act:empty {
-            display: block;
+        .fl-cell--act:empty,
+        .fl-cell--act:not(:has(.fl-next)) {
+            display: flex;
+        }
+
+        .fl-view {
+            display: inline-grid;
+            position: relative;
+            z-index: 1;
         }
 
         .fl-next {

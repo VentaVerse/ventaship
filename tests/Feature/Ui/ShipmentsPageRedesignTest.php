@@ -108,7 +108,9 @@ class ShipmentsPageRedesignTest extends TestCase
         $html = $this->get('/')->assertOk()->getContent();
 
         $this->assertMatchesRegularExpression('#href="'.preg_quote(route('shipments.edit', $failed->public_id), '#').'"[^>]*>\s*Retry#', $html);
-        $this->assertMatchesRegularExpression('#href="'.preg_quote(route('shipments.show', $unknown->public_id), '#').'"[^>]*>\s*Check#', $html);
+        // An unknown booking has no Check button: the eye opens its page, where it is resolved.
+        $this->assertDoesNotMatchRegularExpression('#>\s*Check\s*<#', $html);
+        $this->assertMatchesRegularExpression('#<a class="fl-view" href="'.preg_quote(route('shipments.show', $unknown->public_id), '#').'" aria-label="View [^"]+"><svg#', $html);
         $this->assertMatchesRegularExpression('#form="book-'.$draft->public_id.'"[^>]*>\s*Book#', $html);
         $this->assertMatchesRegularExpression('#data-id="'.$failed->public_id.'".*?x-badge--bad#s', $html);
         $this->assertMatchesRegularExpression('#data-id="'.$unknown->public_id.'".*?x-badge--attn#s', $html);
