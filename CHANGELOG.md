@@ -18,6 +18,8 @@
 - New shipments get a courier reference like 20261112-7K2M9Q, shown on the shipment page, and a shipment added without an order number uses it as its order number.
 - The reference prefix setting is gone from Settings.
 - SPX pouch presets now fit SPX's limits: Medium is 25×35×15 cm and Large is 25×45×20 cm.
+- LBC's Assigned series can be entered while setting up the LBC account.
+- Some minor improvements.
 
 ### Bug fixes
 
