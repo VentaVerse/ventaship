@@ -17,6 +17,7 @@ class BackLinkTest extends TestCase
 
         $pages = [
             route('accounts.show', 'spx') => [route('accounts.index'), 'Courier accounts'],
+            route('account.password.edit') => [route('account'), 'Account'],
             route('addresses.pickup.create') => [route('addresses.index', ['tab' => 'pickup']), 'Addresses'],
             route('addresses.customers.create') => [route('addresses.index', ['tab' => 'customers']), 'Addresses'],
         ];

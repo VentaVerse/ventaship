@@ -14,6 +14,7 @@
     <div class="x-rowmenu__pop x-prof__pop" id="x-prof-menu" role="menu" aria-label="{{ $admin->name }}" x-ref="menu"
          x-show="open" x-cloak x-on:click.outside="close(false)" x-on:keydown="onKey($event)">
         <a href="{{ route('account') }}" role="menuitem" tabindex="-1" class="x-rowmenu__item x-prof__item"><x-ui.icon name="user" size="15" />Account</a>
+        <a href="{{ route('account.password.edit') }}" role="menuitem" tabindex="-1" class="x-rowmenu__item x-prof__item"><x-ui.icon name="shield" size="15" />Change password</a>
         <a href="{{ route('settings.edit') }}" role="menuitem" tabindex="-1" class="x-rowmenu__item x-prof__item"><x-ui.icon name="cog" size="15" />Settings</a>
         <div class="x-prof__theme" role="group" aria-label="Theme">
             @foreach(['light' => 'Light', 'dark' => 'Dark', 'system' => 'System'] as $mode => $label)

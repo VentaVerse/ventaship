@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Updates
+
+- Change password has its own page in the profile menu, so the Account page only holds your name and email.
+
 ## 1.3.0 (2026-11-14)
 
 ### New features

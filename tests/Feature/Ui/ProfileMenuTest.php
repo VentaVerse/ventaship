@@ -50,7 +50,7 @@ class ProfileMenuTest extends TestCase
         $this->assertSame('open', $menu->getAttribute('x-show'));
 
         $items = array_map(fn (\DOMElement $el) => trim($el->textContent), iterator_to_array($x->query('.//*[@role="menuitem" or @role="menuitemradio"]', $menu)));
-        $this->assertSame(['Account', 'Settings', 'Light', 'Dark', 'System', 'Sign out'], $items);
+        $this->assertSame(['Account', 'Change password', 'Settings', 'Light', 'Dark', 'System', 'Sign out'], $items);
         foreach ($x->query('.//*[@role="menuitem" or @role="menuitemradio"]', $menu) as $item) {
             $this->assertSame('-1', $item->getAttribute('tabindex'));
         }

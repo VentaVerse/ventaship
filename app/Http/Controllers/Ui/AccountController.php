@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
-/** The signed-in admin's own Profile (name, email) and Password. */
+/** The signed-in admin's own Account page (name, email) and Change password page. */
 class AccountController extends Controller
 {
     private const PASSWORD_ATTEMPTS = 5;
@@ -28,7 +28,12 @@ class AccountController extends Controller
         return view('account.show', ['admin' => $request->user()]);
     }
 
-    /** Profile card: name and email. A new email needs the current password; the name alone does not. */
+    public function passwordForm(Request $request): View
+    {
+        return view('account.password', ['admin' => $request->user()]);
+    }
+
+    /** Account page: name and email. A new email needs the current password; the name alone does not. */
     public function profile(UpdateProfileRequest $request): RedirectResponse
     {
         /** @var Admin $admin */
@@ -58,7 +63,7 @@ class AccountController extends Controller
         return redirect()->route('account')->with('status', 'Saved');
     }
 
-    /** Password card. Only this browser stays signed in afterwards. */
+    /** Change password page. Only this browser stays signed in afterwards. */
     public function password(UpdatePasswordRequest $request): RedirectResponse
     {
         /** @var Admin $admin */
@@ -79,11 +84,11 @@ class AccountController extends Controller
 
         $this->signOutOtherSessions($request, $admin);
 
-        return redirect()->route('account')->with('status', 'Password changed');
+        return redirect()->route('account.password.edit')->with('status', 'Password changed');
     }
 
     /**
-     * The current password, throttled per admin and IP (one budget for both cards). Null when it is right, else
+     * The current password, throttled per admin and IP (one budget for both pages). Null when it is right, else
      * the message for its field.
      */
     private function checkCurrentPassword(Request $request, Admin $admin, string $given): ?string

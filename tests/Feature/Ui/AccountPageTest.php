@@ -8,7 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
-/** The Account page: the admin's own Profile (name, email) and Password cards. Moved here from Settings. */
+/** The Account page (the admin's own name and email) and the separate Change password page. */
 class AccountPageTest extends TestCase
 {
     use RefreshDatabase;
@@ -45,6 +45,7 @@ class AccountPageTest extends TestCase
         $this->get('/account')->assertRedirect('/login');
         $this->put('/account', ['name' => 'X', 'email' => 'x@example.com'])->assertRedirect('/login');
         $this->put('/account/password', [])->assertRedirect('/login');
+        $this->get('/account/password')->assertRedirect('/login');
     }
 
     public function test_email_change_requires_current_password(): void
@@ -108,7 +109,7 @@ class AccountPageTest extends TestCase
         $this->put('/account/password', [
             'current_password' => 'correct-horse-battery',
             'password' => 'a-brand-new-passphrase', 'password_confirmation' => 'a-brand-new-passphrase',
-        ])->assertRedirect('/account')->assertSessionHasNoErrors()->assertSessionHas('status', 'Password changed');
+        ])->assertRedirect('/account/password')->assertSessionHasNoErrors()->assertSessionHas('status', 'Password changed');
 
         $fresh = $admin->fresh();
         $this->assertNotSame($old, $fresh->password);
@@ -163,9 +164,9 @@ class AccountPageTest extends TestCase
     {
         $admin = $this->admin();
 
-        $this->actingAs($admin)->from('/account')->put('/account/password', [
+        $this->actingAs($admin)->from('/account/password')->put('/account/password', [
             'current_password' => 'nope', 'password' => 'a-brand-new-passphrase', 'password_confirmation' => 'a-brand-new-passphrase',
-        ])->assertRedirect('/account')
+        ])->assertRedirect('/account/password')
             ->assertSessionHasErrors(['current_password' => 'Current password is wrong.'], null, 'password')
             ->assertSessionDoesntHaveErrors('current_password');
         $this->assertTrue(Hash::check('correct-horse-battery', $admin->fresh()->password));
@@ -175,12 +176,12 @@ class AccountPageTest extends TestCase
             $this->assertArrayNotHasKey($secret, $old);
         }
 
-        $html = $this->actingAs($admin)->get('/account')->getContent();
+        $html = $this->actingAs($admin)->get('/account/password')->getContent();
         $x = $this->xpath($html);
         $this->assertSame('Current password is wrong.', trim($x->query('//*[@id="f-current-password-error"]')->item(0)?->textContent ?? ''));
         $this->assertSame('f-current-password-error', $x->query('//input[@id="f-current-password"]')->item(0)?->getAttribute('aria-describedby'));
-        $this->assertNull($x->query('//*[@id="f-profile-current-password-error"]')->item(0), 'not under the Profile card');
         $this->assertSame(0, $x->query('//*[contains(@class, "x-flash__line--bad")]')->length, 'not repeated in the flash');
+        $this->assertNull($this->xpath($this->actingAs($admin)->get('/account')->getContent())->query('//*[@id="f-profile-current-password-error"]')->item(0), 'not on the Account page');
     }
 
     public function test_email_change_error_lands_under_the_profile_cards_current_password(): void
@@ -196,36 +197,44 @@ class AccountPageTest extends TestCase
         $x = $this->xpath($html);
         $this->assertSame('new@example.com', $x->query('//input[@id="f-email"]')->item(0)?->getAttribute('value'));
         $this->assertSame('Current password is wrong.', trim($x->query('//*[@id="f-profile-current-password-error"]')->item(0)?->textContent ?? ''));
-        $this->assertNull($x->query('//*[@id="f-current-password-error"]')->item(0), 'not under the Password card');
         $this->assertSame(0, $x->query('//*[contains(@class, "x-flash__line--bad")]')->length);
     }
 
-    public function test_account_page_has_separate_profile_and_password_cards(): void
+    public function test_account_and_change_password_are_separate_pages(): void
     {
-        $html = $this->actingAs($this->admin())->get('/account')->assertOk()->getContent();
-        $x = $this->xpath($html);
-
-        $profile = $x->query('//form[@action="'.route('account.profile').'"]')->item(0);
-        $password = $x->query('//form[@action="'.route('account.password').'"]')->item(0);
-        $this->assertNotNull($profile);
-        $this->assertNotNull($password);
-
-        $names = fn (\DOMNode $form) => array_values(array_filter(array_map(
+        $admin = $this->admin();
+        $names = fn (\DOMXPath $x, \DOMNode $form) => array_values(array_filter(array_map(
             fn (\DOMElement $el) => $el->getAttribute('name'),
             iterator_to_array($x->query('.//input[@name and not(@type="hidden")]', $form)),
         )));
-        $this->assertSame(['name', 'email', 'current_password'], $names($profile));
-        $this->assertSame(['current_password', 'password', 'password_confirmation'], $names($password));
-        $this->assertSame(['Save'], array_map(fn ($b) => trim($b->textContent), iterator_to_array($x->query('.//button[@type="submit"]', $profile))));
-        $this->assertSame(['Change password'], array_map(fn ($b) => trim($b->textContent), iterator_to_array($x->query('.//button[@type="submit"]', $password))));
+        $buttons = fn (\DOMXPath $x, \DOMNode $form) => array_map(fn ($b) => trim($b->textContent), iterator_to_array($x->query('.//button[@type="submit"]', $form)));
+
+        $html = $this->actingAs($admin)->get('/account')->assertOk()->getContent();
+        $x = $this->xpath($html);
+        $profile = $x->query('//form[@action="'.route('account.profile').'"]')->item(0);
+        $this->assertNotNull($profile);
+        $this->assertNull($x->query('//form[@action="'.route('account.password').'"]')->item(0), 'no password form on Account');
+        $this->assertSame(['name', 'email', 'current_password'], $names($x, $profile));
+        $this->assertSame(['Save'], $buttons($x, $profile));
+        $this->assertSame(1, $x->query('//a[@href="'.route('account.password.edit').'" and normalize-space()="Change password"]')->length, 'in the profile menu');
 
         // The profile's Current password only shows (and is only sent) while the email differs.
         $row = $x->query('//input[@id="f-profile-current-password"]/ancestor::div[contains(@class, "st-row")]')->item(0);
         $this->assertSame('emailChanged', $row?->getAttribute('x-show'));
         $this->assertSame('! emailChanged', $x->query('//input[@id="f-profile-current-password"]')->item(0)->getAttribute('x-bind:disabled'));
+        $this->assertStringNotContainsString('Discard', $html);
+        $this->assertStringNotContainsString('style="', $html);
 
-        // Every password input has the show/hide eye.
-        $this->assertSame(4, $x->query('//input[@type="password"]/following-sibling::button[contains(@class, "x-pass__eye")]')->length);
+        $html = $this->actingAs($admin)->get('/account/password')->assertOk()->getContent();
+        $x = $this->xpath($html);
+        $this->assertSame('Change password', trim($x->query('//h1')->item(0)?->textContent ?? ''));
+        $this->assertSame(1, $x->query('//a[contains(@class, "x-back") and @href="'.route('account').'"]')->length, 'back to Account');
+        $this->assertNull($x->query('//form[@action="'.route('account.profile').'"]')->item(0), 'no profile form here');
+        $password = $x->query('//form[@action="'.route('account.password').'"]')->item(0);
+        $this->assertSame(['current_password', 'password', 'password_confirmation'], $names($x, $password));
+        $this->assertSame(['Change password'], $buttons($x, $password));
+        $this->assertSame('Change password', trim($x->query('//h2[@id="ac-password-h"]')->item(0)?->textContent ?? ''));
+        $this->assertSame(3, $x->query('//input[@type="password"]/following-sibling::button[contains(@class, "x-pass__eye")]')->length);
         $this->assertStringNotContainsString('Discard', $html);
         $this->assertStringNotContainsString('style="', $html);
         $this->assertStringNotContainsString('<style', $html);

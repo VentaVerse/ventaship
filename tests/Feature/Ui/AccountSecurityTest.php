@@ -82,7 +82,7 @@ class AccountSecurityTest extends TestCase
         $tokenBefore = $this->admin->fresh()->remember_token;
         $currentId = $current[config('session.cookie')];
 
-        $res = $this->changePassword($current)->assertRedirect('/account')->assertSessionHasNoErrors();
+        $res = $this->changePassword($current)->assertRedirect('/account/password')->assertSessionHasNoErrors();
         $after = $this->cookiesFrom($res, $current);
 
         $this->assertNotSame($currentId, $after[config('session.cookie')], 'the current session id is regenerated');
