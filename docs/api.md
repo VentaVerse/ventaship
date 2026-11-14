@@ -358,7 +358,7 @@ At least one is required. If you send both, the account must belong to that cour
 
 ### `GET /ping`
 
-Checks your token. No side effects.
+Checks your token. No side effects. `version` is the Ventaship version answering (`MAJOR.MINOR.PATCH`).
 
 <!-- fixture: ping.response -->
 ```json
@@ -366,7 +366,8 @@ Checks your token. No side effects.
     "app": {
         "id": "app_01m6ws8szzhc0b70n4zn6wj46g",
         "name": "VentaCart Pro"
-    }
+    },
+    "version": "1.2.0"
 }
 ```
 
@@ -839,12 +840,13 @@ When the courier has no figure because it refuses the shipment (today: SPX), `da
 
 #### Every courier at once
 
-Send `"couriers": "all"` instead of `account_id` or `courier`, and every active courier account is asked at the same time. The answer comes back within `budget_ms` (optional, 1000 to 8000, default 2500), counted from when the request arrives: a courier that has not answered by then is reported as `timeout` and does not hold the answer. It counts as one request against the courier lookups limit. The other fields are as above; `service` applies only to a courier that has services (QuadX), and each other courier uses its own default.
+Send `"couriers": "all"` instead of `account_id` or `courier`, and every active courier account is asked at the same time. The answer comes back within `budget_ms` (optional, 1000 to 8000, default 2500), counted from when the request arrives: a courier that has not answered by then is reported as `timeout` and does not hold the answer. It counts as one request against the courier lookups limit. The other fields are as above; `service` applies only to a courier that has services (QuadX), and each other courier uses its own default. `parcel_type` (optional) is QuadX's parcel: one of QuadX's `parcel_options` values from [`GET /couriers`](#get-couriers), else a 422 on `parcel_type`. For QuadX accounts it wins over `parcel.type`; the other couriers ignore it and keep `parcel.type`. Without it, each courier uses `parcel.type` or its own default, as before.
 
 ```json
 {
     "couriers": "all",
     "budget_ms": 2500,
+    "parcel_type": "box",
     "pickup": {"contact_name": "Juan Shop", "contact_phone": "09181234567", "address_1": "5 Shaw Blvd", "barangay": "Wack-Wack", "city": "Mandaluyong", "state": "Metro Manila", "postcode": "1550"},
     "recipient": {"first_name": "Jane", "last_name": "Doe", "phone": "09171234567", "address_1": "1 Rizal St", "barangay": "Poblacion", "city": "Makati", "state": "Metro Manila", "postcode": "1210"},
     "parcel": {"type": "small", "weight_kg": 1, "length_cm": 35, "width_cm": 20, "height_cm": 10},

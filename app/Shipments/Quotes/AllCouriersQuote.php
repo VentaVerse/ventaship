@@ -34,9 +34,11 @@ final class AllCouriersQuote
     /**
      * @param  array<string, mixed>  $data  QuoteRequest::validated() without couriers/budget_ms
      * @param  float  $deadline  microtime(true) by which the answer must be ready
+     * @param  string|null  $parcelType  QuadX's parcel type (`parcel_type`): it applies to QuadX accounts only, over
+     *                                   `parcel.type`; the other couriers keep `parcel.type`
      * @return list<array<string, mixed>>
      */
-    public function quote(array $data, float $deadline): array
+    public function quote(array $data, float $deadline, ?string $parcelType = null): array
     {
         unset($data['account_id'], $data['courier']);
 
@@ -48,10 +50,11 @@ final class AllCouriersQuote
         $services = [];
         foreach ($accounts as $account) {
             $services[$account->public_id] = $this->service($account, $data['service'] ?? null);
-            $jobs[$account->public_id] = [
-                'account_id' => $account->public_id,
-                'data' => ['service' => $services[$account->public_id]] + $data,
-            ];
+            $job = ['service' => $services[$account->public_id]] + $data;
+            if ($parcelType !== null && $account->courier === 'quadx') {
+                $job['parcel'] = ['type' => $parcelType] + (is_array($data['parcel'] ?? null) ? $data['parcel'] : []);
+            }
+            $jobs[$account->public_id] = ['account_id' => $account->public_id, 'data' => $job];
         }
 
         $results = $jobs === [] ? [] : $this->runner->run($jobs, max(0.0, $deadline - microtime(true)));

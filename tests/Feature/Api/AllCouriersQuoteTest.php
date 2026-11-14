@@ -206,4 +206,59 @@ class AllCouriersQuoteTest extends TestCase
 
         $this->assertSame(1, RateLimiter::attempts(md5('api-coverage'.'token:'.$tokenId)));
     }
+
+    public function test_parcel_type_is_quadx_s_parcel_and_the_others_ignore_it(): void
+    {
+        [$quadx, $spx] = $this->accounts();
+        $this->spxFee(195);
+
+        $data = collect($this->all(['parcel_type' => 'big-pouch'])->assertOk()->json('data'))->keyBy('courier');
+
+        // The fixture prices every QuadX parcel; the fee is the one for big-pouch.
+        $rates = $this->quadxFixture('rates')['data']['attributes'];
+        $fees = $rates['fees_adjustments']['shipping_fee'] ?? $rates['shipping_fee'];
+        $this->assertSame(number_format((float) $fees['big-pouch'], 2, '.', ''), $data['quadx']['amount']);
+        // SPX was asked about its own parcel: the request's parcel.type (small), never big-pouch.
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'batch_check_order') && ! str_contains($r->body(), 'big-pouch'));
+        $this->assertSame('195.00', $data['spx']['amount']);
+    }
+
+    public function test_without_parcel_type_quadx_uses_what_it_used_before(): void
+    {
+        $this->accounts();
+        $this->spxFee(195);
+
+        $quadx = collect($this->all()->assertOk()->json('data'))->firstWhere('courier', 'quadx');
+
+        $rates = $this->quadxFixture('rates')['data']['attributes'];
+        $fees = $rates['fees_adjustments']['shipping_fee'] ?? $rates['shipping_fee'];
+        $this->assertSame(number_format((float) $fees['box'], 2, '.', ''), $quadx['amount'], 'parcel.type box, as before');
+    }
+
+    public function test_an_unknown_parcel_type_is_a_422_on_parcel_type(): void
+    {
+        $this->accounts();
+
+        $this->all(['parcel_type' => 'custom'])->assertStatus(422)->assertJsonValidationErrors(['parcel_type'], 'errors');
+        $this->all(['parcel_type' => 'crate'])->assertStatus(422)->assertJsonValidationErrors(['parcel_type'], 'errors');
+    }
+
+    public function test_a_single_account_quote_still_ignores_parcel_type(): void
+    {
+        [, $spx] = $this->accounts();
+        $this->spxFee(195);
+        $body = $this->body(['parcel_type' => 'crate', 'parcel' => ['type' => 'small']]);
+        unset($body['couriers']);
+
+        $this->apiJson('POST', '/api/v1/quotes', ['account_id' => $spx->public_id] + $body, [], $this->client)
+            ->assertOk()->assertJsonPath('data.amount', '195.00');
+    }
+
+    public function test_ping_carries_the_version(): void
+    {
+        $this->apiJson('GET', '/api/v1/ping', [], [], $this->client)
+            ->assertOk()
+            ->assertJsonPath('app.id', $this->client['app']->public_id)
+            ->assertJsonPath('version', trim((string) file_get_contents(base_path('VERSION'))));
+    }
 }

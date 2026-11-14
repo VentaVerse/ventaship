@@ -51,7 +51,7 @@ class AuthenticationTest extends TestCase
 
         $this->bearerOnly($client['key'])
             ->assertOk()
-            ->assertExactJson(['app' => ['id' => $client['app']->public_id, 'name' => 'VentaCart Pro']]);
+            ->assertExactJson(['app' => ['id' => $client['app']->public_id, 'name' => 'VentaCart Pro'], 'version' => \App\Support\AppVersion::current()]);
 
         $this->assertStringStartsWith('app_', $client['app']->public_id);
         $this->assertMatchesRegularExpression('/^\d+\|vsk_[A-Za-z0-9]{48}$/', $client['key']);

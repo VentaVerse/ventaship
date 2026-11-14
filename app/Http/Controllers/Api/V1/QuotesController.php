@@ -30,9 +30,11 @@ class QuotesController extends Controller
         if (($data['couriers'] ?? null) === 'all') {
             $budget = ((int) ($data['budget_ms'] ?? AllCouriersQuote::DEFAULT_BUDGET_MS)) / 1000;
             unset($data['couriers'], $data['budget_ms']);
+            $parcelType = $data['parcel_type'] ?? null;
+            unset($data['parcel_type']);
 
             // A little is kept back to build and send the answer, so the whole call returns within the budget.
-            return response()->json(['data' => $all->quote($data, $startedAt + $budget - AllCouriersQuote::RESPONSE_RESERVE_SECONDS)]);
+            return response()->json(['data' => $all->quote($data, $startedAt + $budget - AllCouriersQuote::RESPONSE_RESERVE_SECONDS, $parcelType)]);
         }
 
         $account = AccountResolver::resolve($data['account_id'] ?? null, $data['courier'] ?? null);
