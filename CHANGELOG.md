@@ -5,18 +5,14 @@
 ### New features
 
 - Connected stores can ask every courier for a fee in one POST /quotes call, which answers within a time budget so checkout never waits on a slow courier.
-
-## 1.2.0 (2026-11-13)
-
-### New features
-
 - Connected stores can ask POST /coverage about a parcel's size and weight, and a parcel SPX will not take now comes back as a clear refusal there and on POST /quotes.
 
 ### Bug fixes
 
 - SPX now answers POST /coverage and POST /quotes: both accept the sender's and customer's names and phones, which SPX needs and which were dropped before.
+- A refused booking shows its reason once, instead of also as a green message that looked like success.
 
-## 1.1.0 (2026-11-13)
+## 1.2.0 (2026-11-13)
 
 ### New features
 
