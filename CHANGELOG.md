@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.3.0 (2026-11-14)
+
 ### New features
 
 - Connected stores can ask every courier for a fee in one POST /quotes call, which answers within a time budget so checkout never waits on a slow courier, and can choose the QuadX parcel type for it.
