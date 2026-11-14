@@ -333,7 +333,7 @@ All paths are relative to `/api/v1`.
 | [`GET /courier-accounts`](#get-courier-accounts) | courier accounts you can book with |
 | [`GET /courier-accounts/{id}`](#get-courier-accountsid) | one courier account |
 | [`POST /coverage`](#post-coverage) | will an account deliver from here to there |
-| [`POST /quotes`](#post-quotes) | the courier's fee for one parcel |
+| [`POST /quotes`](#post-quotes) | the courier's fee for one parcel, from one account or every account at once |
 | [`POST /pickup-slots`](#post-pickup-slots) | when an account can collect |
 | [`POST /shipments`](#post-shipments) | create (and book) a shipment |
 | [`GET /shipments`](#get-shipments) | list and reconcile |
@@ -836,6 +836,33 @@ When the courier has no figure because it refuses the shipment (today: SPX), `da
 ```
 
 `amount` is a 2-decimal string, `currency` is `PHP`, `label` is a display string or `null`. `odz` is as in [`POST /coverage`](#post-coverage) (`true`, `false` or `null`). `remote_area_fee` is the remote-area surcharge the courier itemised, a 2-decimal string (`"0.00"` when it said there is none), or `null` when it did not say; only SPX can give one today. Neither field ever blocks a booking.
+
+#### Every courier at once
+
+Send `"couriers": "all"` instead of `account_id` or `courier`, and every active courier account is asked at the same time. The answer comes back within `budget_ms` (optional, 1000 to 8000, default 2500), counted from when the request arrives: a courier that has not answered by then is reported as `timeout` and does not hold the answer. It counts as one request against the courier lookups limit. The other fields are as above; `service` applies only to a courier that has services (QuadX), and each other courier uses its own default.
+
+```json
+{
+    "couriers": "all",
+    "budget_ms": 2500,
+    "pickup": {"contact_name": "Juan Shop", "contact_phone": "09181234567", "address_1": "5 Shaw Blvd", "barangay": "Wack-Wack", "city": "Mandaluyong", "state": "Metro Manila", "postcode": "1550"},
+    "recipient": {"first_name": "Jane", "last_name": "Doe", "phone": "09171234567", "address_1": "1 Rizal St", "barangay": "Poblacion", "city": "Makati", "state": "Metro Manila", "postcode": "1210"},
+    "parcel": {"type": "small", "weight_kg": 1, "length_cm": 35, "width_cm": 20, "height_cm": 10},
+    "payment": {"method": "prepaid"}
+}
+```
+
+`data` is a list, one entry per account, ordered by courier then account. Each entry has `courier`, `account_id`, `service` (the service asked for, or `null` for a courier without services), `amount`, `currency`, `label`, `odz` and `remote_area_fee` (as above), `serviceable` (`true` with a fee, `false` when the courier refuses, `null` when it is not known), `code` and `reason`. Without a fee, `amount` is `null` and `code` says why: a refusal code as in [`POST /coverage`](#post-coverage) (or `courier_refused`) with a plain `reason`; `timeout` when the courier did not answer within the budget; `no_fee` when it answered without a figure. Ventaship never makes up a fee.
+
+```json
+{
+    "data": [
+        {"courier": "lbc", "account_id": "acc_01jd8l0b2v3m4n5p6q7r8s9t0u", "service": null, "amount": null, "currency": null, "label": null, "odz": null, "remote_area_fee": null, "serviceable": null, "code": "timeout", "reason": null},
+        {"courier": "quadx", "account_id": "acc_01jd8l0b2v3m4n5p6q7r8s9t0v", "service": "next_day", "amount": "145.00", "currency": "PHP", "label": "₱145.00", "odz": null, "remote_area_fee": null, "serviceable": true, "code": null, "reason": null},
+        {"courier": "spx", "account_id": "acc_01jd8l0b2v3m4n5p6q7r8s9t0w", "service": null, "amount": null, "currency": null, "label": null, "odz": null, "remote_area_fee": null, "serviceable": false, "code": "parcel_too_long", "reason": "Too long for SPX. Length is 35 cm. SPX takes up to 25 cm."}
+    ]
+}
+```
 
 ---
 

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### New features
+
+- Connected stores can ask every courier for a fee in one POST /quotes call, which answers within a time budget so checkout never waits on a slow courier.
+
 ## 1.2.0 (2026-11-13)
 
 ### New features

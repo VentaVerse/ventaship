@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Models\ApiToken;
+use App\Shipments\Quotes\ProcessQuoteRunner;
+use App\Shipments\Quotes\QuoteRunner;
 use App\Support\AfterResponse;
 use App\Support\Settings;
 use App\Support\Vault\CredentialVault;
@@ -27,6 +29,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(CredentialVault::class);
         $this->app->scoped(Settings::class);
         $this->app->singleton(AfterResponse::class);
+        // POST /quotes with couriers "all": each account in its own process, cut off at the time budget.
+        $this->app->bind(QuoteRunner::class, ProcessQuoteRunner::class);
     }
 
     /**

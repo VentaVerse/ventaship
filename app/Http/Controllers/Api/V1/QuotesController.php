@@ -3,76 +3,46 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Couriers\AccountResolver;
-use App\Couriers\Contracts\QuotesWithRefusal;
-use App\Couriers\CourierOrder;
-use App\Couriers\CourierRegistry;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\QuoteRequest;
-use App\Models\Shipment;
-use App\Shipments\CourierOptions;
-use App\Shipments\ShipmentCreator;
-use App\Support\Money;
+use App\Shipments\Quotes\AccountQuote;
+use App\Shipments\Quotes\AllCouriersQuote;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Log;
-use Throwable;
 
 class QuotesController extends Controller
 {
     /**
      * POST /quotes: the courier's own figure, or `data: null` when it has none. Never a guessed amount. When the
      * courier has no figure because it refuses the shipment, the answer also carries `refusal: {code, reason}`.
+     *
+     * With `couriers: "all"` (and no account_id or courier), every active account is asked at once within a time
+     * budget, and `data` is a list with one entry per account (AllCouriersQuote).
      */
-    public function __invoke(QuoteRequest $request): JsonResponse
+    public function __invoke(QuoteRequest $request, AccountQuote $quotes, AllCouriersQuote $all): JsonResponse
     {
+        // The budget counts from the moment the request reached the server, not from here (never more than a second
+        // back, in case that time is not the request's own).
+        $now = microtime(true);
+        $arrived = $request->server('REQUEST_TIME_FLOAT');
+        $startedAt = is_numeric($arrived) ? max((float) $arrived, $now - 1.0) : $now;
         $data = $request->validated();
+
+        if (($data['couriers'] ?? null) === 'all') {
+            $budget = ((int) ($data['budget_ms'] ?? AllCouriersQuote::DEFAULT_BUDGET_MS)) / 1000;
+            unset($data['couriers'], $data['budget_ms']);
+
+            // A little is kept back to build and send the answer, so the whole call returns within the budget.
+            return response()->json(['data' => $all->quote($data, $startedAt + $budget - AllCouriersQuote::RESPONSE_RESERVE_SECONDS)]);
+        }
+
         $account = AccountResolver::resolve($data['account_id'] ?? null, $data['courier'] ?? null);
         AccountResolver::assertActive($account);
 
-        $shipment = new Shipment(ShipmentCreator::attributes($data));
-
-        try {
-            $courier = CourierRegistry::for($account);
-            $fee = $courier->estimateFee(CourierOrder::fromApi($shipment), CourierOptions::for($shipment));
-        } catch (Throwable $e) {
-            Log::warning('Quote failed', ['account' => $account->public_id, 'error' => $e->getMessage()]);
-            $courier = null;
-            $fee = null;
+        $answer = $quotes->quote($account, $data);
+        if ($answer['fee'] === null) {
+            return response()->json($answer['refusal'] === null ? ['data' => null] : ['data' => null, 'refusal' => $answer['refusal']]);
         }
 
-        if ($fee === null || ! isset($fee->amount) || ! is_numeric($fee->amount)) {
-            $refusal = $courier instanceof QuotesWithRefusal ? $this->refusal($courier, $shipment) : null;
-
-            return response()->json($refusal === null ? ['data' => null] : ['data' => null, 'refusal' => $refusal]);
-        }
-
-        return response()->json(['data' => [
-            'amount' => number_format((float) $fee->amount, 2, '.', ''),
-            'currency' => (string) ($fee->currency ?? 'PHP'),
-            'label' => isset($fee->label) ? (string) $fee->label : null,
-            // Information only, from the courier's own answer; null when it said nothing (never a refusal).
-            'odz' => isset($fee->odz) && is_bool($fee->odz) ? $fee->odz : null,
-            'remote_area_fee' => Money::decimal($fee->remote_area_fee ?? null),
-        ]]);
-    }
-
-    /**
-     * Why the courier has no figure, when it is because it refuses the shipment (asked through the same final check
-     * the dashboard uses) and the refusal has a code. Null for anything else: an outage, missing credentials, a
-     * figure it simply did not give.
-     *
-     * @return array{code: string, reason: string}|null
-     */
-    private function refusal(QuotesWithRefusal $courier, Shipment $shipment): ?array
-    {
-        try {
-            $quote = $courier->quoteFee(CourierOrder::fromApi($shipment), CourierOptions::for($shipment));
-        } catch (Throwable $e) {
-            Log::warning('Quote refusal check failed', ['exception' => $e::class]);
-
-            return null;
-        }
-
-        // Only a refusal with a code is answered: SPX's. QuadX and LBC keep answering `data: null` alone.
-        return $quote->refusal?->code === null ? null : ['code' => $quote->refusal->code, 'reason' => $quote->refusal->message()];
+        return response()->json(['data' => $answer['fee']]);
     }
 }
