@@ -5,7 +5,7 @@
 Ventaship uses semantic versioning, MAJOR.MINOR.PATCH, starting at 1.0.0. The current version is in the `VERSION` file at the repo root.
 
 - A release with a new feature raises MINOR: 1.0.0 becomes 1.1.0.
-- A release with fixes only raises PATCH: 1.0.0 becomes 1.0.1.
+- A release without a new feature (fixes and updates only) raises PATCH: 1.0.0 becomes 1.0.1.
 - A release that breaks how connected stores use the API (a removed or renamed field or endpoint) raises MAJOR: 1.4.2 becomes 2.0.0.
 - A pre-release takes a suffix, such as 1.1.0-beta.1.
 
