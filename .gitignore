@@ -45,3 +45,6 @@ Thumbs.db
 
 # Logo explorations and source files (kept locally, never committed)
 /brand-archive/
+
+# Local design drafts, served by the dev server only
+/public/drafts/
