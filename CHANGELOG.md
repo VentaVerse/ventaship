@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### New features
+
+- SPX Sandbox can create its own user: "Create user" asks SPX for a User ID and User Secret, using the default pickup address's mobile number, and saves them.
+
 ### Updates
 
 - Change password has its own page in the profile menu, so the Account page only holds your name and email.

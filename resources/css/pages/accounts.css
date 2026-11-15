@@ -367,4 +367,15 @@
         min-width: 0;
         font-variant-numeric: tabular-nums;
     }
+
+    /* SPX Sandbox "Create user": lined up under the key fields, not in the label column. */
+    .st-row.ac-spx-user {
+        padding-left: 220px;
+    }
+
+    @media (max-width: 640px) {
+        .st-row.ac-spx-user {
+            padding-left: 0;
+        }
+    }
 }

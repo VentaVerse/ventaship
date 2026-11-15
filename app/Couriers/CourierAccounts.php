@@ -8,6 +8,7 @@ use App\Couriers\TrackingNumbers\TrackingNumberSeriesService;
 use App\Fulfillment\Couriers;
 use App\Models\AuditEntry;
 use App\Models\CourierAccount;
+use App\Models\PickupAddress;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
@@ -374,6 +375,34 @@ class CourierAccounts
      * @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor
      * @return TrackingNumberSeries the stored block
      */
+    /**
+     * SPX 3.1 Create Account for a sandbox account with no User ID yet, as VentaCart does it: the phone is the default
+     * pickup address's contact number, and SPX's issued User ID and User Secret are saved into the sandbox keys.
+     *
+     * @param  array{type?: string, id?: mixed, ip?: ?string}|null  $actor
+     */
+    public function createSpxUser(CourierAccount $account, ?array $actor = null): string
+    {
+        if ($account->courier !== 'spx' || $account->mode === 'production') {
+            throw new CourierAccountException('Users can only be created in Sandbox.');
+        }
+        $phone = (string) (PickupAddress::query()->where('is_default', true)->first()?->toPickup()['contact_phone'] ?? '');
+        if (trim($phone) === '') {
+            throw new CourierAccountException('Add a pickup address with a mobile number first.');
+        }
+
+        $result = Context::scope(
+            fn () => CourierRegistry::for($account)->createShipperAccount($phone, ''),
+            ['account_id' => $account->getKey(), 'operation' => 'create_user'],
+        );
+        if (! ($result['ok'] ?? false)) {
+            throw new CourierAccountException((string) ($result['error'] ?? 'SPX did not create the user.'));
+        }
+        $this->audit($actor, 'courier_account.spx_user_created', $account, []);
+
+        return (string) ($result['message'] ?? 'User created');
+    }
+
     public function addLbcSeries(CourierAccount $account, string $first, string $last, ?array $actor = null): TrackingNumberSeries
     {
         if ($account->courier !== 'lbc') {

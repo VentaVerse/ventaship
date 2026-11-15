@@ -65,6 +65,7 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
         Route::put('/', [CourierAccountsController::class, 'update'])->name('accounts.update');
         Route::post('test', [CourierAccountsController::class, 'test'])->name('accounts.test');
         Route::post('series', [CourierAccountsController::class, 'series'])->name('accounts.series');
+        Route::post('spx-user', [CourierAccountsController::class, 'spxUser'])->name('accounts.spx-user');
         Route::post('secrets/{key}/reveal', [CourierAccountsController::class, 'reveal'])
             ->where('key', '[a-z0-9_]+')->middleware('throttle:secret-reveals')->name('accounts.reveal');
     });

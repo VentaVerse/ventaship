@@ -104,6 +104,12 @@
                         @endif
                     </div>
                 @endforeach
+                @if($e === 'sandbox' && $spxUser)
+                    <div class="st-row ac-spx-user">
+                        <x-ui.button type="submit" form="spx-user-form">Create user</x-ui.button>
+                        <x-ui.field-error name="spx_user" id="spx-user-error" />
+                    </div>
+                @endif
             </div>
         @endforeach
 
@@ -235,6 +241,9 @@
         <button type="submit" id="account-save-confirmed" hidden tabindex="-1" aria-hidden="true"></button>
         <button type="submit" id="account-save-test-confirmed" name="after" value="test" hidden tabindex="-1" aria-hidden="true"></button>
     </form>
+    @if($spxUser)
+        <form id="spx-user-form" method="POST" action="{{ route('accounts.spx-user', $courier) }}" novalidate>@csrf</form>
+    @endif
     @if($blocks !== null && $account)
         <form id="series-form" method="POST" action="{{ route('accounts.series', $courier) }}" novalidate>@csrf</form>
     @endif

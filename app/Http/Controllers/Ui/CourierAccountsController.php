@@ -48,6 +48,9 @@ class CourierAccountsController extends Controller
             'fields' => array_map($withValue, array_values(array_filter($plain, fn (array $f) => ($f['section'] ?? null) !== 'account'))),
             'environments' => $this->environments($courier, $account, $accounts, $settings),
             'webhook' => $account ? $accounts->webhookAddress($account, true) : null,
+            // SPX in Sandbox with no User ID yet: SPX can create the user (Production keys come from SPX staff).
+            'spxUser' => $courier === 'spx' && $account !== null && $account->mode !== 'production'
+                && blank($settings?->read('spx_sandbox_user_id')),
             // LBC's assigned series shows from the first visit, so it can be entered with the keys at set up.
             'blocks' => $courier === 'lbc' ? ($account ? app(TrackingNumberSeriesService::class)->blockRows($account) : []) : null,
         ]);
@@ -208,6 +211,21 @@ class CourierAccountsController extends Controller
         }
 
         return redirect(route('accounts.show', $courier))->with('status', 'Added');
+    }
+
+    /** Sandbox only: SPX creates a user for this account (3.1 Create Account) and its keys are saved. */
+    public function spxUser(Request $request, string $courier, CourierAccounts $accounts): RedirectResponse
+    {
+        $account = $this->account($courier, $accounts);
+        abort_unless($account->courier === 'spx', 404);
+
+        try {
+            $accounts->createSpxUser($account, ['type' => 'admin', 'id' => $request->user()->getAuthIdentifier(), 'ip' => $request->ip()]);
+        } catch (CourierAccountException $e) {
+            return redirect(route('accounts.show', $courier))->withErrors(['spx_user' => $e->getMessage()]);
+        }
+
+        return redirect(route('accounts.show', $courier))->with('status', 'User created');
     }
 
     public function test(string $courier, CourierAccounts $accounts): RedirectResponse
