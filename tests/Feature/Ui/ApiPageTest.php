@@ -96,7 +96,7 @@ class ApiPageTest extends TestCase
         app(PlatformApps::class)->issueKey($app, 'K');
         $this->actingAs($this->admin());
 
-        foreach (['keys' => ['Roll key', 'Roll webhook secret', 'Rename', 'Revoke']] as $tab => $items) {
+        foreach (['keys' => ['Roll key', 'Roll webhook secret', 'Rename', 'Delete']] as $tab => $items) {
             $html = $this->get(route('developers.index', ['tab' => $tab]))->assertOk()->assertSeeInOrder($items)->getContent();
             $this->assertMatchesRegularExpression('/<button[^>]*aria-haspopup="menu"[^>]*>/', $html, $tab);
             $this->assertStringContainsString('aria-label="Actions for Shop"', $html);

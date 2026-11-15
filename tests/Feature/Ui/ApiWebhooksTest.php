@@ -80,12 +80,13 @@ class ApiWebhooksTest extends TestCase
         $secret = app(PlatformApps::class)->revealWebhookSecret($ok, self::ACTOR);
 
         $html = $this->page()
-            ->assertSeeInOrder(['Shop None', 'API key', 'Webhook URL', 'No webhook', 'Shop One', 'Webhook URL', 'Delivering', 'Webhook secret', 'Send test', 'Shop Two', 'Failing', 'Shop Xen', 'No deliveries'])
+            ->assertSeeInOrder(['Shop None', 'API key', 'Webhook secret', 'Webhook URL', 'No webhook', 'Shop One', 'Webhook secret', 'Webhook URL', 'Send test', 'Delivering', 'Shop Two', 'Failing', 'Shop Xen', 'No deliveries'])
             ->assertDontSee('Shop Off')
             ->getContent();
         $this->assertStringContainsString('value="https://a.test/h"', $html);
         $this->assertStringNotContainsString('https://off.test/h', $html);
-        $this->assertSame(3, preg_match_all('#>Webhook secret</(span|label)>#', $html));
+        // Every card shows its secret, also before a webhook URL is saved (Shop None).
+        $this->assertSame(4, preg_match_all('#>Webhook secret</(span|label)>#', $html));
         $this->assertStringNotContainsString($secret, $html);
         $this->assertStringNotContainsString('whsec_', $html);
         $this->assertStringContainsString('action="'.route('developers.endpoints.update', $ok).'"', $html);
@@ -93,8 +94,10 @@ class ApiWebhooksTest extends TestCase
         $decoded = html_entity_decode($html);
         $this->assertStringContainsString('Roll the webhook secret for Shop One?', $decoded);
         $this->assertStringContainsString('Remove the webhook for Shop One?', $decoded);
-        $this->assertStringNotContainsString('Roll the webhook secret for Shop None?', $decoded);
-        $this->assertSame(3, substr_count($html, 'Roll webhook secret</button>'));
+        $this->assertStringContainsString('Roll the webhook secret for Shop None?', $decoded, 'its secret exists before a URL');
+        $this->assertSame(4, substr_count($html, 'Roll webhook secret</button>'));
+        $this->assertStringContainsString('id="secret-'.$none->public_id.'"', $html);
+        $this->assertStringNotContainsString('id="test-'.$none->public_id.'"', $html, 'Send test needs a URL');
         $this->assertStringContainsString('id="delete-'.$ok->public_id.'"', $html);
         $this->assertStringNotContainsString('id="delete-'.$none->public_id.'"', $html);
     }

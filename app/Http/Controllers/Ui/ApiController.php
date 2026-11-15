@@ -130,7 +130,7 @@ class ApiController extends Controller
         return $this->toKeys('Renamed');
     }
 
-    /** Revokes the key; an app left without one is disabled, so it leaves the list (its history stays). */
+    /** Delete: the key stops working; an app left without one is disabled, so it leaves the list (its shipments and logs stay). */
     public function revokeKey(Request $request, ClientApp $app, PlatformApps $platforms): RedirectResponse
     {
         $key = $this->keyOf($request, $app);
@@ -145,7 +145,7 @@ class ApiController extends Controller
             }
         });
 
-        return $this->toKeys('Revoked');
+        return $this->toKeys('Deleted');
     }
 
     /**
@@ -238,6 +238,7 @@ class ApiController extends Controller
                     'created' => $app->created_at, 'last_used' => null, 'masked' => null, 'viewable' => false,
                     'auto' => false, 'renaming' => $rename === 'app-'.$app->public_id,
                     'webhook' => $webhooks[$app->id] ?? null, 'hook_card' => true,
+                    'secret' => $this->maskedOf($app, 'webhook_secret', $platforms),
                 ]];
             }
             $several = $app->tokens->count() > 1;
@@ -252,6 +253,7 @@ class ApiController extends Controller
                 'auto' => $issued !== null && (int) $issued === (int) $key->id,
                 'renaming' => $rename === 'key-'.$key->id,
                 'webhook' => $webhooks[$app->id] ?? null, 'hook_card' => $i === 0,
+                'secret' => $i === 0 ? $this->maskedOf($app, 'webhook_secret', $platforms) : null,
             ]);
         })->map(fn (array $row) => $row + ['rename_value' => $row['name']])->values();
     }

@@ -128,7 +128,7 @@ class ApiKeysTest extends TestCase
         $issued['key']->forceFill(['last_used_at' => now()->subMinutes(2)])->save();
         $webhookSecret = app(PlatformApps::class)->revealWebhookSecret($app, self::ACTOR);
 
-        $html = $this->page()->assertSeeInOrder(['Shop', 'Last used 2 minutes ago', 'Created 9 Nov 2026', 'API key', substr($issued['plaintext_key'], -4), 'Webhook URL', 'Webhook secret'])
+        $html = $this->page()->assertSeeInOrder(['Shop', 'Last used 2 minutes ago', 'Created 9 Nov 2026', 'API key', substr($issued['plaintext_key'], -4), 'Webhook secret', 'Webhook URL'])
             ->getContent();
         $this->assertStringNotContainsString($this->secretPart($issued['plaintext_key']), $html);
         $this->assertStringNotContainsString($webhookSecret, $html);
@@ -136,7 +136,10 @@ class ApiKeysTest extends TestCase
         $this->assertStringContainsString('class="x-panel api-card', $html);
         $this->assertStringNotContainsString('<table', $html);
         $this->assertStringContainsString('Roll Shop? The current key stops working.', html_entity_decode($html));
-        $this->assertStringContainsString('Revoke Shop? Apps using it stop working.', html_entity_decode($html));
+        $this->assertStringContainsString('Delete Shop? Apps using it stop working.', html_entity_decode($html));
+        $this->assertStringContainsString('Delete key', html_entity_decode($html));
+        $this->assertStringContainsString('Keep key', html_entity_decode($html));
+        $this->assertStringNotContainsString('Revoke', $html);
     }
 
     public function test_disabled_apps_expired_keys_and_other_rows(): void
@@ -206,7 +209,7 @@ class ApiKeysTest extends TestCase
         $issued = app(PlatformApps::class)->issueKey($app, 'K');
 
         $this->actingAs($this->admin())->post(route('developers.keys.revoke', $app), ['key' => $issued['key']->id])
-            ->assertRedirect(route('developers.index', ['tab' => 'keys']))->assertSessionHas('status', 'Revoked');
+            ->assertRedirect(route('developers.index', ['tab' => 'keys']))->assertSessionHas('status', 'Deleted');
 
         $this->assertNull($issued['key']->fresh());
         $this->assertSame('disabled', $app->fresh()->status);
@@ -229,7 +232,7 @@ class ApiKeysTest extends TestCase
     public function test_revoke_a_keyless_app_disables_it(): void
     {
         $app = ClientApp::factory()->create(['name' => 'Keyless']);
-        $this->actingAs($this->admin())->post(route('developers.keys.revoke', $app))->assertSessionHas('status', 'Revoked');
+        $this->actingAs($this->admin())->post(route('developers.keys.revoke', $app))->assertSessionHas('status', 'Deleted');
         $this->assertSame('disabled', $app->fresh()->status);
     }
 

@@ -10,6 +10,7 @@
 ### Updates
 
 - Change password has its own page in the profile menu, so the Account page only holds your name and email.
+- API key cards show the webhook secret right under the API key, from the moment the key is created, with the webhook URL and Send test below. Revoke is now Delete.
 - The courier status check interval moved from the .env file to Settings. The unused COURIERS_FAKE setting is gone.
 
 ## 1.3.0 (2026-11-14)

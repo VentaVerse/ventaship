@@ -70,11 +70,11 @@
                 </div>
                 <x-ui.row-menu :label="'Actions for ' . $row['name']">
                     <x-ui.row-menu-item x-on:click="run(() => $dispatch('confirm', {{ Js::from(['title' => 'Roll '.$row['name'].'? The current key stops working.', 'confirm' => 'Roll key', 'dismiss' => 'Cancel', 'form' => 'roll-'.$rid, 'tone' => 'danger']) }}))">Roll key</x-ui.row-menu-item>
-                    @if($hook)
+                    @if($hookHere)
                         <x-ui.row-menu-item x-on:click="run(() => $dispatch('confirm', {{ Js::from(['title' => 'Roll the webhook secret for '.$row['name'].'? The current secret stops working.', 'confirm' => 'Roll secret', 'dismiss' => 'Cancel', 'form' => 'secret-'.$pid, 'tone' => 'danger']) }}))">Roll webhook secret</x-ui.row-menu-item>
                     @endif
                     <x-ui.row-menu-item :href="$renameUrl" x-on:click.prevent="run(() => { renaming = true; $nextTick(() => document.getElementById('rename-{{ $rid }}').focus()) })">Rename</x-ui.row-menu-item>
-                    <x-ui.row-menu-item tone="bad" x-on:click="run(() => $dispatch('confirm', {{ Js::from(['title' => 'Revoke '.$row['name'].'? Apps using it stop working.', 'confirm' => 'Revoke', 'dismiss' => 'Cancel', 'form' => 'revoke-'.$rid, 'tone' => 'danger']) }}))">Revoke</x-ui.row-menu-item>
+                    <x-ui.row-menu-item tone="bad" x-on:click="run(() => $dispatch('confirm', {{ Js::from(['title' => 'Delete '.$row['name'].'? Apps using it stop working.', 'confirm' => 'Delete key', 'dismiss' => 'Keep key', 'form' => 'revoke-'.$rid, 'tone' => 'danger']) }}))">Delete</x-ui.row-menu-item>
                 </x-ui.row-menu>
             </header>
 
@@ -99,6 +99,17 @@
 
             @if($hookHere)
                 <div class="api-row">
+                    @if($row['secret'] !== null)
+                        <label class="api-row__label" for="f-secret-{{ $pid }}">Webhook secret</label>
+                    @else
+                        <span class="api-row__label">Webhook secret</span>
+                    @endif
+                    <div class="api-row__val">
+                        <x-ui.secret-inline :label="'Webhook secret ' . $row['name']" :masked="$row['secret']"
+                            :revealUrl="route('developers.reveal', [$app, 'webhook'])" :id="'f-secret-' . $pid" />
+                    </div>
+                </div>
+                <div class="api-row">
                     <label class="api-row__label" for="f-url-{{ $pid }}">Webhook URL</label>
                     <div class="api-row__val">
                         <form class="api-url" method="POST" action="{{ route('developers.endpoints.update', $app) }}" novalidate x-on:submit="{{ $removeOnEmpty }}">
@@ -109,25 +120,11 @@
                             <x-ui.button size="sm" type="submit" :aria-label="'Save webhook URL ' . $row['name']">Save</x-ui.button>
                         </form>
                         @if($hook)
+                            <x-ui.button size="sm" type="submit" :form="'test-' . $pid" :aria-label="'Send test webhook ' . $row['name']">Send test</x-ui.button>
                             <x-ui.badge :tone="$hook['health'][1]">{{ $hook['health'][0] }}</x-ui.badge>
                         @else
                             <x-ui.badge>No webhook</x-ui.badge>
                         @endif
-                    </div>
-                </div>
-            @endif
-
-            @if($hook)
-                <div class="api-row">
-                    @if($hook['secret'] !== null)
-                        <label class="api-row__label" for="f-secret-{{ $pid }}">Webhook secret</label>
-                    @else
-                        <span class="api-row__label">Webhook secret</span>
-                    @endif
-                    <div class="api-row__val">
-                        <x-ui.secret-inline :label="'Webhook secret ' . $row['name']" :masked="$hook['secret']"
-                            :revealUrl="route('developers.reveal', [$app, 'webhook'])" :id="'f-secret-' . $pid" />
-                        <x-ui.button size="sm" type="submit" :form="'test-' . $pid" :aria-label="'Send test webhook ' . $row['name']">Send test</x-ui.button>
                     </div>
                 </div>
             @endif
@@ -144,11 +141,13 @@
                 @if($row['key'])<input type="hidden" name="key" value="{{ $row['key']->id }}">@endif
             </form>
         @endforeach
-        @if($row['hook_card'] && $row['webhook'])
+        @if($row['hook_card'])
             @php $pid = $row['app']->public_id; @endphp
-            <form id="test-{{ $pid }}" method="POST" action="{{ route('developers.endpoints.test', $row['app']) }}">@csrf</form>
             <form id="secret-{{ $pid }}" method="POST" action="{{ route('developers.endpoints.secret', $row['app']) }}">@csrf</form>
-            <form id="delete-{{ $pid }}" method="POST" action="{{ route('developers.endpoints.destroy', $row['app']) }}">@csrf @method('DELETE')</form>
+            @if($row['webhook'])
+                <form id="test-{{ $pid }}" method="POST" action="{{ route('developers.endpoints.test', $row['app']) }}">@csrf</form>
+                <form id="delete-{{ $pid }}" method="POST" action="{{ route('developers.endpoints.destroy', $row['app']) }}">@csrf @method('DELETE')</form>
+            @endif
         @endif
     @endforeach
 @endpush
