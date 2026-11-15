@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.4.0 (2026-11-16)
+
 ### New features
 
 - SPX Sandbox can create its own user: "Create user" asks SPX for a User ID and User Secret, using the default pickup address's mobile number, and saves them.
