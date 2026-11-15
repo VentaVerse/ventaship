@@ -5,10 +5,12 @@
 ### New features
 
 - SPX Sandbox can create its own user: "Create user" asks SPX for a User ID and User Secret, using the default pickup address's mobile number, and saves them.
+- Settings → Scheduled jobs sets how often couriers are asked for status updates (1 to 59 minutes), and Run now checks immediately.
 
 ### Updates
 
 - Change password has its own page in the profile menu, so the Account page only holds your name and email.
+- The courier status check interval moved from the .env file to Settings. The unused COURIERS_FAKE setting is gone.
 
 ## 1.3.0 (2026-11-14)
 

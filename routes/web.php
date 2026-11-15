@@ -93,6 +93,8 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::redirect('platforms/{any}', '/developers')->where('any', '[A-Za-z0-9_]+');
     Route::get('ph/{level}', PhAddressController::class)->where('level', 'provinces|cities|districts|barangays')->name('ph.options');
     Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');
+    Route::put('settings/courier-poll', [SettingsController::class, 'updatePoll'])->name('settings.poll.update');
+    Route::post('settings/courier-poll/run', [SettingsController::class, 'runPoll'])->middleware('throttle:6,1')->name('settings.poll.run');
     Route::get('account', [AccountController::class, 'show'])->name('account');
     Route::put('account', [AccountController::class, 'profile'])->name('account.profile');
     Route::get('account/password', [AccountController::class, 'passwordForm'])->name('account.password.edit');

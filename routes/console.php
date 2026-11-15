@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\CourierPoll;
+use App\Support\Settings;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -8,7 +10,7 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-$pollMinutes = min(59, max(1, (int) config('couriers.poll_minutes', 10)));
+$pollMinutes = CourierPoll::minutes(app(Settings::class));
 
 Schedule::command('ventaship:schedule-heartbeat')->everyMinute();
 Schedule::command('ventaship:couriers-poll')->cron("*/{$pollMinutes} * * * *")->withoutOverlapping();

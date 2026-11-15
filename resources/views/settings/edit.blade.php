@@ -22,6 +22,32 @@
                 <x-ui.copy-value label="Cron line" id="f-cron-line" :value="$cron['line']" />
             </div>
         </div>
+        <form method="POST" action="{{ route('settings.poll.update') }}" novalidate>
+            @csrf
+            @method('PUT')
+            <div class="st-sec">
+                <h2 class="st-h">Courier status check</h2>
+                <div class="st-row">
+                    <x-ui.field label="Every" name="poll_minutes" for="f-poll-minutes">
+                        <span class="st-poll">
+                            <x-ui.input id="f-poll-minutes" class="st-narrow" name="poll_minutes" value="{{ old('poll_minutes', $pollMinutes) }}" inputmode="numeric" maxlength="2" autocomplete="off" />
+                            <span>minutes</span>
+                        </span>
+                    </x-ui.field>
+                </div>
+                <div class="st-row">
+                    <div class="fm-field">
+                        <span class="fm-label">Last check</span>
+                        <span class="st-poll">
+                            <span class="x-num">{{ $pollLast ? $pollLast['at']->timezone(config('app.timezone'))->format('j M, g:i A').' · '.$pollLast['count'].' '.($pollLast['count'] === 1 ? 'shipment' : 'shipments') : 'Not yet' }}</span>
+                            <x-ui.button type="submit" form="poll-run-form">Run now</x-ui.button>
+                        </span>
+                    </div>
+                </div>
+            </div>
+            @include('settings._bar', ['label' => 'Save'])
+        </form>
+        <form id="poll-run-form" method="POST" action="{{ route('settings.poll.run') }}">@csrf</form>
     @endif
 </section>
 @endsection

@@ -4,10 +4,13 @@ namespace Tests\Feature\Console;
 
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ScheduleTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_expected_commands_scheduled(): void
     {
         $expected = [
@@ -32,9 +35,15 @@ class ScheduleTest extends TestCase
         $this->assertArrayNotHasKey('ventaship:pii-purge', \Illuminate\Support\Facades\Artisan::all());
     }
 
-    public function test_poll_interval_follows_couriers_poll_minutes(): void
+    public function test_poll_interval_comes_from_settings_not_env(): void
     {
-        $this->assertSame(10, (int) config('couriers.poll_minutes'));
+        $this->assertNull(config('couriers.poll_minutes'), 'no .env knob');
+        $settings = app(\App\Support\Settings::class);
+        $this->assertSame(10, \App\Support\CourierPoll::minutes($settings));
+        $settings->set(\App\Support\CourierPoll::MINUTES_KEY, 3);
+        $this->assertSame(3, \App\Support\CourierPoll::minutes($settings));
+        $settings->set(\App\Support\CourierPoll::MINUTES_KEY, 90);
+        $this->assertSame(10, \App\Support\CourierPoll::minutes($settings), 'out of range falls back');
     }
 
     /** The scheduled event whose command ends with exactly these arguments. */

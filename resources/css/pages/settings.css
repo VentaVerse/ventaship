@@ -32,6 +32,18 @@
         max-width: 160px;
     }
 
+    /* A short control with its unit or button beside it (Settings → Courier status check). */
+    .st-poll {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .st-poll .st-narrow {
+        width: 72px;
+    }
+
     .st-row .x-phone {
         max-width: 320px;
     }
