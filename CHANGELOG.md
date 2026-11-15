@@ -16,6 +16,7 @@
 - Couriers that are not set up or are switched off no longer show on the Shipments page or Add shipment.
 - Only a courier's own Cancelled status cancels a booking; a status mapping changes the words, not the booking.
 - The shipment's `phase` in the API can now be a status the owner added, or null when its courier status is unmapped.
+- On hosts that block PHP's pcntl functions (HestiaCP), the scheduled queue worker no longer fails every minute: it works the queue with the new queue:drain command instead.
 
 ## 1.4.0 (2026-11-16)
 

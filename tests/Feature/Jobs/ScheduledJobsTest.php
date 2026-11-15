@@ -109,4 +109,20 @@ class ScheduledJobsTest extends TestCase
     {
         return $this->actingAs(Admin::query()->create(['name' => 'Ana', 'email' => 'ana@example.com', 'password' => 'correct-horse-battery']));
     }
+
+    public function test_queue_drain_works_jobs_without_the_daemon_and_stops_when_empty(): void
+    {
+        foreach ([1, 2, 3] as $n) {
+            dispatch(function () use ($n) {
+                cache()->increment('drained', $n);
+            })->onConnection('database')->onQueue('outgoing');
+        }
+
+        $this->artisan('queue:drain', ['connection' => 'database', '--queue' => 'couriers,outgoing', '--max-time' => 20])
+            ->expectsOutput('queue:drain processed 3 job(s).')->assertSuccessful();
+
+        $this->assertSame(6, cache()->get('drained'));
+        $this->assertSame(0, \Illuminate\Support\Facades\DB::table('jobs')->count());
+        $this->assertSame(\function_exists('pcntl_signal'), \App\Console\Commands\DrainQueue::signalsAvailable());
+    }
 }
