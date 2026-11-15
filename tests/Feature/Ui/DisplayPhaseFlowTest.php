@@ -138,6 +138,7 @@ class DisplayPhaseFlowTest extends TestCase
     {
         $draft = $this->create('P1', submit: false);
         $queued = $this->create('P2', submit: true);
+        \Illuminate\Support\Facades\Cache::lock("shipment:{$queued->id}", 60)->get(); // another process is booking it: it stays queued here
         $ids = $draft->public_id.','.$queued->public_id;
 
         $first = $this->get('/shipments')->assertOk()->getContent();

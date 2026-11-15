@@ -8,6 +8,7 @@ use App\Couriers\Support\PhPhone;
 use App\Models\ClientApp;
 use App\Models\Shipment;
 use App\Shipments\Jobs\BookShipment;
+use App\Support\AfterResponse;
 use App\Support\PhAddress;
 use Closure;
 use Illuminate\Contracts\Cache\LockTimeoutException;
@@ -77,7 +78,7 @@ final class ShipmentCreator
         }
 
         if ($state === 'queued') {
-            BookShipment::dispatch($shipment->id)->afterCommit();
+            $this->bookSoon($shipment->id);
         }
 
         return $shipment->setRelation('courierAccount', $account);
@@ -178,7 +179,7 @@ final class ShipmentCreator
             return $this->bookNow($shipment->id);
         }
 
-        BookShipment::dispatch($shipment->id)->afterCommit();
+        $this->bookSoon($shipment->id);
 
         return $shipment;
     }
@@ -252,7 +253,7 @@ final class ShipmentCreator
             return $this->bookNow($shipment->id);
         }
 
-        BookShipment::dispatch($shipment->id)->afterCommit();
+        $this->bookSoon($shipment->id);
 
         return $shipment;
     }
@@ -263,6 +264,18 @@ final class ShipmentCreator
      * the job has already ended in `unknown` (or left a never-started booking `queued`); it is logged here and never
      * reaches the caller. Only reached outside any transaction (assertNoTransaction), so the read below sees the outcome.
      */
+    /**
+     * Books right after the response is sent (AfterResponse), so the courier is asked within seconds even on a host
+     * with no running queue worker; the result reaches the client app by its webhook. The queued job stays as the
+     * backstop for a process that dies first: whichever runs second finds the shipment no longer queued (or locked)
+     * and does nothing, so a parcel is never booked twice.
+     */
+    public function bookSoon(int $shipmentId): void
+    {
+        BookShipment::dispatch($shipmentId)->afterCommit();
+        DB::afterCommit(fn () => AfterResponse::run("book shipment {$shipmentId}", fn () => app()->call([new BookShipment($shipmentId), 'handle'])));
+    }
+
     private function bookNow(int $shipmentId): Shipment
     {
         try {

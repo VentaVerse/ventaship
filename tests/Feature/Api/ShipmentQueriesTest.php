@@ -169,11 +169,35 @@ class ShipmentQueriesTest extends TestCase
             ->assertJsonPath('data.tracking_number', 'QX-WAIT');
     }
 
+    public function test_booked_and_webhooked_right_after_the_answer_with_no_queue_worker(): void
+    {
+        config(['queue.connections.couriers' => ['driver' => 'null']]); // no worker will ever run
+        \Illuminate\Support\Facades\Http::fake(['shop.test/*' => \Illuminate\Support\Facades\Http::response('ok', 200)]);
+        $client = $this->makeClient('https://shop.test/hook');
+        $account = $this->fakeDefaultAccount();
+        CourierRegistry::fake('quadx', FakeCourier::make()->booksAs('QX-NOW'));
+
+        $res = $this->apiJson('POST', '/api/v1/shipments', $this->shipmentBody(['account_id' => $account->public_id]), [
+            'Idempotency-Key' => (string) Str::uuid(),
+        ], $client);
+
+        // The answer goes out queued; the booking and its webhook follow in the same process.
+        $res->assertStatus(202)->assertJsonPath('data.state', 'queued');
+        $shipment = \App\Models\Shipment::query()->where('public_id', $res->json('data.id'))->sole();
+        $this->assertSame('booked', $shipment->state);
+        $this->assertSame('QX-NOW', $shipment->tracking_number);
+        \Illuminate\Support\Facades\Http::assertSent(fn ($r) => $r->url() === 'https://shop.test/hook'
+            && $r['type'] === 'shipment.booked' && $r['data']['shipment']['tracking_number'] === 'QX-NOW');
+    }
+
     public function test_wait_gives_up_after_its_limit_and_clamps_to_twenty_seconds(): void
     {
         config(['queue.connections.couriers' => ['driver' => 'null']]);
         Sleep::fake();
         $this->fakeDefaultAccount();
+        // Another process is booking it (it holds the shipment lock), so this request can only wait.
+        $next = (int) \App\Models\Shipment::query()->max('id') + 1;
+        \Illuminate\Support\Facades\Cache::lock("shipment:{$next}", 60)->get();
 
         $res = $this->apiJson('POST', '/api/v1/shipments?wait=999', $this->shipmentBody(), [
             'Idempotency-Key' => (string) Str::uuid(),

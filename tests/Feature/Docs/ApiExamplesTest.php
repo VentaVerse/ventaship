@@ -90,8 +90,12 @@ class ApiExamplesTest extends TestCase
         $this->account();
         $request = $this->fixture('create-shipment.request');
 
-        // Create: accepted and queued (the booking job has not run yet).
+        // Create: accepted and queued. The booking runs right after the answer; here another process holds the
+        // shipment's lock, so it is booked two seconds later, as the documented example shows.
+        $lock = \Illuminate\Support\Facades\Cache::lock('shipment:'.((int) Shipment::query()->max('id') + 1), 60);
+        $lock->get();
         $created = $this->api('POST', '/api/v1/shipments', $request, ['Idempotency-Key' => 'order-4211-create'])->assertStatus(202);
+        $lock->release();
         $this->assertSame('queued', $created->json('data.state'));
         $this->assertMatchesFixture('create-shipment.response', $created);
         $id = $created->json('data.id');

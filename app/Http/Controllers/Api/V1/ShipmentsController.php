@@ -10,6 +10,7 @@ use App\Http\Resources\ShipmentEventResource;
 use App\Http\Resources\ShipmentResource;
 use App\Models\Shipment;
 use App\Shipments\BookingWaiter;
+use App\Shipments\Jobs\BookShipment;
 use App\Shipments\Canceller;
 use App\Shipments\ShipmentCreator;
 use App\Shipments\TrackingRefresher;
@@ -50,8 +51,8 @@ class ShipmentsController extends Controller
     }
 
     /**
-     * POST /shipments: 202 queued (booked asynchronously), or 201 for a draft. No courier is called here.
-     * `?wait=N` (N ≤ 20) holds the answer until the booking settles or N seconds pass.
+     * POST /shipments: 202 queued, booked with the courier right after this answer (the result follows by webhook), or
+     * 201 for a draft. `?wait=N` (N ≤ 20) books before answering and holds the answer until it settles or N seconds pass.
      */
     public function store(CreateShipmentRequest $request, BookingWaiter $waiter): JsonResponse
     {
@@ -59,7 +60,9 @@ class ShipmentsController extends Controller
         $shipment->refresh();
 
         if ($shipment->state === 'queued' && ($seconds = BookingWaiter::seconds($request->query('wait'))) > 0) {
-            $shipment = $waiter->wait($shipment, $seconds);
+            // The caller waits for the outcome: book now, before answering (the after-response run then finds it done).
+            app()->call([new BookShipment($shipment->id), 'handle']);
+            $shipment = $waiter->wait($shipment->refresh(), $seconds);
         }
 
         return (new ShipmentResource($shipment->load('courierAccount')))
