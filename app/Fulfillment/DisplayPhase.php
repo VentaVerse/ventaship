@@ -3,10 +3,12 @@
 namespace App\Fulfillment;
 
 use App\Models\Shipment;
+use App\Shipments\PhaseResolver;
 
 /**
  * The phase the admin UI shows. `phase` stays null until the courier reports its first status (docs/api.md §8.2),
- * so until then it is derived from `state`. A state not listed here reads as attention.
+ * so until then it is derived from `state`. A state not listed here reads as attention. A courier status with no
+ * shipment status (its status disabled or deleted, or mapped to none) reads as unmapped.
  */
 final class DisplayPhase
 {
@@ -27,6 +29,9 @@ final class DisplayPhase
         if (is_string($s->phase) && $s->phase !== '') {
             return $s->phase;
         }
+        if (is_string($s->courier_status) && trim($s->courier_status) !== '') {
+            return PhaseResolver::UNMAPPED;
+        }
 
         return self::FROM_STATE[$s->state] ?? self::FALLBACK;
     }
@@ -39,6 +44,9 @@ final class DisplayPhase
             $cases .= " WHEN '{$state}' THEN '{$phase}'";
         }
 
-        return "COALESCE(NULLIF({$table}.phase, ''), CASE {$table}.state{$cases} ELSE '".self::FALLBACK."' END)";
+        $unmapped = PhaseResolver::UNMAPPED;
+
+        return "COALESCE(NULLIF({$table}.phase, ''), CASE WHEN TRIM(COALESCE({$table}.courier_status, '')) <> '' THEN '{$unmapped}' END,"
+            ." CASE {$table}.state{$cases} ELSE '".self::FALLBACK."' END)";
     }
 }

@@ -81,7 +81,7 @@ class ProfileMenuTest extends TestCase
     {
         $this->actingAs($this->admin());
 
-        foreach (['/', '/addresses', '/accounts', '/developers', '/settings', '/account', route('shipments.create')] as $url) {
+        foreach (['/', '/addresses', '/couriers', '/developers', '/settings', '/account', route('shipments.create')] as $url) {
             $html = $this->get($url)->assertOk()->getContent();
             $this->assertSame(1, substr_count($html, 'class="x-prof"'), $url);
             $this->assertMatchesRegularExpression('#<div class="x-top">\s*<div class="x-top__in">\s*<button type="button" class="x-menu"#', $html, $url);

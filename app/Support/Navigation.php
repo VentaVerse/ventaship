@@ -13,14 +13,15 @@ class Navigation
     {
         $definition = [
             [null, [
+                ['Dashboard', 'dashboard', 'dashboard'],
                 ['Shipments', 'fulfillment', 'truck', ['fulfillment*']],
                 ['Add shipment', 'shipments.create', 'plus'],
                 ['Import CSV', 'imports.create', 'upload'],
             ]],
             ['Setup', [
-                ['Courier accounts', 'accounts.index', 'building'],
+                ['Couriers', 'accounts.index', 'building', ['accounts*']],
                 ['Addresses', 'addresses.index', 'map-pin', ['addresses*']],
-                ['Status mapping', 'mapping.index', 'refresh-cw'],
+                ['Shipment statuses', 'statuses.index', 'refresh-cw', ['statuses*']],
             ]],
             ['Developers', [
                 ['API', 'developers.index', 'plug', ['developers*']],

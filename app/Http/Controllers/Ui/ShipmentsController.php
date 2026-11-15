@@ -482,7 +482,7 @@ class ShipmentsController extends Controller
     }
 
     /**
-     * The add form, or the edit form for $editing. One tile per courier: its account from forCourier(), bookable when
+     * The add form, or the edit form for $editing. One tile per bookable courier: its account from forCourier(), when
      * active. An edit keeps its own account on its courier's tile (marked inactive) even when it is not active.
      */
     private function form(Request $request, PickupAddresses $pickups, ?Shipment $editing): View
@@ -493,9 +493,10 @@ class ShipmentsController extends Controller
         foreach (self::COURIERS as $courier) {
             $account = $own !== null && $own->courier === $courier ? $own : app(CourierAccounts::class)->forCourier($courier);
             $ok = $account !== null && ($account->isActive() || $account->is($own));
-            if ($ok) {
-                $usable->push($account);
+            if (! $ok) {
+                continue; // not set up, or switched off: not offered for booking
             }
+            $usable->push($account);
             $tiles[] = [
                 'courier' => $courier,
                 'name' => Couriers::name($courier),

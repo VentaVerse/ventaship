@@ -78,7 +78,7 @@ class ShipmentsPageRedesignTest extends TestCase
         $flagged = $this->ship('booked', ['needs_attention' => true, 'recipient' => ['first_name' => 'Flo', 'last_name' => 'Ag']]);
         $this->ship('booked', ['recipient' => ['first_name' => 'Oki', 'last_name' => 'Ay']]);
 
-        $html = $this->get('/?view=needs')->assertOk()
+        $html = $this->get('/shipments?view=needs')->assertOk()
             ->assertSeeText(['Fay Ld', 'Uma Kn', 'Dee Ra', 'Flo Ag'])
             ->assertDontSeeText('Oki Ay')
             ->getContent();
@@ -94,7 +94,7 @@ class ShipmentsPageRedesignTest extends TestCase
     {
         $this->ship('booked', ['recipient' => ['first_name' => 'Oki', 'last_name' => 'Ay']]);
 
-        $html = $this->get('/')->assertOk()->getContent();
+        $html = $this->get('/shipments')->assertOk()->getContent();
         $this->assertMatchesRegularExpression('#Needs action<em class="fl-seg__count"[^>]*>0</em>#', $html);
         $this->assertMatchesRegularExpression('#<a class="fl-seg__opt is-on"[^>]*aria-current="page"[^>]*>\s*All#', $html);
     }
@@ -105,7 +105,7 @@ class ShipmentsPageRedesignTest extends TestCase
         $unknown = $this->ship('unknown');
         $draft = $this->ship('draft');
 
-        $html = $this->get('/')->assertOk()->getContent();
+        $html = $this->get('/shipments')->assertOk()->getContent();
 
         $this->assertMatchesRegularExpression('#href="'.preg_quote(route('shipments.edit', $failed->public_id), '#').'"[^>]*>\s*Retry#', $html);
         // An unknown booking has no Check button: the eye opens its page, where it is resolved.
@@ -132,17 +132,17 @@ class ShipmentsPageRedesignTest extends TestCase
         $a = $this->ship('draft', ['client_reference' => 'ORD-77812', 'active_reference' => 'ORD-77812', 'recipient' => ['first_name' => 'Ann', 'last_name' => 'One']]);
         $b = $this->ship('booked', ['tracking_number' => 'QX10000001', 'recipient' => ['first_name' => 'Ben', 'last_name' => 'Two']]);
 
-        $this->get('/?q=77812')->assertOk()->assertSeeText('Ann One')->assertDontSeeText('Ben Two');
-        $this->get('/?q=qx1000000')->assertOk()->assertSeeText('Ben Two')->assertDontSeeText('Ann One');
-        $this->get('/?q='.urlencode('  QX10000001  '))->assertOk()->assertSeeText('Ben Two');
+        $this->get('/shipments?q=77812')->assertOk()->assertSeeText('Ann One')->assertDontSeeText('Ben Two');
+        $this->get('/shipments?q=qx1000000')->assertOk()->assertSeeText('Ben Two')->assertDontSeeText('Ann One');
+        $this->get('/shipments?q='.urlencode('  QX10000001  '))->assertOk()->assertSeeText('Ben Two');
     }
 
     public function test_search_like_wildcards_are_literal(): void
     {
         $this->ship('draft', ['recipient' => ['first_name' => 'Ann', 'last_name' => 'One']]);
 
-        $this->get('/?q=%25')->assertOk()->assertDontSeeText('Ann One')->assertSeeText('No shipments');
-        $this->get('/?q=_')->assertOk()->assertDontSeeText('Ann One');
+        $this->get('/shipments?q=%25')->assertOk()->assertDontSeeText('Ann One')->assertSeeText('No shipments');
+        $this->get('/shipments?q=_')->assertOk()->assertDontSeeText('Ann One');
     }
 
     public function test_search_by_recipient_name_words_accent_and_case_insensitive(): void
@@ -150,10 +150,10 @@ class ShipmentsPageRedesignTest extends TestCase
         $this->ship('draft', ['recipient' => ['first_name' => 'María José', 'last_name' => 'Dela Cruz']]);
         $this->ship('draft', ['recipient' => ['first_name' => 'Jose', 'last_name' => 'Rizal']]);
 
-        $this->get('/?q=maria')->assertOk()->assertSeeText('María José Dela Cruz')->assertDontSeeText('Jose Rizal');
-        $this->get('/?q=JOSÉ')->assertOk()->assertSeeText(['María José Dela Cruz', 'Jose Rizal']);
-        $this->get('/?q=jose+cruz')->assertOk()->assertSeeText('María José Dela Cruz')->assertDontSeeText('Jose Rizal');
-        $this->get('/?q=mar')->assertOk()->assertDontSeeText('María José Dela Cruz');
+        $this->get('/shipments?q=maria')->assertOk()->assertSeeText('María José Dela Cruz')->assertDontSeeText('Jose Rizal');
+        $this->get('/shipments?q=JOSÉ')->assertOk()->assertSeeText(['María José Dela Cruz', 'Jose Rizal']);
+        $this->get('/shipments?q=jose+cruz')->assertOk()->assertSeeText('María José Dela Cruz')->assertDontSeeText('Jose Rizal');
+        $this->get('/shipments?q=mar')->assertOk()->assertDontSeeText('María José Dela Cruz');
     }
 
     public function test_search_query_is_capped_and_kept_in_the_box_and_counts(): void
@@ -161,15 +161,15 @@ class ShipmentsPageRedesignTest extends TestCase
         $this->ship('draft', ['recipient' => ['first_name' => 'Ann', 'last_name' => 'One']]);
         $this->ship('draft', ['recipient' => ['first_name' => 'Ben', 'last_name' => 'Two']]);
 
-        $html = $this->get('/?q=ann')->assertOk()->getContent();
+        $html = $this->get('/shipments?q=ann')->assertOk()->getContent();
         $this->assertStringContainsString('name="q"', $html);
         $this->assertStringContainsString('value="ann"', $html);
         $this->assertStringContainsString('maxlength="100"', $html);
         $this->assertStringContainsString('aria-label="Name, order ref or tracking number"', $html);
         $this->assertMatchesRegularExpression('#All<em[^>]*>1</em>#', $html);
 
-        $this->get('/?q='.str_repeat('a', 500))->assertOk();
-        $this->get('/?q[]=x')->assertOk()->assertSeeText(['Ann One', 'Ben Two']);
+        $this->get('/shipments?q='.str_repeat('a', 500))->assertOk();
+        $this->get('/shipments?q[]=x')->assertOk()->assertSeeText(['Ann One', 'Ben Two']);
     }
 
     public function test_recipient_tokens_hold_no_plaintext_and_follow_changes(): void
@@ -183,8 +183,8 @@ class ShipmentsPageRedesignTest extends TestCase
         $this->assertSame(RecipientTokens::forWords('Mariposa Quintana'), explode(' ', $raw));
 
         $s->forceFill(['recipient' => ['first_name' => 'Lena', 'last_name' => 'Uy']])->save();
-        $this->get('/?q=mariposa')->assertOk()->assertDontSeeText('Lena Uy');
-        $this->get('/?q=lena')->assertOk()->assertSeeText('Lena Uy');
+        $this->get('/shipments?q=mariposa')->assertOk()->assertDontSeeText('Lena Uy');
+        $this->get('/shipments?q=lena')->assertOk()->assertSeeText('Lena Uy');
 
         $s->forceFill(['recipient' => null])->save();
         $this->assertNull(DB::table('shipments')->where('id', $s->id)->value('recipient_tokens'));
@@ -219,7 +219,7 @@ class ShipmentsPageRedesignTest extends TestCase
     {
         $this->ship('draft');
 
-        $html = $this->get('/')->assertOk()->getContent();
+        $html = $this->get('/shipments')->assertOk()->getContent();
         $this->assertStringContainsString('role="table"', $html);
         foreach (['Recipient', 'Courier', 'Amount', 'Status'] as $h) {
             $this->assertMatchesRegularExpression('#role="columnheader"[^>]*>\s*'.$h.'\s*<#', $html);
@@ -236,7 +236,7 @@ class ShipmentsPageRedesignTest extends TestCase
         ]);
         $this->ship('booked', ['payment_method' => 'prepaid', 'payment_state' => null, 'total' => '500.00']);
 
-        $html = $this->get('/')->assertOk()
+        $html = $this->get('/shipments')->assertOk()
             ->assertSeeText(['10001234', 'Demo Store', '2 items', '₱980.00', 'COD', '₱500.00'])
             ->assertDontSeeText('Prepaid')
             ->getContent();
@@ -251,7 +251,7 @@ class ShipmentsPageRedesignTest extends TestCase
         $cancelled = $this->ship('cancelled', ['cancel_state' => 'cancelled']);
         $bookedNoTracking = $this->ship('booked', ['tracking_number' => null]);
 
-        $html = $this->get('/')->assertOk()->getContent();
+        $html = $this->get('/shipments')->assertOk()->getContent();
 
         $flags = fn (Shipment $s) => [
             str_contains($this->row($html, $s), 'data-printable="1"'),
@@ -269,7 +269,7 @@ class ShipmentsPageRedesignTest extends TestCase
     {
         $this->ship('booked');
 
-        $html = $this->get('/')->assertOk()->getContent();
+        $html = $this->get('/shipments')->assertOk()->getContent();
         $this->assertStringContainsString('aria-live="polite"', $html);
         $this->assertStringContainsString('Deselect', $html);
         foreach (["'Print waybills'", "'Book'", "'Cancel shipments'"] as $label) {
@@ -391,45 +391,45 @@ class ShipmentsPageRedesignTest extends TestCase
     {
         $this->ship('booked');
 
-        $this->get('/?view=needs')->assertOk()
+        $this->get('/shipments?view=needs')->assertOk()
             ->assertSeeText(['No shipments', 'Clear filters'])
             ->assertSee('href="'.route('fulfillment').'"', false);
-        $this->get('/?q=zzz')->assertOk()->assertSeeText('Clear filters');
+        $this->get('/shipments?q=zzz')->assertOk()->assertSeeText('Clear filters');
     }
 
     public function test_empty_without_filters_has_no_clear_filters(): void
     {
-        $this->get('/')->assertOk()->assertSeeText('No shipments')->assertDontSeeText('Clear filters');
+        $this->get('/shipments')->assertOk()->assertSeeText('No shipments')->assertDontSeeText('Clear filters');
     }
 
     public function test_courier_option_does_not_repeat_the_name(): void
     {
         CourierAccount::factory()->create(['courier' => 'spx', 'label' => 'Main shop']);
 
-        $this->get('/')->assertOk()
+        $this->get('/shipments')->assertOk()
             ->assertDontSeeText('QuadX · QuadX')
             ->assertSeeText('SPX · Main shop');
     }
 
     public function test_csv_import_source_option_is_gone(): void
     {
-        $this->get('/')->assertOk()->assertDontSeeText('CSV import')->assertDontSee('value="csv"', false);
+        $this->get('/shipments')->assertOk()->assertDontSeeText('CSV import')->assertDontSee('value="csv"', false);
     }
 
     public function test_cod_unpaid_at_zero_is_not_shown(): void
     {
-        $html = $this->get('/')->assertOk()->getContent();
+        $html = $this->get('/shipments')->assertOk()->getContent();
         $this->assertStringNotContainsString('COD unpaid', $html);
 
         $this->ship('booked', ['payment_method' => 'cod', 'payment_state' => 'cod_unpaid', 'cod_amount' => '250.00']);
-        $this->get('/')->assertOk()->assertSeeText(['COD unpaid', '₱250.00']);
+        $this->get('/shipments')->assertOk()->assertSeeText(['COD unpaid', '₱250.00']);
     }
 
     public function test_cards_show_mode_and_check_and_phone_chips(): void
     {
         $this->ship('booked');
 
-        $html = $this->get('/')->assertOk()->assertSeeText(['Sandbox', 'Connected', 'No account', 'Connect LBC'])->getContent();
+        $html = $this->get('/shipments')->assertOk()->assertSeeText(['Sandbox', 'Connected'])->assertDontSeeText(['No account', 'Connect LBC'])->getContent();
         $this->assertStringContainsString('fl-chips', $html);
         $this->assertMatchesRegularExpression('#fl-chip[^"]*"[^>]*>.*?<strong[^>]*>1</strong>\s*active#s', $html);
     }

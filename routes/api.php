@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\PickupSlotsController;
 use App\Http\Controllers\Api\V1\PingController;
 use App\Http\Controllers\Api\V1\QuotesController;
 use App\Http\Controllers\Api\V1\ShipmentsController;
+use App\Http\Controllers\Api\V1\ShipmentStatusesController;
 use Illuminate\Support\Facades\Route;
 
 // auth:sanctum then client.auth run first (both sit in the framework's auth priority slot), so every limiter is
@@ -16,6 +17,7 @@ Route::middleware(['auth:sanctum', 'client.auth', 'throttle:api'])->group(functi
     Route::get('ping', PingController::class);
 
     Route::get('couriers', [CouriersController::class, 'index']);
+    Route::get('shipment-statuses', [ShipmentStatusesController::class, 'index']);
     Route::get('courier-accounts', [CourierAccountsController::class, 'index']);
     Route::get('courier-accounts/{account}', [CourierAccountsController::class, 'show']);
 

@@ -131,7 +131,7 @@
                 @foreach($tiles as $t)
                     @if($t['id'] === null && ! $t['inactive'])
                         <div class="sh-courier is-off" data-courier="{{ $t['courier'] }}">
-                            <x-courier-tile :courier="$t['courier']" />
+                            <x-courier-tile :courier="$t['courier']" :logo="true" />
                             <span class="sh-courier__text">
                                 <span class="sh-courier__name">{{ $t['name'] }}</span>
                                 <span class="sh-courier__note">Not set up · <a class="sh-courier__link" href="{{ route('accounts.show', $t['courier']) }}">Set up</a></span>
@@ -145,7 +145,7 @@
                         @else
                             <input type="radio" name="account_id" class="sh-courier__input" disabled>
                         @endif
-                        <x-courier-tile :courier="$t['courier']" />
+                        <x-courier-tile :courier="$t['courier']" :logo="true" />
                         <span class="sh-courier__text">
                             <span class="sh-courier__name">{{ $t['name'] }}</span>
                             @if($t['inactive'])

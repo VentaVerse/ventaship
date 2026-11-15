@@ -307,22 +307,19 @@ class ShipmentFormRedesignTest extends TestCase
         $this->assertSame('Lost Province', $saved['state']);
     }
 
-    public function test_courier_tiles_disable_unset_couriers(): void
+    public function test_courier_tiles_hide_couriers_not_set_up_or_off(): void
     {
         CourierAccount::factory()->create(['courier' => 'lbc', 'label' => 'LBC', 'status' => 'inactive', 'is_default' => true, 'default_slot' => 'lbc']);
 
         $html = $this->get('/shipments/new')->assertOk()->getContent();
 
         $this->assertMatchesRegularExpression('/<div class="sh-couriers" role="radiogroup"/', $html);
-        // In order QuadX, SPX, LBC.
-        $this->assertMatchesRegularExpression('/data-courier="quadx".*data-courier="spx".*data-courier="lbc"/s', $html);
         $this->assertMatchesRegularExpression('/type="radio" name="account_id" value="'.$this->account->public_id.'"[^>]*checked/', $html);
-        // A courier with no account has no radio; its tile links to its account page to set it up.
-        $this->assertMatchesRegularExpression('#<div class="sh-courier is-off" data-courier="spx">.*?Not set up · <a class="sh-courier__link" href="'.preg_quote(route('accounts.show', 'spx'), '#').'">Set up</a>#s', $html);
-        $this->assertDoesNotMatchRegularExpression('/data-courier="spx">(?:(?!data-courier=).)*name="account_id"/s', $html);
-        // An account that exists but is not active says so.
-        $this->assertMatchesRegularExpression('/data-courier="lbc".*?type="radio" name="account_id"[^>]*disabled.*?Inactive/s', $html);
-        $this->assertSame(1, substr_count($html, 'Not set up'));
+        // Only bookable couriers get a tile: SPX (no account) and LBC (switched off) are not offered.
+        $this->assertSame(1, substr_count($html, 'data-courier="'));
+        $this->assertStringNotContainsString('data-courier="spx"', $html);
+        $this->assertStringNotContainsString('data-courier="lbc"', $html);
+        $this->assertStringNotContainsString('Not set up', $html);
     }
 
     public function test_form_has_no_money_inputs_and_shows_summary(): void

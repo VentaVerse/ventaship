@@ -51,6 +51,20 @@ class ReadEndpointsTest extends TestCase
         $this->assertNotEmpty($byKey['quadx']['service_types']);
     }
 
+    public function test_shipment_statuses_lists_all_in_order_with_disabled(): void
+    {
+        \App\Models\ShipmentStatus::query()->where('key', 'lost_damaged')->update(['enabled' => false]);
+        \App\Models\ShipmentStatus::query()->create(['key' => 'held_at_hub', 'name' => 'Held at hub', 'enabled' => true, 'sort' => 5]);
+
+        $data = $this->api('GET', '/api/v1/shipment-statuses')->assertOk()->json('data');
+
+        $this->assertSame(['held_at_hub', 'to_handover', 'in_transit', 'attention', 'delivered', 'failed', 'lost_damaged', 'returning', 'cancelled'], array_column($data, 'key'));
+        $this->assertSame(['key' => 'held_at_hub', 'name' => 'Held at hub', 'enabled' => true, 'sort_order' => 5], $data[0]);
+        $this->assertFalse($data[6]['enabled']);
+        $this->app['auth']->forgetGuards();
+        $this->getJson('/api/v1/shipment-statuses')->assertUnauthorized();
+    }
+
     public function test_courier_accounts_never_expose_secrets(): void
     {
         $account = $this->quadxAccount('qx-api-key-SECRETVALUE1', 'qx-secret-SECRETVALUE2', [

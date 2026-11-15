@@ -15,7 +15,7 @@ final class PaymentState
     /** Phases in which a COD parcel will never be paid for. */
     private const VOID_PHASES = ['cancelled', 'returning', 'lost_damaged'];
 
-    public static function after(Shipment $s, string $phase): string
+    public static function after(Shipment $s, ?string $phase): string
     {
         if ($s->payment_method !== 'cod') {
             return 'prepaid';

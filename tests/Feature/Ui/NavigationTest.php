@@ -40,7 +40,7 @@ class NavigationTest extends TestCase
 
         $routes = $this->routes();
 
-        $this->assertSame(['fulfillment', 'shipments.create', 'accounts.index', 'addresses.index', 'developers.index', 'settings.edit'], $routes);
+        $this->assertSame(['dashboard', 'fulfillment', 'shipments.create', 'accounts.index', 'addresses.index', 'statuses.index', 'developers.index', 'settings.edit'], $routes);
         $this->assertNotContains('webhooks.index', $routes);
     }
 

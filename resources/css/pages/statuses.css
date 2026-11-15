@@ -1,0 +1,118 @@
+@layer components {
+    /* Shipment statuses list, and the Status mapping tab of a courier page. */
+    .ss-table,
+    .sm-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13.5px;
+    }
+
+    .ss-table th,
+    .ss-table td,
+    .sm-table th,
+    .sm-table td {
+        padding: 10px 14px;
+        text-align: left;
+        vertical-align: middle;
+        border-bottom: 1px solid var(--bl-rule);
+    }
+
+    .ss-table th:first-child,
+    .ss-table td:first-child,
+    .sm-table th:first-child,
+    .sm-table td:first-child {
+        padding-left: 20px;
+    }
+
+    .ss-table th,
+    .sm-table th {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--bl-ink-3);
+    }
+
+    .ss-name {
+        overflow-wrap: anywhere;
+    }
+
+    .ss-link {
+        color: var(--bl-ink);
+        text-decoration: none;
+    }
+
+    .ss-link:hover {
+        text-decoration: underline;
+    }
+
+    .ss-table tr.is-off .ss-link {
+        color: var(--bl-ink-3);
+    }
+
+    .ss-on {
+        width: 120px;
+    }
+
+    .ss-on form {
+        display: flex;
+    }
+
+    .ss-act {
+        width: 48px;
+        text-align: right;
+    }
+
+    .sm-wrap {
+        overflow-x: auto;
+    }
+
+    .sm-code {
+        width: 72px;
+        font-family: var(--font-mono);
+        font-weight: 500;
+    }
+
+    .sm-table td label {
+        cursor: default;
+    }
+
+    .sm-sel {
+        min-width: 180px;
+        max-width: 280px;
+    }
+
+    .sm-sel select {
+        width: 100%;
+    }
+
+    @media (max-width: 640px) {
+        .sm-table thead {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip-path: inset(50%);
+        }
+
+        .sm-table tr {
+            display: block;
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--bl-rule);
+        }
+
+        .sm-table td,
+        .sm-table td:first-child {
+            display: inline-block;
+            padding: 0 10px 6px 0;
+            border: 0;
+        }
+
+        .sm-table td:last-child {
+            display: block;
+            padding: 0;
+        }
+
+        .sm-sel {
+            max-width: none;
+        }
+    }
+}

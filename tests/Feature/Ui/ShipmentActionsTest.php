@@ -184,7 +184,7 @@ class ShipmentActionsTest extends TestCase
         $s = $this->ship('booked', 'to_handover');
 
         $this->get('/shipments/'.$s->public_id)->assertSee('id="sd-labels" method="POST" action="'.route('shipments.labels').'" target="_blank"', false);
-        $this->get('/')->assertSee('formtarget="_blank"', false);
+        $this->get('/shipments')->assertSee('formtarget="_blank"', false);
     }
 
     public function test_labels_merged_with_skipped_flash(): void
@@ -208,8 +208,8 @@ class ShipmentActionsTest extends TestCase
 
         $this->post('/shipments/labels', $this->ids($one, $draft, $two))->assertOk();
         $this->getJson(route('fulfillment.poll'))->assertOk();
-        $this->get('/')->assertOk()->assertSeeText('1 skipped: no waybill yet');
-        $this->get('/')->assertOk()->assertDontSeeText('skipped: no waybill yet');
+        $this->get('/shipments')->assertOk()->assertSeeText('1 skipped: no waybill yet');
+        $this->get('/shipments')->assertOk()->assertDontSeeText('skipped: no waybill yet');
     }
 
     public function test_cancel_does_not_re_audit_unchanged_rows(): void
@@ -270,7 +270,7 @@ class ShipmentActionsTest extends TestCase
     {
         $this->ship('draft', 'draft');
 
-        $this->get('/')->assertOk()
+        $this->get('/shipments')->assertOk()
             ->assertSee(route('shipments.labels'), false)
             ->assertSee(route('shipments.book'), false)
             ->assertSee(route('shipments.cancel'), false)

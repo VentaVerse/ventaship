@@ -8,6 +8,8 @@
 @import './pages/api.css';
 @import './pages/settings.css';
 @import './pages/shipments.css';
+@import './pages/statuses.css';
+@import './pages/dashboard.css';
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../views';

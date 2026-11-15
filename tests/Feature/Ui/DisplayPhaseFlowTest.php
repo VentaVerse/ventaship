@@ -70,7 +70,7 @@ class DisplayPhaseFlowTest extends TestCase
         $this->assertSame(1, $card['active']);
         $this->assertSame('1290.00', $card['cod_unpaid']);
 
-        $html = $this->get('/?view=active')->assertOk()->getContent();
+        $html = $this->get('/shipments?view=active')->assertOk()->getContent();
         $row = $this->row($html, $draft);
         $this->assertStringContainsString('data-status="ventaship:draft"', $row);
         $this->assertStringContainsString('x-badge__label">Not booked', $row, 'the status stays beside the Book step');
@@ -94,7 +94,7 @@ class DisplayPhaseFlowTest extends TestCase
 
         $this->assertEqualsCanonicalizing([$queued->id, $booking->id], ShipmentList::query(['view' => 'active', 'status' => 'ventaship:booking'])->pluck('id')->all());
 
-        $html = $this->get('/?status=ventaship:booking')->assertOk()->getContent();
+        $html = $this->get('/shipments?status=ventaship:booking')->assertOk()->getContent();
         foreach ([$queued, $booking] as $s) {
             $row = $this->row($html, $s);
             $this->assertStringContainsString('data-status="ventaship:booking"', $row);
@@ -115,7 +115,7 @@ class DisplayPhaseFlowTest extends TestCase
 
         $this->assertSame([$s->id], ShipmentList::query(['view' => 'active', 'status' => 'ventaship:failed'])->pluck('id')->all());
 
-        $row = $this->row($this->get('/?view=active')->assertOk()->getContent(), $s);
+        $row = $this->row($this->get('/shipments?view=active')->assertOk()->getContent(), $s);
         $this->assertStringContainsString('data-status="ventaship:failed"', $row);
         $this->assertStringContainsString('Booking failed', $row);
         $this->assertStringNotContainsString('form="book-', $row);
@@ -140,7 +140,7 @@ class DisplayPhaseFlowTest extends TestCase
         $queued = $this->create('P2', submit: true);
         $ids = $draft->public_id.','.$queued->public_id;
 
-        $first = $this->get('/')->assertOk()->getContent();
+        $first = $this->get('/shipments')->assertOk()->getContent();
         $statuses = $this->getJson('/fulfillment/poll?ids='.$ids)->assertOk()->json('statuses');
         $this->assertSame([$draft->public_id => 'ventaship:draft', $queued->public_id => 'ventaship:booking'], $statuses);
         $this->assertNotContains(null, $statuses);
@@ -152,7 +152,7 @@ class DisplayPhaseFlowTest extends TestCase
         ksort($sorted);
         $this->assertSame($sorted, $page, 'the page and the poll agree');
 
-        $this->get('/')->assertOk();
+        $this->get('/shipments')->assertOk();
         $this->assertSame($statuses, $this->getJson('/fulfillment/poll?ids='.$ids)->json('statuses'));
     }
 }

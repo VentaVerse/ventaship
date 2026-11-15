@@ -155,7 +155,7 @@ final class Canceller
             return false;
         }
 
-        return app(PhaseResolver::class)->phase((string) $s->courier, $s->courier_status) === 'cancelled';
+        return app(PhaseResolver::class)->courierPhase((string) $s->courier, $s->courier_status) === 'cancelled';
     }
 
     /**

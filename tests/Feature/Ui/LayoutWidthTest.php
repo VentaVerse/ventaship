@@ -59,7 +59,7 @@ class LayoutWidthTest extends TestCase
             '/addresses',
             route('addresses.pickup.create'),
             route('addresses.customers.create'),
-            '/accounts',
+            '/couriers',
             route('accounts.show', $account->courier),
             '/developers',
             '/settings',

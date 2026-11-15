@@ -65,8 +65,8 @@ class CancelledStatusTest extends TestCase
         $options = collect(StatusFilter::options([]))->pluck('count', 'key')->all();
         $this->assertSame(['quadx:pending' => 1, 'ventaship:cancelled' => 1], $options);
 
-        $this->get('/?status=quadx:pending')->assertOk()->assertSeeText($live->client_reference)->assertDontSeeText($cancelled->client_reference);
-        $this->get('/?status=ventaship:cancelled')->assertOk()->assertSeeText($cancelled->client_reference)->assertDontSeeText($live->client_reference);
+        $this->get('/shipments?status=quadx:pending')->assertOk()->assertSeeText($live->client_reference)->assertDontSeeText($cancelled->client_reference);
+        $this->get('/shipments?status=ventaship:cancelled')->assertOk()->assertSeeText($cancelled->client_reference)->assertDontSeeText($live->client_reference);
 
         $this->getJson('/fulfillment/poll?ids='.$cancelled->public_id)->assertJsonPath('statuses.'.$cancelled->public_id, 'ventaship:cancelled');
 
@@ -76,17 +76,28 @@ class CancelledStatusTest extends TestCase
 
     public function test_courier_reported_cancel_keeps_the_courier_key(): void
     {
-        StatusMapping::query()->create(['courier' => 'quadx', 'courier_status' => 'void', 'phase' => 'cancelled', 'label' => 'Voided']);
+        StatusMapping::query()->create(['courier' => 'quadx', 'courier_status' => 'canceled', 'phase' => null, 'label' => 'Voided']);
         $s = $this->book('V-1');
-        $this->fake->tracks([['status' => 'void']]);
+        $this->fake->tracks([['status' => 'canceled']]);
         $s = app(TrackingRefresher::class)->refresh($s);
         $this->assertSame('cancelled', $s->refresh()->state);
         $ours = app(Canceller::class)->request($this->book('C-1'), now: true);
 
-        $this->assertSame('quadx:void', StatusFilter::keyFor($s));
+        $this->assertSame('quadx:canceled', StatusFilter::keyFor($s));
         $this->assertSame('Voided', StatusFilter::labelFor($s));
-        $this->assertSame([$s->public_id], $this->listed('quadx:void'));
+        $this->assertSame([$s->public_id], $this->listed('quadx:canceled'));
         $this->assertSame([$ours->public_id], $this->listed('ventaship:cancelled'));
         $this->assertSame([], $this->listed('quadx:pending'));
+    }
+
+    public function test_mapping_a_status_to_cancelled_does_not_cancel_the_booking(): void
+    {
+        StatusMapping::query()->create(['courier' => 'quadx', 'courier_status' => 'void', 'phase' => 'cancelled']);
+        $s = $this->book('V-2');
+        $this->fake->tracks([['status' => 'void']]);
+        $s = app(TrackingRefresher::class)->refresh($s);
+
+        $this->assertSame('booked', $s->refresh()->state);
+        $this->assertSame('cancelled', $s->phase);
     }
 }

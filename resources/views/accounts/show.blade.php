@@ -22,7 +22,7 @@
 
 @section('title', $name)
 
-@section('title_lead')<x-courier-tile :courier="$courier" class="ac-title-tile" />@endsection
+@section('title_lead')<x-courier-tile :courier="$courier" :logo="true" class="ac-title-tile" />@endsection
 
 @section('title_after')
     <span class="ac-title-badges" x-data="accountHeader(@js($header))" x-on:account-form.window="sync($event.detail)">
@@ -35,7 +35,7 @@
     </span>
 @endsection
 
-@section('crumb')<x-ui.back :href="route('accounts.index')">Courier accounts</x-ui.back>@endsection
+@section('crumb')<x-ui.back :href="route('accounts.index')">Couriers</x-ui.back>@endsection
 
 @if($account)
 @section('actions')
@@ -56,6 +56,7 @@
 @endphp
 
 <section class="x-panel ac-page">
+    @include('accounts._tabs', ['tab' => 'settings'])
     <form method="POST" action="{{ route('accounts.update', $courier) }}" id="account-form" novalidate
           x-data="accountForm(@js($form))"
           x-on:submit="submit($event)"

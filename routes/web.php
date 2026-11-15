@@ -6,13 +6,16 @@ use App\Http\Controllers\Ui\AddressesController;
 use App\Http\Controllers\Ui\ApiController;
 use App\Http\Controllers\Ui\CourierAccountsController;
 use App\Http\Controllers\Ui\CustomerSearchController;
+use App\Http\Controllers\Ui\DashboardController;
 use App\Http\Controllers\Ui\FulfillmentController;
 use App\Http\Controllers\Ui\PhAddressController;
 use App\Http\Controllers\Ui\SettingsController;
 use App\Http\Controllers\Ui\ShipmentActionsController;
 use App\Http\Controllers\Ui\ShipmentOptionsController;
 use App\Http\Controllers\Ui\ShipmentsController;
+use App\Http\Controllers\Ui\ShipmentStatusesController;
 use App\Http\Controllers\Ui\SpxBookingController;
+use App\Http\Controllers\Ui\StatusMappingController;
 use App\Http\Controllers\Webhooks\CourierWebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -23,7 +26,8 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::post('logout', [LoginController::class, 'destroy'])->name('logout');
-    Route::get('/', [FulfillmentController::class, 'index'])->name('fulfillment');
+    Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('shipments', [FulfillmentController::class, 'index'])->name('fulfillment');
     Route::get('fulfillment/poll', [FulfillmentController::class, 'poll'])->name('fulfillment.poll');
     Route::get('shipments/new', [ShipmentsController::class, 'create'])->name('shipments.create');
     Route::post('shipments', [ShipmentsController::class, 'store'])->name('shipments.store');
@@ -59,15 +63,30 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
         Route::put('/', [AddressesController::class, 'updateCustomer'])->name('addresses.customers.update');
         Route::delete('/', [AddressesController::class, 'destroyCustomer'])->name('addresses.customers.destroy');
     });
-    Route::get('accounts', [CourierAccountsController::class, 'index'])->name('accounts.index');
-    Route::prefix('accounts/{courier}')->where(['courier' => 'quadx|spx|lbc'])->group(function () {
+    Route::get('couriers', [CourierAccountsController::class, 'index'])->name('accounts.index');
+    // The pages were under /accounts before 1.5: old links and bookmarks land on the new address.
+    Route::redirect('accounts', '/couriers', 301);
+    Route::get('accounts/{courier}/{tab?}', fn (string $courier, ?string $tab = null) => redirect('/couriers/'.$courier.($tab === 'mapping' ? '/mapping' : ''), 301))
+        ->where(['courier' => 'quadx|spx|lbc', 'tab' => 'mapping']);
+    Route::prefix('couriers/{courier}')->where(['courier' => 'quadx|spx|lbc'])->group(function () {
         Route::get('/', [CourierAccountsController::class, 'show'])->name('accounts.show');
         Route::put('/', [CourierAccountsController::class, 'update'])->name('accounts.update');
         Route::post('test', [CourierAccountsController::class, 'test'])->name('accounts.test');
         Route::post('series', [CourierAccountsController::class, 'series'])->name('accounts.series');
         Route::post('spx-user', [CourierAccountsController::class, 'spxUser'])->name('accounts.spx-user');
+        Route::get('mapping', [StatusMappingController::class, 'show'])->name('accounts.mapping');
+        Route::put('mapping', [StatusMappingController::class, 'update'])->name('accounts.mapping.update');
         Route::post('secrets/{key}/reveal', [CourierAccountsController::class, 'reveal'])
             ->where('key', '[a-z0-9_]+')->middleware('throttle:secret-reveals')->name('accounts.reveal');
+    });
+    Route::get('statuses', [ShipmentStatusesController::class, 'index'])->name('statuses.index');
+    Route::get('statuses/new', [ShipmentStatusesController::class, 'create'])->name('statuses.create');
+    Route::post('statuses', [ShipmentStatusesController::class, 'store'])->name('statuses.store');
+    Route::prefix('statuses/{status}')->group(function () {
+        Route::get('edit', [ShipmentStatusesController::class, 'edit'])->name('statuses.edit');
+        Route::put('/', [ShipmentStatusesController::class, 'update'])->name('statuses.update');
+        Route::put('enabled', [ShipmentStatusesController::class, 'toggle'])->name('statuses.toggle');
+        Route::delete('/', [ShipmentStatusesController::class, 'destroy'])->name('statuses.destroy');
     });
     Route::get('developers', [ApiController::class, 'index'])->name('developers.index');
     Route::prefix('developers')->name('developers.')->group(function () {

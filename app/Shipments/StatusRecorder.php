@@ -92,7 +92,8 @@ class StatusRecorder
             }
 
             // A cancellation reported by the courier is final, asked for or not: settle the shipment in this transaction.
-            if ($phase === 'cancelled' && $shipment->state === 'booked') {
+            // The courier's own Cancelled, never the owner's mapping: a mapping changes words, not bookings.
+            if ($this->phases->courierPhase($courier, $courierStatus) === 'cancelled' && $shipment->state === 'booked') {
                 app(Canceller::class)->settleCourierCancelled($shipment);
             }
 

@@ -166,7 +166,7 @@ final class StatusFilter
     /** Whether the courier status itself means cancelled, so a cancelled row keeps the courier key. */
     private static function courierCancelled(string $courier, string $courierStatus): bool
     {
-        return app(PhaseResolver::class)->phase($courier, $courierStatus) === 'cancelled';
+        return app(PhaseResolver::class)->courierPhase($courier, $courierStatus) === 'cancelled';
     }
 
     /** @return list<array{0: string, 1: string}> the courier statuses carried by cancelled rows that mean cancelled themselves */

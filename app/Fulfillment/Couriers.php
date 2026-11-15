@@ -17,4 +17,12 @@ class Couriers
     {
         return self::CODES[$courier] ?? strtoupper($courier);
     }
+
+    /** The courier's logo under public/, or null when there is none (the tile then shows its code). */
+    public static function logo(string $courier): ?string
+    {
+        $path = 'brand/couriers/'.$courier.'.png';
+
+        return preg_match('/^[a-z0-9]+$/', $courier) === 1 && is_file(public_path($path)) ? $path : null;
+    }
 }

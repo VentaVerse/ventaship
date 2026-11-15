@@ -135,7 +135,7 @@ class CourierAccountKeysTest extends TestCase
         $this->postJson(route('accounts.reveal', [$a->courier, 'spx_sandbox_secret_key']))->assertNotFound();
         $this->postJson(route('accounts.reveal', [$a->courier, 'quadx_sandbox_secret_key']))->assertNotFound(); // not set
         $this->post(route('accounts.reveal', ['missing', 'quadx_sandbox_api_key']))->assertNotFound();
-        $this->get('/accounts/' . $a->courier . '/secrets/quadx_sandbox_api_key/reveal')->assertStatus(405);
+        $this->get('/couriers/' . $a->courier . '/secrets/quadx_sandbox_api_key/reveal')->assertStatus(405);
 
         $this->assertSame(0, AuditEntry::query()->where('action', 'courier_account.secret_viewed')->count());
     }

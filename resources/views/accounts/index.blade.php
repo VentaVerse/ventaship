@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Courier accounts')
+@section('title', 'Couriers')
 
 @section('content')
 @php
@@ -20,7 +20,7 @@
                 $action = ! $account ? 'Set up' : ($failed ? 'Fix' : 'Open');
             @endphp
             <li class="ac-row{{ $account ? '' : ' ac-row--off' }}">
-                <x-courier-tile :courier="$row['courier']" />
+                <x-courier-tile :courier="$row['courier']" :logo="true" />
                 <div class="ac-row__main">
                     <div class="ac-row__line">
                         <a class="ac-row__name" href="{{ route('accounts.show', $row['courier']) }}">{{ $name }}</a>

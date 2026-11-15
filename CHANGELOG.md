@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### New features
+
+- Dashboard is the new home page: today's bookings, parcels in transit, deliveries and what needs action, a 30-day chart of bookings by courier, shipments by status, recent shipments, and each courier's active parcels and COD out. Shipments moved to /shipments.
+- Shipment statuses: Ventaship's own statuses can be renamed, switched off, deleted and added to. They start as the eight that couriers already mapped to.
+- Status mapping: SPX and QuadX get a Status mapping tab where each courier status picks a shipment status, or Unmapped. Switching off or deleting a status leaves the courier statuses that used it unmapped until it is back.
+- GET /shipment-statuses lists the shipment statuses (key, name, enabled, sort order), so connected stores can show the owner's own names.
+
+### Updates
+
+- Courier accounts is now Couriers, at /couriers. Old /accounts links still work.
+- Courier logos on the Couriers pages, the Add shipment courier cards and the Shipments page cards.
+- Couriers that are not set up or are switched off no longer show on the Shipments page or Add shipment.
+- Only a courier's own Cancelled status cancels a booking; a status mapping changes the words, not the booking.
+- The shipment's `phase` in the API can now be a status the owner added, or null when its courier status is unmapped.
+
 ## 1.4.0 (2026-11-16)
 
 ### New features

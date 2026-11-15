@@ -236,7 +236,7 @@
                         <span class="sd-event__time x-num">{{ $event['at'] }}</span>
                         <span class="sd-event__label">{{ $event['label'] }}</span>
                         @if($event['phase'])
-                            <x-ui.badge :tone="ShipmentBadges::tone($event['phase'])">{{ \Illuminate\Support\Str::ucfirst(str_replace('_', ' ', $event['phase'])) }}</x-ui.badge>
+                            <x-ui.badge :tone="ShipmentBadges::tone($event['phase'])">{{ \App\Shipments\ShipmentStatuses::nameOf($event['phase']) }}</x-ui.badge>
                         @endif
                     </li>
                 @endforeach

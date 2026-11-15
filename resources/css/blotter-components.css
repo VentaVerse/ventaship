@@ -95,6 +95,25 @@
         font-size: 12.5px;
     }
 
+    /* A logo fills the tile; its own square artwork carries the colour. */
+    .x-courier--logo {
+        overflow: hidden;
+        background: #fff;
+        box-shadow: inset 0 0 0 1px var(--bl-field-edge);
+    }
+
+    .x-courier--logo img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    /* GOGO Xpress's artwork has wide margins: zoomed so the wordmark reads at tile size. */
+    .x-courier--logo.x-courier--quadx img {
+        transform: scale(1.15);
+    }
+
     .x-courier--quadx { --ch: #156176; --ch-w: #e2f3f7; }
     .x-courier--spx { --ch: #a14b0b; --ch-w: #fbeee2; }
 

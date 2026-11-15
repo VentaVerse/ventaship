@@ -21,7 +21,8 @@ class FulfillmentController extends Controller
         $view = Views::normalize($filters['view'] ?? null);
 
         $shipments = ShipmentList::query($filters)->paginate(50)->withQueryString();
-        $cards = CourierCards::all();
+        // Only couriers with an active account: one not set up or switched off has nothing to show here.
+        $cards = array_values(array_filter(CourierCards::all(), fn (array $c) => $c['account'] !== null));
 
         return view('fulfillment.index', [
             'cards' => $cards,

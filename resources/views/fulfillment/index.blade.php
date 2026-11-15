@@ -30,7 +30,7 @@
 <ul class="fl-chips" aria-label="Couriers">
     @foreach($chips as $chip)
         <li class="fl-chip">
-            <x-courier-tile :courier="$chip['courier']" />
+            <x-courier-tile :courier="$chip['courier']" :logo="true" />
             <span class="x-sr">{{ Couriers::name($chip['courier']) }}</span>
             @if($chip['active'] === null)
                 <span class="fl-chip__none" aria-hidden="true">—</span><span class="x-sr">No account</span>

@@ -182,21 +182,21 @@ class CourierAccountsListTest extends TestCase
         $this->assertFalse(Route::has('accounts.create'));
         $this->assertFalse(Route::has('accounts.store'));
         $admin = $this->admin();
-        $this->actingAs($admin)->get('/accounts/new')->assertNotFound();
-        $this->post('/accounts', ['courier' => 'quadx', 'label' => 'A', 'mode' => 'sandbox'])->assertStatus(405);
+        $this->actingAs($admin)->get('/couriers/new')->assertNotFound();
+        $this->post('/couriers', ['courier' => 'quadx', 'label' => 'A', 'mode' => 'sandbox'])->assertStatus(405);
     }
 
     public function test_sidebar_shows_courier_accounts(): void
     {
         $this->actingAs($this->admin())->get(route('settings.edit'))
-            ->assertSee('Courier accounts')->assertSee(route('accounts.index'), false);
+            ->assertSee('Couriers')->assertSee(route('accounts.index'), false);
     }
 
-    public function test_cards_show_connect_button(): void
+    public function test_cards_hide_couriers_not_set_up(): void
     {
         $this->actingAs($this->admin())->get(route('fulfillment'))
-            ->assertSee('Connect LBC')
-            ->assertSee(route('accounts.show', 'lbc'), false);
+            ->assertDontSee('Connect LBC')
+            ->assertDontSee('No account');
     }
 
     public function test_sidebar_group_label_has_readable_contrast(): void

@@ -224,12 +224,12 @@ class CourierAccountShowTest extends TestCase
     public function test_unknown_account_404(): void
     {
         $admin = $this->admin();
-        $this->actingAs($admin)->get('/accounts/nope')->assertNotFound();
-        $this->actingAs($admin)->put('/accounts/nope', ['mode' => 'sandbox'])->assertNotFound();
-        $this->actingAs($admin)->post('/accounts/nope/test')->assertNotFound();
+        $this->actingAs($admin)->get('/couriers/nope')->assertNotFound();
+        $this->actingAs($admin)->put('/couriers/nope', ['mode' => 'sandbox'])->assertNotFound();
+        $this->actingAs($admin)->post('/couriers/nope/test')->assertNotFound();
         // No LBC account yet: Test connection has nothing to test (a save would create it, see CourierAccountPageTest).
-        $this->actingAs($admin)->post('/accounts/lbc/test')->assertNotFound();
-        $this->actingAs($admin)->post('/accounts/lbc/setup', ['mode' => 'sandbox'])->assertNotFound();
+        $this->actingAs($admin)->post('/couriers/lbc/test')->assertNotFound();
+        $this->actingAs($admin)->post('/couriers/lbc/setup', ['mode' => 'sandbox'])->assertNotFound();
     }
 
     public function test_guests_are_sent_to_login(): void

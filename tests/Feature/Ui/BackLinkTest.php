@@ -16,7 +16,7 @@ class BackLinkTest extends TestCase
         $this->actingAs(Admin::query()->create(['name' => 'Ana', 'email' => 'ana@example.com', 'password' => 'correct-horse-battery']));
 
         $pages = [
-            route('accounts.show', 'spx') => [route('accounts.index'), 'Courier accounts'],
+            route('accounts.show', 'spx') => [route('accounts.index'), 'Couriers'],
             route('account.password.edit') => [route('account'), 'Account'],
             route('addresses.pickup.create') => [route('addresses.index', ['tab' => 'pickup']), 'Addresses'],
             route('addresses.customers.create') => [route('addresses.index', ['tab' => 'customers']), 'Addresses'],

@@ -44,22 +44,21 @@ class FulfillmentPageTest extends TestCase
             'items_count' => 2,
         ]);
 
-        $this->get('/')->assertOk()
+        $this->get('/shipments')->assertOk()
             ->assertSeeText(['Shipments', 'All', 'Active', 'Finished', 'All statuses'])
-            ->assertSeeText(['QuadX', 'Production', 'Connected', 'LBC', 'No account'])
-            ->assertSeeText(['Maria Santos', '2 items', '₱1,240.00', 'COD', 'Booked', 'VentaCart Pro', 'Connect LBC'])
+            ->assertSeeText(['QuadX', 'Production', 'Connected'])
+            ->assertSeeText(['Maria Santos', '2 items', '₱1,240.00', 'COD', 'Booked', 'VentaCart Pro'])
+            ->assertDontSeeText(['No account', 'Connect LBC'])
             ->assertDontSeeText(['COD · Unpaid', 'Prepaid']);
     }
 
-    public function test_courier_with_only_inactive_accounts_shows_inactive_card_with_open_link(): void
+    public function test_courier_with_only_inactive_accounts_has_no_card(): void
     {
-        $lbc = \App\Models\CourierAccount::factory()->create(['courier' => 'lbc', 'label' => 'Old LBC', 'status' => 'inactive']);
+        \App\Models\CourierAccount::factory()->create(['courier' => 'lbc', 'label' => 'Old LBC', 'status' => 'inactive']);
 
-        $html = $this->get('/')->assertOk()
-            ->assertSeeText(['Inactive', 'Old LBC'])
-            ->assertDontSeeText('Connect LBC')
-            ->assertSee(route('accounts.show', $lbc->courier), false)
-            ->getContent();
+        $this->get('/shipments')->assertOk()
+            ->assertDontSeeText(['Inactive', 'Connect LBC'])
+            ->assertDontSee('fl-card--lbc', false);
 
     }
 
@@ -67,7 +66,7 @@ class FulfillmentPageTest extends TestCase
     {
         $this->ship('delivered', ['recipient' => null, 'pii_purged_at' => now()]);
 
-        $this->get('/?view=finished')->assertOk()->assertSeeText('Removed');
+        $this->get('/shipments?view=finished')->assertOk()->assertSeeText('Removed');
     }
 
     public function test_pagination_keeps_filters(): void
@@ -76,7 +75,7 @@ class FulfillmentPageTest extends TestCase
             'client_app_id' => null, 'source' => 'manual', 'phase' => 'draft', 'state' => 'draft', 'courier_account_id' => $this->account->id,
         ]);
 
-        $html = $this->get('/?view=active&status=ventaship:draft&source=manual')->assertOk()->getContent();
+        $html = $this->get('/shipments?view=active&status=ventaship:draft&source=manual')->assertOk()->getContent();
         $this->assertStringContainsString('view=active&amp;status=ventaship%3Adraft&amp;source=manual&amp;page=2', $html);
     }
 
@@ -87,7 +86,7 @@ class FulfillmentPageTest extends TestCase
         $draft = $this->ship('draft', ['state' => 'draft']);
         $booked = $this->ship('to_handover');
 
-        $html = $this->get('/')->assertOk()->getContent();
+        $html = $this->get('/shipments')->assertOk()->getContent();
         $this->assertStringContainsString('id="book-'.$draft->public_id.'"', $html);
         $this->assertStringContainsString('form="book-'.$draft->public_id.'"', $html);
         $this->assertMatchesRegularExpression('#<form id="book-'.$draft->public_id.'" method="POST" action="[^"]*/shipments/book">\s*<input type="hidden" name="_token"[^>]*>\s*<input type="hidden" name="ids\[\]" value="'.$draft->public_id.'">#', $html);
@@ -96,7 +95,7 @@ class FulfillmentPageTest extends TestCase
 
     public function test_page_title_and_nav_say_shipments(): void
     {
-        $this->get('/')->assertOk()
+        $this->get('/shipments')->assertOk()
             ->assertSee('<title>Shipments', false)
             ->assertSeeText('Shipments')
             ->assertDontSeeText('Fulfillment');
@@ -107,7 +106,7 @@ class FulfillmentPageTest extends TestCase
         $this->ship('delivered', ['recipient' => ['first_name' => 'Zed', 'last_name' => 'Q']]);
         $this->ship('draft', ['state' => 'draft', 'recipient' => ['first_name' => 'Amy', 'last_name' => 'W']]);
 
-        $this->get('/?tab=failed&chip=to_pack')->assertOk()->assertSeeText(['Zed Q', 'Amy W']);
+        $this->get('/shipments?tab=failed&chip=to_pack')->assertOk()->assertSeeText(['Zed Q', 'Amy W']);
     }
 
     public function test_filter_bar_has_views_and_status_select_with_counts(): void
@@ -115,7 +114,7 @@ class FulfillmentPageTest extends TestCase
         $this->ship('in_transit', ['courier' => 'quadx', 'courier_status' => 'out_for_delivery']);
         $this->ship('delivered', ['courier' => 'quadx', 'courier_status' => 'delivered']);
 
-        $this->get('/?view=active')->assertOk()
+        $this->get('/shipments?view=active')->assertOk()
             ->assertSeeText(['QuadX · Out for delivery (1)'])
             ->assertSee('name="status"', false)
             ->assertSee('data-status="quadx:out_for_delivery"', false)
@@ -126,7 +125,7 @@ class FulfillmentPageTest extends TestCase
     {
         $this->ship('delivered', ['courier' => 'quadx', 'courier_status' => 'delivered']);
 
-        $this->get('/?view=active&status=quadx:delivered')->assertOk()
+        $this->get('/shipments?view=active&status=quadx:delivered')->assertOk()
             ->assertSeeText('QuadX · '.$this->account->label)
             ->assertSee('value="quadx:delivered" selected', false)
             ->assertSeeText('QuadX · Delivered (0)');
@@ -143,10 +142,10 @@ class FulfillmentPageTest extends TestCase
             }
         });
 
-        $this->get('/?status=quadx:out_for_delivery')->assertOk()->assertSeeText('QuadX · Out for delivery (1)');
+        $this->get('/shipments?status=quadx:out_for_delivery')->assertOk()->assertSeeText('QuadX · Out for delivery (1)');
         $this->assertSame(1, $checks);
 
-        $this->get('/?status=quadx:out_for_delivery')->assertOk();
+        $this->get('/shipments?status=quadx:out_for_delivery')->assertOk();
         $this->assertSame(2, $checks);
     }
 

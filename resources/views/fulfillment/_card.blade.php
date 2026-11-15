@@ -12,7 +12,7 @@
 
 @if($account)
     <article class="x-card fl-card fl-card--{{ $card['courier'] }}">
-        <x-courier-tile :courier="$card['courier']" />
+        <x-courier-tile :courier="$card['courier']" :logo="true" />
         <div class="fl-card__title">
             <h2 class="fl-card__name">{{ $courierName }}</h2>
             <div class="fl-card__sub">
@@ -29,7 +29,7 @@
     </article>
 @else
     <article class="x-card fl-card fl-card--off">
-        <x-courier-tile :courier="$card['courier']" />
+        <x-courier-tile :courier="$card['courier']" :logo="true" />
         <div class="fl-card__title">
             <h2 class="fl-card__name">{{ $card['name'] }}</h2>
             <div class="fl-card__sub">{{ $card['inactive'] ? 'Inactive' : 'No account' }}</div>
