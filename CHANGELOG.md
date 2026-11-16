@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+## 1.5.4 (2026-11-16)
+
+### Updates
+
+- Cancel no longer shows once the courier can't cancel any more: QuadX from Pickup rider found, SPX from In Transit (2001). A cancel the courier refuses as too late keeps its reason but no longer marks the shipment Needs action.
+
+## 1.5.3 (2026-11-16)
+
+### Bug fixes
+
+- Choosing an SPX pouch size (Small, Medium, Large) on Add shipment now fills in its weight too, not only its size.
+
+## 1.5.2 (2026-11-16)
+
+### Updates
+
+- Bookings no longer wait for the queue: Ventaship books with the courier right after answering POST /shipments, so the result reaches the store by webhook within seconds, even with no queue worker running. With ?wait=N it books before answering. The queued job stays as a backup and can never book twice.
+
+## 1.5.1 (2026-11-16)
+
+### Bug fixes
+
+- On hosts that block PHP's pcntl functions (HestiaCP), the scheduled queue worker no longer fails every minute: it works the queue with the new queue:drain command instead.
+
+## 1.5.0 (2026-11-16)
+
 ### New features
 
 - Dashboard is the new home page: today's bookings, parcels in transit, deliveries and what needs action, a 30-day chart of bookings by courier, shipments by status, recent shipments, and each courier's active parcels and COD out. Shipments moved to /shipments.
@@ -16,10 +42,6 @@
 - Couriers that are not set up or are switched off no longer show on the Shipments page or Add shipment.
 - Only a courier's own Cancelled status cancels a booking; a status mapping changes the words, not the booking.
 - The shipment's `phase` in the API can now be a status the owner added, or null when its courier status is unmapped.
-- Bookings no longer wait for the queue: Ventaship books with the courier right after answering POST /shipments, so the result reaches the store by webhook within seconds, even with no queue worker running. With ?wait=N it books before answering. The queued job stays as a backup and can never book twice.
-- On hosts that block PHP's pcntl functions (HestiaCP), the scheduled queue worker no longer fails every minute: it works the queue with the new queue:drain command instead.
-- Cancel no longer shows once the courier can't cancel any more: QuadX from Pickup rider found, SPX from In Transit (2001). A cancel the courier refuses as too late keeps its reason but no longer marks the shipment Needs action.
-- Choosing an SPX pouch size (Small, Medium, Large) on Add shipment now fills in its weight too, not only its size.
 
 ## 1.4.0 (2026-11-16)
 

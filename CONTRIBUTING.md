@@ -4,16 +4,16 @@
 
 Ventaship uses semantic versioning, MAJOR.MINOR.PATCH, starting at 1.0.0. The current version is in the `VERSION` file at the repo root.
 
-- A release with a new feature raises MINOR: 1.0.0 becomes 1.1.0.
-- A release without a new feature (fixes and updates only) raises PATCH: 1.0.0 becomes 1.0.1.
-- A release that breaks how connected stores use the API (a removed or renamed field or endpoint) raises MAJOR: 1.4.2 becomes 2.0.0.
+- A change with a new feature raises MINOR: 1.0.0 becomes 1.1.0.
+- A change without a new feature (fixes and updates only) raises PATCH: 1.0.0 becomes 1.0.1.
+- A change that breaks how connected stores use the API (a removed or renamed field or endpoint) raises MAJOR: 1.4.2 becomes 2.0.0.
 - A pre-release takes a suffix, such as 1.1.0-beta.1.
 
-The version changes only when a maintainer releases. It never changes per commit or per push. Between releases, `VERSION` stays at the last release.
+The version tracks the code, not the releases. Each pushed change raises `VERSION` and gets its own heading in `CHANGELOG.md`, whether or not that version is ever released. A release is a version the maintainer chooses to tag and publish; versions in between need not be released.
 
 ## Changelog
 
-Every change adds a line under `## Unreleased` at the top of `CHANGELOG.md`, in the right section. Unreleased work is the internal note: it stays under `## Unreleased` until a maintainer releases.
+Every change adds a line under `## Unreleased` at the top of `CHANGELOG.md`, in the right section. When the change is pushed, `## Unreleased` becomes `## X.Y.Z (YYYY-MM-DD)` with `VERSION` raised to the same number in the same commit, and a new empty `## Unreleased` goes above it.
 
 There are three sections. Leave out any that are empty.
 
@@ -27,8 +27,8 @@ Each line is one sentence written for the person using Ventaship. No bold, no em
 
 ## Releases and tags
 
-1. List what is under `## Unreleased` so the maintainer picks the version number.
-2. Turn `## Unreleased` into `## X.Y.Z (YYYY-MM-DD)`, add a new empty `## Unreleased` above it, and raise `VERSION` to the same number, all in one commit.
-3. Tell the maintainer the exact commit to tag `vX.Y.Z`.
+1. The maintainer picks a version that is already in `CHANGELOG.md`.
+2. Tell the maintainer the exact commit that raised `VERSION` to it, to tag `vX.Y.Z`.
+3. The release notes are that version's changelog section, plus any versions since the last release.
 
 Tags are the maintainer's. Never create or push tags.
