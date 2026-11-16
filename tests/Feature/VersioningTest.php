@@ -24,33 +24,37 @@ class VersioningTest extends TestCase
         $this->assertSame($raw, AppVersion::current());
     }
 
-    public function test_version_equals_the_newest_numbered_changelog_entry(): void
+    public function test_version_equals_the_newest_changelog_entry(): void
     {
-        preg_match_all('/^## (\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?) \((\d{4}-\d{2}-\d{2})\)$/m', $this->changelog(), $m);
-        $this->assertNotEmpty($m[1], 'at least one release');
-        $this->assertSame(AppVersion::current(), $m[1][0]);
+        preg_match_all('/^## (\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?) \((\d{4}-\d{2}-\d{2}|unreleased)\)$/m', $this->changelog(), $m);
+        $this->assertNotEmpty($m[1], 'at least one version');
+        $this->assertSame(AppVersion::current(), $m[1][0], 'VERSION is the top heading, released or not');
         foreach ($m[2] as $date) {
-            $this->assertNotFalse(\DateTimeImmutable::createFromFormat('!Y-m-d', $date), $date);
+            if ($date !== 'unreleased') {
+                $this->assertNotFalse(\DateTimeImmutable::createFromFormat('!Y-m-d', $date), $date);
+            }
         }
     }
 
-    public function test_unreleased_only_at_the_top(): void
+    public function test_only_the_top_version_can_be_unreleased(): void
     {
         $log = $this->changelog();
-        $this->assertStringStartsWith("# Changelog\n\n## Unreleased\n", $log);
-        $this->assertSame(1, preg_match_all('/^## Unreleased\s*$/m', $log));
+        $this->assertStringStartsWith("# Changelog\n\n## ", $log);
+        $this->assertStringNotContainsString('## Unreleased', $log);
 
-        // Every second-level heading after it is a numbered release, newest first.
+        // Every second-level heading is a version, newest first; only the first may be unreleased.
         preg_match_all('/^## (.+)$/m', $log, $m);
-        $this->assertSame('Unreleased', $m[1][0]);
         $versions = [];
-        foreach (array_slice($m[1], 1) as $heading) {
-            $this->assertMatchesRegularExpression('/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)? \(\d{4}-\d{2}-\d{2}\)$/', $heading);
+        foreach ($m[1] as $i => $heading) {
+            $this->assertMatchesRegularExpression($i === 0
+                ? '/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)? \((\d{4}-\d{2}-\d{2}|unreleased)\)$/'
+                : '/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)? \(\d{4}-\d{2}-\d{2}\)$/', $heading);
             $versions[] = explode(' ', $heading)[0];
         }
         $sorted = $versions;
         usort($sorted, fn ($a, $b) => version_compare($b, $a));
         $this->assertSame($sorted, $versions, 'newest first');
+        $this->assertSame(count($versions), count(array_unique($versions)), 'each version once');
     }
 
     public function test_sections_are_the_three_allowed_ones(): void
