@@ -133,20 +133,24 @@ class BookingPayloadTest extends TestCase
 
     // --- SPX -------------------------------------------------------------------
 
-    public function test_spx_sends_typed_weight_with_preset_dimensions(): void
+    public function test_spx_preset_sends_its_saved_size_and_weight_own_packaging_its_real_weight(): void
     {
         $this->fakeSpx();
         $account = $this->spxAccount();
 
+        // A preset books its saved size and weight; a typed weight or item weights are not needed and not used.
         $this->bookSpx($account, $this->spxShipment($account, ['parcel' => ['type' => 'medium', 'weight_kg' => 1.2]]));
         $this->bookSpx($account, $this->spxShipment($account, [
             'parcel' => ['type' => 'custom', 'weight_kg' => 7.5, 'length_cm' => 60, 'width_cm' => 40, 'height_cm' => 30],
         ], ['courier_ref' => 'VS000002']));
+        $this->bookSpx($account, $this->spxShipment($account, ['parcel' => ['type' => 'small']], ['courier_ref' => 'VS000003']));
 
-        [$preset, $custom] = $this->spxParcels();
+        [$preset, $custom, $sizeOnly] = $this->spxParcels();
 
-        $this->assertEquals(1.2, $preset['parcel_weight']);
+        $this->assertEquals(5, $preset['parcel_weight']);
         $this->assertEquals([25, 35, 15], [$preset['parcel_length'], $preset['parcel_width'], $preset['parcel_height']]);
+        $this->assertEquals(3, $sizeOnly['parcel_weight']);
+        $this->assertEquals([25, 20, 10], [$sizeOnly['parcel_length'], $sizeOnly['parcel_width'], $sizeOnly['parcel_height']]);
 
         $this->assertEquals(7.5, $custom['parcel_weight']);
         $this->assertEquals([60, 40, 30], [$custom['parcel_length'], $custom['parcel_width'], $custom['parcel_height']]);
@@ -158,8 +162,8 @@ class BookingPayloadTest extends TestCase
         $account = $this->spxAccount();
 
         $cases = [
-            'Enter the parcel weight.' => [['type' => 'small'], []],
-            'SPX weight must be under 50 kg.' => [['type' => 'large', 'weight_kg' => 50], []],
+            'Enter the parcel weight.' => [['type' => 'custom', 'length_cm' => 20, 'width_cm' => 20, 'height_cm' => 20], []],
+            'SPX weight must be under 50 kg.' => [['type' => 'custom', 'weight_kg' => 50, 'length_cm' => 20, 'width_cm' => 20, 'height_cm' => 20], []],
             'SPX sides can\'t exceed 150 cm.' => [['type' => 'custom', 'weight_kg' => 5, 'length_cm' => 151, 'width_cm' => 40, 'height_cm' => 30], []],
             'SPX COD must be whole pesos up to ₱50,000.' => [['type' => 'small', 'weight_kg' => 1], ['payment_method' => 'cod', 'total' => '50001.00', 'cod_amount' => '50001.00']],
         ];

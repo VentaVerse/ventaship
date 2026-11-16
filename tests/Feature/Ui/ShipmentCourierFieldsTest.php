@@ -141,25 +141,29 @@ class ShipmentCourierFieldsTest extends TestCase
         $this->assertArrayNotHasKey('weight_kg', $this->latest()->options['parcel']);
         $this->assertSame('box', $this->latest()->options['parcel']['type']);
 
-        $this->post('/shipments', $this->form('spx', ['parcel' => ['weight_kg' => '']]))->assertSessionHasErrors('parcel.weight_kg');
+        // An SPX preset books its saved weight: none is asked or kept. Own packaging asks for one.
+        $this->post('/shipments', $this->form('spx', ['parcel' => ['weight_kg' => '']]))->assertSessionHasNoErrors();
+        $this->post('/shipments', $this->form('spx'))->assertSessionHasNoErrors();
+        $this->assertArrayNotHasKey('weight_kg', $this->latest()->options['parcel']);
+        $own = ['type' => 'custom', 'length_cm' => '30', 'width_cm' => '20', 'height_cm' => '10'];
+        $this->post('/shipments', $this->form('spx', ['parcel' => $own + ['weight_kg' => '']]))->assertSessionHasErrors('parcel.weight_kg');
         $this->post('/shipments', $this->form('lbc', ['parcel' => ['weight_kg' => '']]))->assertSessionHasErrors('parcel.weight_kg');
 
-        $this->post('/shipments', $this->form('spx'))->assertSessionHasNoErrors();
+        $this->post('/shipments', $this->form('spx', ['parcel' => $own]))->assertSessionHasNoErrors();
         $this->assertEquals('1.2', $this->latest()->options['parcel']['weight_kg']);
     }
 
-    public function test_spx_preset_fills_its_weight_in(): void
+    public function test_spx_preset_hides_the_weight_field(): void
     {
         $this->accounts(fake: false);
-        $spx = $this->accounts['spx'];
-        $this->assertSame(3.0, CourierFormFields::presetSizes($spx)['small']['weight_kg']);
+        $this->assertSame(['weight' => false], array_intersect_key(CourierFormFields::show('spx', 'small'), ['weight' => 1]));
+        $this->assertTrue(CourierFormFields::show('spx', 'custom')['weight']);
+        $this->assertTrue(CourierFormFields::show('lbc', '45')['weight']);
 
-        // Back on the form with the preset chosen and nothing typed: its size and weight are filled in.
-        $this->from('/shipments/new')->post('/shipments', $this->form('spx', ['parcel' => ['weight_kg' => '', 'length_cm' => '', 'width_cm' => '', 'height_cm' => '']]))
-            ->assertSessionHasErrors('parcel.weight_kg');
+        // Back on the form after an error with a preset chosen: the weight field is there but hidden and off.
+        $this->from('/shipments/new')->post('/shipments', $this->form('spx', ['parcel' => ['length_cm' => '']]))->assertSessionHasErrors('parcel.length_cm');
         $html = $this->get('/shipments/new')->assertOk()->getContent();
-        $this->assertMatchesRegularExpression('/name="parcel\[weight_kg\]" value="3"/', $html);
-        $this->assertStringContainsString('weight_kg\\u0022:3}', $html);
+        $this->assertMatchesRegularExpression('/<fieldset class="sh-fs" x-show="show.weight" :disabled="!show.weight" disabled/', $html);
     }
 
     public function test_size_required_for_spx_and_own_packaging(): void
@@ -374,7 +378,7 @@ class ShipmentCourierFieldsTest extends TestCase
         $this->post('/shipments', $this->form('spx', $cod + ['value' => '50001']));
         $this->assertSame('SPX collects up to ₱50,000.', session('errors')->first('value'));
         $this->post('/shipments', $this->form('spx', ['value' => '1290.50']))->assertSessionHasNoErrors();
-        $this->post('/shipments', $this->form('spx', ['parcel' => ['weight_kg' => '50']]));
+        $this->post('/shipments', $this->form('spx', ['parcel' => ['type' => 'custom', 'weight_kg' => '50', 'length_cm' => '30', 'width_cm' => '20', 'height_cm' => '10']]));
         $this->assertSame('Under 50 kg.', session('errors')->first('parcel.weight_kg'));
         $this->post('/shipments', $this->form('spx', ['parcel' => ['type' => 'custom', 'length_cm' => '151', 'width_cm' => '10', 'height_cm' => '10']]));
         $this->assertSame('150 cm at most.', session('errors')->first('parcel.length_cm'));

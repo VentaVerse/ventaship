@@ -39,7 +39,8 @@ test('courier fields show only for their courier', async () => {
 
     const spx = courierFields('spx', 'small');
     assert.equal(spx.service, false);
-    assert.equal(spx.weight, true);
+    assert.equal(spx.weight, false, 'a preset books its saved weight');
+    assert.equal(courierFields('spx', 'custom').weight, true);
     assert.equal(spx.size, true);
     assert.equal(spx.sizeRequired, true);
     assert.equal(spx.category, true);

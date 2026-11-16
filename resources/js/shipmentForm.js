@@ -46,7 +46,8 @@ export function courierFields(courier, parcel, sizeOpen = false) {
 
     return {
         service: courier === 'quadx',
-        weight: courier === 'spx' || courier === 'lbc',
+        // An SPX pouch preset books its saved weight; only own packaging asks for one.
+        weight: courier === 'lbc' || (courier === 'spx' && parcel === OWN_PACKAGING.spx),
         size: sized || (addSize && sizeOpen),
         sizeRequired: sized,
         addSize,

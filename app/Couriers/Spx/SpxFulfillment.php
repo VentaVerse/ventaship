@@ -2237,7 +2237,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
             return $dims['error'];
         }
 
-        $weight = self::typedWeight($order, $opts);
+        $weight = $this->bookingWeight($order, $opts);
         if ($weight === null) {
             return 'Enter the parcel weight.';
         }
@@ -2264,8 +2264,37 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
     }
 
     /**
+     * The weight SPX is told: a pouch preset's saved weight when one is
+     * chosen (the owner books by size, so no real weight is needed), else
+     * the typed or item weight (own packaging).
+     */
+    private function bookingWeight(CourierOrder $order, array $opts): ?float
+    {
+        return $this->presetWeight($opts) ?? self::typedWeight($order, $opts);
+    }
+
+    /** The chosen pouch preset's saved weight, or null for own packaging or an unknown parcel value. */
+    private function presetWeight(array $opts): ?float
+    {
+        $key = $opts['parcel'] ?? null;
+        if (!is_string($key) || $key === '' || $key === 'custom') {
+            return null;
+        }
+        foreach ($this->pouchPresets() as $preset) {
+            if (Str::slug((string) ($preset['label'] ?? '')) === $key) {
+                $kg = $preset['max_weight_kg'] ?? null;
+
+                return is_numeric($kg) && (float) $kg > 0 ? (float) $kg : null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * The parcel weight the shipment gives: the typed parcel.weight_kg, else
-     * the sum of its items' weights. Null when neither is known.
+     * the sum of its items' weights. Null when neither is known, or when the
+     * items' weights round to nothing (SPX refuses under 0.001 kg).
      */
     private static function typedWeight(CourierOrder $order, array $opts): ?float
     {
@@ -2274,7 +2303,9 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
             return round((float) $typed, 3);
         }
 
-        return OrderWeight::kg($order);
+        $kg = OrderWeight::kg($order);
+
+        return $kg !== null && $kg > 0 ? $kg : null;
     }
 
     /** A number as a plain decimal string for bcmath (no exponent). */
@@ -2314,10 +2345,11 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
             return ['ok' => false, 'error' => $dims['error']];
         }
 
-        // The real weight. A preset's maximum stands in only where no weight
-        // can be known yet (the serviceability from-price before a parcel is
-        // chosen); createShipment() refuses a booking without one.
-        $weight = self::typedWeight($order, $opts) ?? $dims['dims']['max_weight_kg'];
+        // A chosen preset books its saved weight; own packaging its real
+        // weight. The first preset's weight stands in only where nothing is
+        // chosen yet (the serviceability from-price); createShipment()
+        // refuses a booking without a weight.
+        $weight = $this->bookingWeight($order, $opts) ?? $dims['dims']['max_weight_kg'];
         if ($weight === null) {
             return ['ok' => false, 'error' => 'Enter the parcel weight.'];
         }

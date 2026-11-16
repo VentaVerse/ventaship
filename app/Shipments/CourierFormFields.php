@@ -165,7 +165,8 @@ final class CourierFormFields
 
         return [
             'service' => $courier === 'quadx',
-            'weight' => in_array($courier, ['spx', 'lbc'], true),
+            // An SPX pouch preset books its saved weight; only own packaging asks for one.
+            'weight' => $courier === 'lbc' || ($courier === 'spx' && $parcel === self::OWN_PACKAGING['spx']),
             'size' => $size === 'required' || ($size === 'optional' && $sizeOpen),
             'sizeRequired' => $size === 'required',
             'addSize' => $size === 'optional',

@@ -164,7 +164,7 @@ class SpxBookingEditTest extends TestCase
                 // Changed.
                 && $o['deliver_info']['deliver_name'] === 'Janet Doe'
                 && $o['deliver_info']['deliver_instruction'] === 'Gate 2'
-                && (float) $o['parcel_info']['parcel_weight'] === 2.0
+                && (float) $o['parcel_info']['parcel_weight'] === 5.0 // the Medium preset's weight
                 && (float) $o['parcel_info']['parcel_width'] === 35.0
                 && $o['parcel_info']['parcel_item_name'] === 'Red Tee'
                 && $o['parcel_info']['parcel_item_type'] === 'Clothing';

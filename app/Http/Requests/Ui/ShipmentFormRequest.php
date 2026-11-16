@@ -129,7 +129,7 @@ class ShipmentFormRequest extends FormRequest
         $parcel['type'] = $type === '' ? null : $type;
 
         $keep = ['type'];
-        if (in_array($courier, ['spx', 'lbc'], true)) {
+        if (CourierFormFields::show($courier, is_string($parcel['type']) ? $parcel['type'] : null)['weight']) {
             $keep[] = 'weight_kg';
         }
         $size = CourierFormFields::sizeRule($courier, is_string($parcel['type']) ? $parcel['type'] : null);
@@ -197,10 +197,10 @@ class ShipmentFormRequest extends FormRequest
 
         $number = ['numeric', 'gt:0', 'max:1000'];
         $rules = ['parcel.type' => ['required', 'string', Rule::in(CourierFormFields::parcelValues($this->courierAccount))]];
-        if (in_array($courier, ['spx', 'lbc'], true)) {
+        $type = $this->input('parcel.type');
+        if (CourierFormFields::show($courier, is_string($type) ? $type : null)['weight']) {
             $rules['parcel.weight_kg'] = ['required', ...$number];
         }
-        $type = $this->input('parcel.type');
         $size = CourierFormFields::sizeRule($courier, is_string($type) ? $type : null);
         foreach (self::SIZE_KEYS as $key) {
             $others = implode(',', array_map(fn ($k) => "parcel.{$k}", array_diff(self::SIZE_KEYS, [$key])));

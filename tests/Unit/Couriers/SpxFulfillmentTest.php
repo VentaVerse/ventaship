@@ -195,11 +195,11 @@ class SpxFulfillmentTest extends TestCase
                 && $o['fulfillment_info']['cod_collection'] === 0
                 && !array_key_exists('cod_amount', $o['fulfillment_info'])
                 && $o['fulfillment_info']['collect_type'] === 2
-                // parcel_info dims come from the "Medium" pouch preset (25x35x15cm); the weight is the typed one.
+                // parcel_info dims and weight come from the "Medium" pouch preset (25x35x15cm, 5 kg).
                 && (float) $o['parcel_info']['parcel_length'] === 25.0
                 && (float) $o['parcel_info']['parcel_width'] === 35.0
                 && (float) $o['parcel_info']['parcel_height'] === 15.0
-                && (float) $o['parcel_info']['parcel_weight'] === 1.2
+                && (float) $o['parcel_info']['parcel_weight'] === 5.0
                 && (int) $o['parcel_info']['express_insured_value'] === 0
                 && $o['parcel_info']['parcel_item_type'] === 'General merchandise';
         });
@@ -320,7 +320,7 @@ class SpxFulfillmentTest extends TestCase
             }
             $p = $request->data()['orders'][0]['parcel_info'];
             return (float) $p['parcel_length'] === 28.0 && (float) $p['parcel_width'] === 22.0
-                && (float) $p['parcel_height'] === 6.0 && (float) $p['parcel_weight'] === 0.8;
+                && (float) $p['parcel_height'] === 6.0 && (float) $p['parcel_weight'] === 3.0; // the size typed, the preset's weight
         });
     }
 

@@ -117,11 +117,12 @@
                 </div>
             </fieldset>
             <x-ui.field-error name="parcel.type" />
-            <div class="sh-grid">
+            @php($ownPack = $parcelType === CourierFormFields::OWN_PACKAGING['spx'])
+            <fieldset class="sh-fs sh-grid" x-show="parcel === @js(CourierFormFields::OWN_PACKAGING['spx'])" :disabled="parcel !== @js(CourierFormFields::OWN_PACKAGING['spx'])" {{ $ownPack ? '' : 'x-cloak disabled' }}>
                 <x-ui.field label="Weight (kg)" name="parcel.weight_kg" :required="true">
                     <x-ui.input type="text" inputmode="decimal" id="f-parcel-weight-kg" name="parcel[weight_kg]" value="{{ $config['courier']['weight'] }}" x-model="weight" required autocomplete="off" />
                 </x-ui.field>
-            </div>
+            </fieldset>
             <fieldset class="sh-fs sh-grid sh-grid--3">
                 @foreach(['length' => 'Length (cm)', 'width' => 'Width (cm)', 'height' => 'Height (cm)'] as $key => $label)
                     @php($sizeKey = 'parcel.'.$key.'_cm')
