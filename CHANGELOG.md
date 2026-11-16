@@ -18,6 +18,8 @@
 - The shipment's `phase` in the API can now be a status the owner added, or null when its courier status is unmapped.
 - Bookings no longer wait for the queue: Ventaship books with the courier right after answering POST /shipments, so the result reaches the store by webhook within seconds, even with no queue worker running. With ?wait=N it books before answering. The queued job stays as a backup and can never book twice.
 - On hosts that block PHP's pcntl functions (HestiaCP), the scheduled queue worker no longer fails every minute: it works the queue with the new queue:drain command instead.
+- Cancel no longer shows once the courier can't cancel any more: QuadX from Pickup rider found, SPX from In Transit (2001). A cancel the courier refuses as too late keeps its reason but no longer marks the shipment Needs action.
+- Choosing an SPX pouch size (Small, Medium, Large) on Add shipment now fills in its weight too, not only its size.
 
 ## 1.4.0 (2026-11-16)
 

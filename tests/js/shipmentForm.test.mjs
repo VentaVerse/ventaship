@@ -148,9 +148,10 @@ test('SPX pickup times load by themselves only for SPX pickup with nothing loade
     assert.equal(shouldAutoLoadSlots('quadx', 'pickup', 'idle'), false);
 });
 
-test('an SPX preset fills its size in, own packaging has none', () => {
-    const sizes = { small: { label: 'Small', length_cm: 25, width_cm: 20, height_cm: 10 } };
-    assert.deepEqual(presetSize(sizes, 'small'), { length: '25', width: '20', height: '10' });
+test('an SPX preset fills its size and weight in, own packaging has none', () => {
+    const sizes = { small: { label: 'Small', length_cm: 25, width_cm: 20, height_cm: 10, weight_kg: 3 }, bare: { label: 'Bare', length_cm: 1, width_cm: 2, height_cm: 3, weight_kg: 0 } };
+    assert.deepEqual(presetSize(sizes, 'small'), { length: '25', width: '20', height: '10', weight: '3' });
+    assert.deepEqual(presetSize(sizes, 'bare'), { length: '1', width: '2', height: '3' });
     assert.equal(presetSize(sizes, 'custom'), null);
     assert.equal(presetSize(undefined, 'small'), null);
 });

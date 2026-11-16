@@ -8,6 +8,7 @@ use App\Couriers\FakeCourier;
 use App\Models\Admin;
 use App\Models\CourierAccount;
 use App\Models\Shipment;
+use App\Shipments\CourierFormFields;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -145,6 +146,20 @@ class ShipmentCourierFieldsTest extends TestCase
 
         $this->post('/shipments', $this->form('spx'))->assertSessionHasNoErrors();
         $this->assertEquals('1.2', $this->latest()->options['parcel']['weight_kg']);
+    }
+
+    public function test_spx_preset_fills_its_weight_in(): void
+    {
+        $this->accounts(fake: false);
+        $spx = $this->accounts['spx'];
+        $this->assertSame(3.0, CourierFormFields::presetSizes($spx)['small']['weight_kg']);
+
+        // Back on the form with the preset chosen and nothing typed: its size and weight are filled in.
+        $this->from('/shipments/new')->post('/shipments', $this->form('spx', ['parcel' => ['weight_kg' => '', 'length_cm' => '', 'width_cm' => '', 'height_cm' => '']]))
+            ->assertSessionHasErrors('parcel.weight_kg');
+        $html = $this->get('/shipments/new')->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/name="parcel\[weight_kg\]" value="3"/', $html);
+        $this->assertStringContainsString('weight_kg\\u0022:3}', $html);
     }
 
     public function test_size_required_for_spx_and_own_packaging(): void

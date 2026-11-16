@@ -76,13 +76,17 @@ export function courierReset(courier, { parcel, firstDate }) {
     };
 }
 
-/** The size a preset fills in, as form values, or null when the packaging has none (own packaging, other couriers). */
+/** The size and weight a preset fills in, as form values, or null when the packaging has none (own packaging, other couriers). */
 export function presetSize(sizes, parcel) {
     const size = (sizes ?? {})[parcel];
     if (!size) {
         return null;
     }
-    return { length: String(size.length_cm), width: String(size.width_cm), height: String(size.height_cm) };
+    const out = { length: String(size.length_cm), width: String(size.width_cm), height: String(size.height_cm) };
+    if (Number(size.weight_kg) > 0) {
+        out.weight = String(size.weight_kg);
+    }
+    return out;
 }
 
 const PICKUP_KEYS = ['contact_name', 'contact_phone', 'address_1', 'address_2', 'barangay', 'district', 'city', 'state', 'postcode'];
@@ -169,7 +173,7 @@ export function shipmentForm(config) {
                 return;
             }
             const size = presetSize((config.parcelSizes ?? {})[this.account], this.parcel);
-            Object.assign(this, size ?? { length: '', width: '', height: '' });
+            Object.assign(this, size ?? { length: '', width: '', height: '', weight: '' });
         },
 
         autoLoadSlots() {

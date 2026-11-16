@@ -64,8 +64,12 @@
     $dims = ['length' => $str('parcel.length_cm'), 'width' => $str('parcel.width_cm'), 'height' => $str('parcel.height_cm')];
     // An SPX preset fills its size in until the seller types one.
     $preset = $fields['parcelSizes'][$accountId][$parcel] ?? null;
+    $weight = $str('parcel.weight_kg');
     if ($preset !== null && collect($dims)->every(fn ($d) => $d === '')) {
         $dims = ['length' => (string) $preset['length_cm'], 'width' => (string) $preset['width_cm'], 'height' => (string) $preset['height_cm']];
+        if ($weight === '' && ($preset['weight_kg'] ?? 0) > 0) {
+            $weight = (string) $preset['weight_kg'];
+        }
     }
     $sizeOpen = collect($dims)->contains(fn ($d) => $d !== '') || collect(['length_cm', 'width_cm', 'height_cm'])->contains(fn ($k) => $errors->has('parcel.'.$k));
     $show = CourierFormFields::show($courier, $parcel, $sizeOpen);
@@ -75,7 +79,7 @@
     $pickupDate = in_array($str('pickup_date'), $dateValues, true) ? $str('pickup_date') : ($staleDate ? '' : ($dateValues[0] ?? ''));
     $courierState = $dims + [
         'parcel' => $parcel,
-        'weight' => $str('parcel.weight_kg'),
+        'weight' => $weight,
         'sizeOpen' => $sizeOpen,
         'shippingPayment' => $str('payment.shipping_payment') ?: (string) CourierFormFields::defaultShippingPayment($courier),
         'category' => in_array($str('parcel.category'), CourierFormFields::categories(), true) ? $str('parcel.category') : CourierFormFields::DEFAULT_CATEGORY,

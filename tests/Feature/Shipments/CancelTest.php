@@ -25,7 +25,7 @@ use Tests\TestCase;
 
 class CancelTest extends TestCase
 {
-    use BuildsCourierAccounts, RefreshDatabase, CallsClientApi;
+    use BuildsCourierAccounts, CallsClientApi, RefreshDatabase;
 
     private array $client;
 
@@ -224,7 +224,7 @@ class CancelTest extends TestCase
         $this->cancel($s)->assertOk()
             ->assertJsonPath('data.state', 'booked')
             ->assertJsonPath('data.cancel_state', 'refused')
-            ->assertJsonPath('data.needs_attention', true);
+            ->assertJsonPath('data.needs_attention', false);
 
         $this->assertSame([], $fake->calls);
         $this->assertSame('shipment.cancel_failed', OutgoingEvent::query()->sole()->type);
@@ -240,7 +240,7 @@ class CancelTest extends TestCase
         $s->refresh();
         $this->assertSame('refused', $s->cancel_state);
         $this->assertSame('booked', $s->state);
-        $this->assertTrue($s->needs_attention);
+        $this->assertFalse($s->needs_attention, 'too late to cancel is not Needs action');
         $this->assertSame('The test courier refused to cancel.', $s->attention_reason);
         $this->assertNotNull($s->active_reference);
         $this->assertSame('shipment.cancel_failed', OutgoingEvent::query()->sole()->type);

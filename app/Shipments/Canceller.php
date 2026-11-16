@@ -33,10 +33,20 @@ final class Canceller
     /** The states request() acts on: draft and queued are cancelled at once, booking, unknown and booked are requested. */
     public const CANCELABLE_STATES = ['draft', 'queued', 'booking', 'unknown', 'booked'];
 
-    /** Whether request() would act on the shipment (it is otherwise returned unchanged). */
+    /**
+     * Whether a cancel is offered: request() would act on it, and a booked shipment's last courier status still
+     * allows one. request() still asks the courier when called anyway (a status can arrive late).
+     */
     public static function accepts(Shipment $s): bool
     {
-        return $s->cancel_state === null && in_array($s->state, self::CANCELABLE_STATES, true);
+        if ($s->cancel_state !== null || ! in_array($s->state, self::CANCELABLE_STATES, true)) {
+            return false;
+        }
+        if ($s->state !== 'booked' || ! CourierRegistry::has((string) $s->courier)) {
+            return true;
+        }
+
+        return self::cancelableAtCourier($s, CourierRegistry::describe((string) $s->courier));
     }
 
     /**
@@ -120,7 +130,7 @@ final class Canceller
     /** The courier will not cancel it (or the status no longer allows it). */
     public function refused(int $shipmentId, string $reason): ?Shipment
     {
-        return $this->whenRequested($shipmentId, fn (Shipment $s) => $this->cancelFailed($s, 'refused', $reason));
+        return $this->whenRequested($shipmentId, fn (Shipment $s) => $this->cancelFailed($s, 'refused', $reason, attention: false));
     }
 
     /** The courier has no cancel endpoint: the operator tells it some other way. */
@@ -207,7 +217,7 @@ final class Canceller
             }
 
             if (! self::cancelableAtCourier($s, $courier)) {
-                $this->cancelFailed($s, 'refused', "This shipment can no longer be cancelled (courier status: {$s->courier_status})");
+                $this->cancelFailed($s, 'refused', "This shipment can no longer be cancelled (courier status: {$s->courier_status})", attention: false);
 
                 return false;
             }
@@ -250,13 +260,13 @@ final class Canceller
         Outbox::record($s->clientApp, 'shipment.cancelled', ['event' => null], $s);
     }
 
-    private function cancelFailed(Shipment $s, string $cancelState, string $reason): void
+    /** $attention false: the courier only said it is too late (the parcel is on its way); the reason is kept, Needs action is not set. */
+    private function cancelFailed(Shipment $s, string $cancelState, string $reason, bool $attention = true): void
     {
         $s->forceFill([
             'cancel_state' => $cancelState,
-            'needs_attention' => true,
             'attention_reason' => mb_substr($reason, 0, self::REASON_MAX),
-        ])->save();
+        ] + ($attention ? ['needs_attention' => true] : []))->save();
 
         Outbox::record($s->clientApp, 'shipment.cancel_failed', ['event' => null], $s);
     }

@@ -85,9 +85,9 @@ final class CourierFormFields
     }
 
     /**
-     * The size each SPX preset fills in on the form, keyed by its parcel value. Other couriers have none.
+     * The size and weight each SPX preset fills in on the form, keyed by its parcel value. Other couriers have none.
      *
-     * @return array<string, array{label: string, length_cm: float, width_cm: float, height_cm: float}>
+     * @return array<string, array{label: string, length_cm: float, width_cm: float, height_cm: float, weight_kg: float}>
      */
     public static function presetSizes(CourierAccount $account): array
     {

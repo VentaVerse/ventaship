@@ -2693,9 +2693,9 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
     }
 
     /**
-     * The presets the Add shipment form offers, keyed by their parcel value, with the size each one fills in.
+     * The presets the Add shipment form offers, keyed by their parcel value, with the size and weight each one fills in.
      *
-     * @return array<string, array{label: string, length_cm: float, width_cm: float, height_cm: float}>
+     * @return array<string, array{label: string, length_cm: float, width_cm: float, height_cm: float, weight_kg: float}>
      */
     public function presetSizes(): array
     {
@@ -2707,6 +2707,7 @@ class SpxFulfillment implements Courier, ProvidesPublicTrackingUrl, QuotesWithRe
                 'length_cm' => (float) ($preset['length_cm'] ?? 0),
                 'width_cm' => (float) ($preset['width_cm'] ?? 0),
                 'height_cm' => (float) ($preset['height_cm'] ?? 0),
+                'weight_kg' => (float) ($preset['max_weight_kg'] ?? 0),
             ];
         }
 

@@ -5,6 +5,7 @@ namespace Tests\Feature\Ui;
 use App\Couriers\CourierOrder;
 use App\Couriers\CourierRegistry;
 use App\Couriers\FakeCourier;
+use App\Fulfillment\RowActions;
 use App\Fulfillment\ShipmentBadges;
 use App\Models\Admin;
 use App\Models\ClientApp;
@@ -253,6 +254,24 @@ class ShipmentShowTest extends TestCase
         }
         $cancelled = $this->ship('failed', ['cancel_state' => 'cancelled']);
         $this->assertStringNotContainsString('sd-retry', $this->get(route('shipments.show', $cancelled->public_id))->getContent());
+    }
+
+    public function test_cancel_hides_once_the_courier_is_past_its_cancel_point(): void
+    {
+        $spx = CourierAccount::factory()->create(['courier' => 'spx', 'status' => 'active']);
+        $cases = [
+            ['quadx', null, true], ['quadx', 'for_pickup', true], ['quadx', 'searching_for_rider', true],
+            ['quadx', 'pickup_rider_found', false], ['quadx', 'picked_up', false], ['quadx', 'delivered', false],
+            ['quadx', 'some_new_status', false],
+            ['spx', '1001', true], ['spx', '2001', false], ['spx', '4001', false],
+        ];
+        foreach ($cases as [$courier, $status, $offered]) {
+            $over = ['courier_status' => $status] + ($courier === 'spx' ? ['courier' => 'spx', 'courier_account_id' => $spx->id] : []);
+            $s = $this->ship('booked', $over);
+            $html = $this->get(route('shipments.show', $s->public_id))->assertOk()->getContent();
+            $this->assertSame($offered, str_contains($html, 'sd-cancel'), "{$courier} {$status}");
+            $this->assertSame($offered, RowActions::flags($s)['cancellable'], "{$courier} {$status} list");
+        }
     }
 
     public function test_unknown_shows_the_resolve_form(): void
